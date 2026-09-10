@@ -70,10 +70,10 @@ async function propose(markets, now) {
     const metric = tag(m.metric);
     const ev = evaluate(metric, m.openTs.toNumber(), m.closeTs.toNumber());
     if (!ev.ok) { log(`market #${m.id} (${metric}): cannot resolve yet — ${ev.reason}`); continue; }
-    const outcome = ev.value >= m.threshold.toNumber() ? 1 : 2;
+    const outcome = ev.value >= m.threshold.toNumber() ? 1 : 2; const outcomeArg = outcome === 1 ? { yes: {} } : { no: {} };
     log(`market #${m.id} (${metric}): observed ${ev.value} vs threshold ${m.threshold} → ${outcome === 1 ? "YES" : "NO"}`, JSON.stringify(ev.detail), "days", ev.used.join(","));
     if (DRY) continue;
-    const sig = await program.methods.proposeResolution(outcome, new BN(ev.value), Array.from(evidenceHash(ev.used)))
+    const sig = await program.methods.proposeResolution(outcomeArg, new BN(ev.value), Array.from(evidenceHash(ev.used)))
       .accounts({ config: configPda, market: publicKey, proposer: proposer.publicKey }).rpc();
     fs.writeFileSync(path.join(SNAP, `resolution-${m.id}.json`), JSON.stringify({ market: publicKey.toBase58(), id: m.id.toNumber(), metric, threshold: m.threshold.toString(), observed: ev.value, outcome, days: ev.used, detail: ev.detail, evidenceHash: evidenceHash(ev.used).toString("hex"), signature: sig, at: new Date().toISOString() }, null, 2));
     log(`  proposed ${sig}`);
@@ -87,7 +87,7 @@ async function finalize(markets, now, cfg) {
     if (!ready && !adminEarly) { log(`market #${m.id}: in dispute window until ${new Date((m.proposedAt.toNumber() + cfg.disputeWindowSecs.toNumber()) * 1000).toISOString()}`); continue; }
     if (DRY) { log(`market #${m.id}: would finalize`); continue; }
     const signer = ready ? proposer : admin;
-    const sig = await program.methods.finalize().accounts({ config: configPda, market: publicKey, signer: signer.publicKey }).signers([signer]).rpc();
+    const sig = await program.methods.finalizeResolution().accounts({ config: configPda, market: publicKey, signer: signer.publicKey }).signers([signer]).rpc();
     log(`market #${m.id}: finalized ${sig}${ready ? "" : " (admin, inside dispute window)"}`);
   }
 }
@@ -111,7 +111,7 @@ async function settle(markets, cfg) {
     const fresh = await program.account.market.fetch(publicKey);
     if (fresh.positionsOpen === 0 && fresh.status !== 4 && !DRY) {
       try {
-        const sig = await program.methods.sweep().accounts({ config: configPda, market: publicKey, vault: vaultPda(publicKey), treasury: cfg.treasury, signer: proposer.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).rpc();
+        const sig = await program.methods.sweepMarket().accounts({ config: configPda, market: publicKey, vault: vaultPda(publicKey), treasury: cfg.treasury, rentDest: cfg.admin, signer: proposer.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).rpc();
         log(`market #${m.id}: swept ${sig}`);
       } catch (e) { log(`market #${m.id}: sweep failed: ${e.message?.split("\n")[0]}`); }
     }
