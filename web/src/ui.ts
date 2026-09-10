@@ -1,5 +1,5 @@
 import { PublicKey } from "@solana/web3.js";
-import { CLUSTER, IS_TEST, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
+import { API_BASE, CLUSTER, IS_TEST, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 import { STATUS, type MarketView } from "./kubrai";
 import { connectWallet, devWallet, listWallets, type Session } from "./wallet";
 
@@ -47,7 +47,19 @@ export function mountWallet() {
 }
 function renderWallet() {
   const el = document.getElementById("wallet"); if (!el) return;
-  if (session) { el.innerHTML = `<span class="mono note">${session.label} · ${short(session.publicKey)}</span><button id="wdis">Disconnect</button>`; el.querySelector<HTMLButtonElement>("#wdis")!.onclick = async () => { await session?.disconnect(); setSession(null); }; return; }
+  if (session) {
+    el.innerHTML = `<span class="mono note">${session.label} · ${short(session.publicKey)}</span>${IS_TEST && API_BASE ? `<button id="wfaucet" title="1000 ${TOKEN_SYMBOL} + a little SOL for fees, once per day">Get test tokens</button>` : ""}<button id="wdis">Disconnect</button>`;
+    el.querySelector<HTMLButtonElement>("#wdis")!.onclick = async () => { await session?.disconnect(); setSession(null); };
+    const f = el.querySelector<HTMLButtonElement>("#wfaucet");
+    if (f) f.onclick = async () => {
+      f.disabled = true; f.textContent = "Sending…";
+      try { const r = await fetch(API_BASE + "/faucet", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: session!.publicKey.toBase58() }) }); const j = await r.json(); f.textContent = r.ok ? `Got ${j.tokens}` : (j.error ?? "Failed"); }
+      catch (e: any) { f.textContent = "Faucet unreachable"; }
+      setTimeout(() => { f.disabled = false; f.textContent = "Get test tokens"; }, 4000);
+      listeners.forEach((fn) => fn(session));
+    };
+    return;
+  }
   const wallets = listWallets();
   el.innerHTML = wallets.map((w, i) => `<button data-i="${i}">${w.name}</button>`).join("") + (IS_TEST ? `<button id="wdev" title="A throwaway keypair stored in this browser. Test network only.">Test wallet</button>` : "") + (wallets.length === 0 && !IS_TEST ? `<span class="note">Install Phantom, Solflare or open in Seeker</span>` : "");
   el.querySelectorAll<HTMLButtonElement>("button[data-i]").forEach((b) => (b.onclick = async () => { try { setSession(await connectWallet(wallets[Number(b.dataset.i)])); } catch (e: any) { alert(e.message ?? e); } }));

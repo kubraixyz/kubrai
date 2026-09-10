@@ -6,5 +6,5 @@ export const RPC_URL = import.meta.env.VITE_RPC_URL ?? (CLUSTER === "localnet" ?
 export const PROGRAM_ID = import.meta.env.VITE_PROGRAM_ID ?? "F9qowxW3hmwrzDeKQXpL4rVmFcPvWe7e43oGnWU3AvQb";
 export const TOKEN_SYMBOL = CLUSTER === "mainnet" ? "SKR" : "tSKR";
 export const TOKEN_DECIMALS = 6;
-export const SNAPSHOT_BASE = import.meta.env.VITE_SNAPSHOT_BASE ?? "";
+export const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 export const IS_TEST = CLUSTER !== "mainnet";
