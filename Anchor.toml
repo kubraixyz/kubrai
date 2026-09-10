@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-kubrai = "KubraiPoo1111111111111111111111111111111111"
+kubrai = "F9qowxW3hmwrzDeKQXpL4rVmFcPvWe7e43oGnWU3AvQb"
 
 [programs.devnet]
-kubrai = "KubraiPoo1111111111111111111111111111111111"
+kubrai = "F9qowxW3hmwrzDeKQXpL4rVmFcPvWe7e43oGnWU3AvQb"
 
 [registry]
 url = "https://api.apr.dev"

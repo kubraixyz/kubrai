@@ -18,7 +18,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, CloseAccount, Mint, Token, TokenAccount, Transfer};
 
-declare_id!("KubraiPoo1111111111111111111111111111111111");
+declare_id!("F9qowxW3hmwrzDeKQXpL4rVmFcPvWe7e43oGnWU3AvQb");
 
 pub const BPS: u128 = 10_000;
 pub const MAX_FEE_BPS: u16 = 1_000; // 10% hard ceiling, protects users from a hostile config
@@ -86,39 +86,48 @@ pub mod kubrai {
     /// Anyone (normally the treasury) adds a fee-free prize to the pot.
     pub fn seed_market(ctx: Context<SeedMarket>, amount: u64) -> Result<()> {
         require!(amount > 0, KubraiError::ZeroAmount);
-        let m = &mut ctx.accounts.market;
-        require!(m.status == MarketStatus::Open as u8, KubraiError::MarketNotOpen);
-        require!(Clock::get()?.unix_timestamp < m.close_ts, KubraiError::BettingClosed);
+        {
+            let m = &ctx.accounts.market;
+            require!(m.status == MarketStatus::Open as u8, KubraiError::MarketNotOpen);
+            require!(Clock::get()?.unix_timestamp < m.close_ts, KubraiError::BettingClosed);
+        }
         token::transfer(ctx.accounts.transfer_ctx(), amount)?;
+        let m = &mut ctx.accounts.market;
         m.seed_amount = m.seed_amount.checked_add(amount).unwrap();
         Ok(())
     }
 
     pub fn place_bet(ctx: Context<PlaceBet>, side: Side, amount: u64) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
-        let c = &ctx.accounts.config;
+        let fee_bps = {
+            let c = &ctx.accounts.config;
+            let m = &ctx.accounts.market;
+            require!(!c.paused, KubraiError::Paused);
+            require!(m.status == MarketStatus::Open as u8, KubraiError::MarketNotOpen);
+            require!(now >= m.open_ts, KubraiError::BettingNotStarted);
+            require!(now < m.close_ts, KubraiError::BettingClosed);
+            require!(amount >= c.min_bet, KubraiError::BelowMinBet);
+            // Fee tier is decided now and locked into the position, stake-weighted.
+            let mut fee_bps = c.fee_bps;
+            if now < m.open_ts.saturating_add(c.early_bird_secs) {
+                fee_bps = fee_bps.saturating_sub(c.early_bird_discount_bps);
+            }
+            // TODO(v1.1): SKR staking tier discount — read the staker account of the
+            // SKR staking program (SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ) passed as
+            // an optional remaining account; layout to be confirmed on mainnet.
+            fee_bps
+        };
+        // Move the tokens first, then book-keep (borrow checker: CPI needs &ctx.accounts).
+        token::transfer(ctx.accounts.transfer_ctx(), amount)?;
+        let user_key = ctx.accounts.user.key();
+        let position_bump = ctx.bumps.position;
         let m = &mut ctx.accounts.market;
-        require!(!c.paused, KubraiError::Paused);
-        require!(m.status == MarketStatus::Open as u8, KubraiError::MarketNotOpen);
-        require!(now >= m.open_ts, KubraiError::BettingNotStarted);
-        require!(now < m.close_ts, KubraiError::BettingClosed);
-        require!(amount >= c.min_bet, KubraiError::BelowMinBet);
-
-        // Fee tier is decided now and locked into the position, stake-weighted.
-        let mut fee_bps = c.fee_bps;
-        if now < m.open_ts.saturating_add(c.early_bird_secs) {
-            fee_bps = fee_bps.saturating_sub(c.early_bird_discount_bps);
-        }
-        // TODO(v1.1): SKR staking tier discount — read the staker account of the
-        // SKR staking program (SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ) passed as
-        // an optional remaining account; layout to be confirmed on mainnet.
-
         let p = &mut ctx.accounts.position;
         if p.owner == Pubkey::default() {
             p.market = m.key();
-            p.owner = ctx.accounts.user.key();
-            p.payer = ctx.accounts.user.key();
-            p.bump = ctx.bumps.position;
+            p.owner = user_key;
+            p.payer = user_key;
+            p.bump = position_bump;
             m.positions = m.positions.checked_add(1).unwrap();
             m.positions_open = m.positions_open.checked_add(1).unwrap();
         }
@@ -135,7 +144,6 @@ pub mod kubrai {
                 m.pool_no = m.pool_no.checked_add(amount).unwrap();
             }
         }
-        token::transfer(ctx.accounts.transfer_ctx(), amount)?;
         emit!(BetPlaced { market: m.key(), user: p.owner, side: side.code(), amount, fee_bps, pool_yes: m.pool_yes, pool_no: m.pool_no });
         Ok(())
     }
@@ -184,37 +192,41 @@ pub mod kubrai {
     /// Permissionless payout + close. Winners are paid, losers just get their
     /// rent back. Works for Resolved and Voided markets.
     pub fn settle_position(ctx: Context<Settle>) -> Result<()> {
-        let m = &mut ctx.accounts.market;
-        let p = &ctx.accounts.position;
-        let status = m.status;
-        require!(status == MarketStatus::Resolved as u8 || status == MarketStatus::Voided as u8, KubraiError::NotResolved);
-
-        let (payout, fee) = compute_payout(m, p)?;
+        let (payout, fee, owner, id_bytes, bump) = {
+            let m = &ctx.accounts.market;
+            let p = &ctx.accounts.position;
+            require!(m.status == MarketStatus::Resolved as u8 || m.status == MarketStatus::Voided as u8, KubraiError::NotResolved);
+            let (payout, fee) = compute_payout(m, p)?;
+            (payout, fee, p.owner, m.id.to_le_bytes(), m.bump)
+        };
         if payout > 0 {
-            let id_bytes = m.id.to_le_bytes();
-            let seeds: &[&[u8]] = &[b"market", id_bytes.as_ref(), &[m.bump]];
+            let seeds: &[&[u8]] = &[b"market", id_bytes.as_ref(), &[bump]];
             token::transfer(ctx.accounts.transfer_ctx().with_signer(&[seeds]), payout)?;
         }
+        let m = &mut ctx.accounts.market;
         m.fee_collected = m.fee_collected.checked_add(fee).unwrap();
         m.paid_out = m.paid_out.checked_add(payout).unwrap();
         m.positions_open = m.positions_open.checked_sub(1).unwrap();
-        emit!(PositionSettled { market: m.key(), user: p.owner, payout, fee });
+        emit!(PositionSettled { market: m.key(), user: owner, payout, fee });
         Ok(())
     }
 
     /// After every position is settled: fees + rounding dust (+ seed if voided or
     /// no winners) go to treasury, vault is closed.
     pub fn sweep_market(ctx: Context<Sweep>) -> Result<()> {
-        let m = &mut ctx.accounts.market;
-        require!(m.status == MarketStatus::Resolved as u8 || m.status == MarketStatus::Voided as u8, KubraiError::NotResolved);
-        require!(m.positions_open == 0, KubraiError::PositionsOutstanding);
+        let (id_bytes, bump) = {
+            let m = &ctx.accounts.market;
+            require!(m.status == MarketStatus::Resolved as u8 || m.status == MarketStatus::Voided as u8, KubraiError::NotResolved);
+            require!(m.positions_open == 0, KubraiError::PositionsOutstanding);
+            (m.id.to_le_bytes(), m.bump)
+        };
         let remaining = ctx.accounts.vault.amount;
-        let id_bytes = m.id.to_le_bytes();
-        let seeds: &[&[u8]] = &[b"market", id_bytes.as_ref(), &[m.bump]];
+        let seeds: &[&[u8]] = &[b"market", id_bytes.as_ref(), &[bump]];
         if remaining > 0 {
             token::transfer(ctx.accounts.transfer_ctx().with_signer(&[seeds]), remaining)?;
         }
         token::close_account(ctx.accounts.close_ctx().with_signer(&[seeds]))?;
+        let m = &mut ctx.accounts.market;
         m.swept = remaining;
         m.status = MarketStatus::Swept as u8;
         Ok(())
@@ -408,14 +420,14 @@ pub struct SeedMarket<'info> {
     pub market: Account<'info, Market>,
     #[account(mut)]
     pub vault: Account<'info, TokenAccount>,
-    #[account(mut, token::mint = vault.mint, token::authority = funder)]
+    #[account(mut, token::mint = vault.mint, token::authority = funder.key())]
     pub funder_token: Account<'info, TokenAccount>,
     pub funder: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 impl<'info> SeedMarket<'info> {
     fn transfer_ctx(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
-        CpiContext::new(self.token_program.to_account_info(), Transfer {
+        CpiContext::new(self.token_program.key(), Transfer {
             from: self.funder_token.to_account_info(),
             to: self.vault.to_account_info(),
             authority: self.funder.to_account_info(),
@@ -434,7 +446,7 @@ pub struct PlaceBet<'info> {
     pub position: Account<'info, Position>,
     #[account(mut)]
     pub vault: Account<'info, TokenAccount>,
-    #[account(mut, token::mint = config.mint, token::authority = user)]
+    #[account(mut, token::mint = config.mint, token::authority = user.key())]
     pub user_token: Account<'info, TokenAccount>,
     #[account(mut)]
     pub user: Signer<'info>,
@@ -443,7 +455,7 @@ pub struct PlaceBet<'info> {
 }
 impl<'info> PlaceBet<'info> {
     fn transfer_ctx(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
-        CpiContext::new(self.token_program.to_account_info(), Transfer {
+        CpiContext::new(self.token_program.key(), Transfer {
             from: self.user_token.to_account_info(),
             to: self.vault.to_account_info(),
             authority: self.user.to_account_info(),
@@ -498,7 +510,7 @@ pub struct Settle<'info> {
 }
 impl<'info> Settle<'info> {
     fn transfer_ctx(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
-        CpiContext::new(self.token_program.to_account_info(), Transfer {
+        CpiContext::new(self.token_program.key(), Transfer {
             from: self.vault.to_account_info(),
             to: self.owner_token.to_account_info(),
             authority: self.market.to_account_info(),
@@ -524,14 +536,14 @@ pub struct Sweep<'info> {
 }
 impl<'info> Sweep<'info> {
     fn transfer_ctx(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
-        CpiContext::new(self.token_program.to_account_info(), Transfer {
+        CpiContext::new(self.token_program.key(), Transfer {
             from: self.vault.to_account_info(),
             to: self.treasury.to_account_info(),
             authority: self.market.to_account_info(),
         })
     }
     fn close_ctx(&self) -> CpiContext<'_, '_, '_, 'info, CloseAccount<'info>> {
-        CpiContext::new(self.token_program.to_account_info(), CloseAccount {
+        CpiContext::new(self.token_program.key(), CloseAccount {
             account: self.vault.to_account_info(),
             destination: self.rent_dest.to_account_info(),
             authority: self.market.to_account_info(),
