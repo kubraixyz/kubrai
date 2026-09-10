@@ -83,10 +83,12 @@ async function finalize(markets, now, cfg) {
   for (const { publicKey, account: m } of markets) {
     if (m.status !== 1) continue;
     const ready = now >= m.proposedAt.toNumber() + cfg.disputeWindowSecs.toNumber();
-    if (!ready) { log(`market #${m.id}: in dispute window until ${new Date((m.proposedAt.toNumber() + cfg.disputeWindowSecs.toNumber()) * 1000).toISOString()}`); continue; }
+    const adminEarly = process.env.ADMIN_FINALIZE === "1" && admin; // test networks only: admin may finalize inside the window
+    if (!ready && !adminEarly) { log(`market #${m.id}: in dispute window until ${new Date((m.proposedAt.toNumber() + cfg.disputeWindowSecs.toNumber()) * 1000).toISOString()}`); continue; }
     if (DRY) { log(`market #${m.id}: would finalize`); continue; }
-    const sig = await program.methods.finalize().accounts({ config: configPda, market: publicKey, signer: proposer.publicKey }).rpc();
-    log(`market #${m.id}: finalized ${sig}`);
+    const signer = ready ? proposer : admin;
+    const sig = await program.methods.finalize().accounts({ config: configPda, market: publicKey, signer: signer.publicKey }).signers([signer]).rpc();
+    log(`market #${m.id}: finalized ${sig}${ready ? "" : " (admin, inside dispute window)"}`);
   }
 }
 async function settle(markets, cfg) {
