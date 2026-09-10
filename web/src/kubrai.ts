@@ -4,7 +4,19 @@ import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-tok
 import idl from "../../idl/kubrai.json";
 import { PROGRAM_ID, RPC_URL } from "./config";
 
-export const connection = new Connection(RPC_URL, "confirmed");
+export const connection = new Connection(RPC_URL, { commitment: "confirmed", disableRetryOnRateLimit: false });
+
+/** Confirm by polling signature status (no websocket: works behind tunnels, on mobile data, and on flaky public RPCs). */
+export async function confirmBySig(sig: string, timeoutMs = 60000): Promise<void> {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    const st = (await connection.getSignatureStatuses([sig])).value[0];
+    if (st?.err) throw new Error("Transaction failed: " + JSON.stringify(st.err));
+    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return;
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+  throw new Error("Not confirmed after " + timeoutMs / 1000 + "s. Check signature " + sig);
+}
 export const programId = new PublicKey(PROGRAM_ID);
 const readOnlyProvider = new AnchorProvider(connection, { publicKey: PublicKey.default, signTransaction: async (t: any) => t, signAllTransactions: async (t: any) => t } as any, { commitment: "confirmed" });
 export const program = new Program(idl as Idl, readOnlyProvider);
@@ -46,11 +58,12 @@ export function currentFeeBps(cfg: any, m: MarketView, nowSec = Math.floor(Date.
   if (nowSec < m.openTs + cfg.earlyBirdSecs.toNumber()) fee = Math.max(0, fee - cfg.earlyBirdDiscountBps);
   return fee;
 }
-/** What 1 unit staked on `side` pays if that side wins, given current pools (before fee, incl. seed). */
-export function impliedPayout(m: MarketView, side: "yes" | "no", stake: number) {
+/** Payout breakdown if `side` wins with current pools + this stake. Fee applies to `fromLosers` only (mirrors on-chain). */
+export function impliedPayout(m: MarketView, side: "yes" | "no", stake: number, feeBps: number) {
   const win = (side === "yes" ? m.poolYes : m.poolNo) + stake, lose = side === "yes" ? m.poolNo : m.poolYes;
-  if (win === 0) return 0;
-  return stake + (lose * stake) / win + (m.seed * stake) / win;
+  const fromLosers = win ? (lose * stake) / win : 0, fromSeed = win ? (m.seed * stake) / win : 0;
+  const fee = (fromLosers * feeBps) / 10000;
+  return { fromLosers, fromSeed, fee, total: stake + fromLosers - fee + fromSeed };
 }
 
 export async function buildPlaceBetTx(user: PublicKey, m: MarketView, side: "yes" | "no", amountBase: number, mint: PublicKey): Promise<Transaction> {

@@ -1,5 +1,5 @@
 import { PublicKey } from "@solana/web3.js";
-import { buildPlaceBetTx, connection, currentFeeBps, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
+import { buildPlaceBetTx, confirmBySig, currentFeeBps, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
 import { METRIC_COPY, metricLabel } from "./metrics";
 import { fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, statusPill, timeLeft } from "./ui";
 import { TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
@@ -50,8 +50,8 @@ function renderBet(open: boolean, fee: number) {
   const upd = () => {
     const a = Math.round((Number(amtEl.value) || 0) * 10 ** TOKEN_DECIMALS);
     if (!a) { quote.innerHTML = `<span class="note">Enter an amount to see the payout if ${side.toUpperCase()} wins.</span>`; return; }
-    const gross = impliedPayout(m, side, a), win = gross - a, net = a + win * (1 - fee / 10000);
-    quote.innerHTML = `<span>If <b>${side.toUpperCase()}</b> wins you receive</span><span class="big">${fmtAmt(net)} ${TOKEN_SYMBOL}</span><span class="note">= your ${fmtAmt(a)} back + ${fmtAmt(win)} from the losing pool − ${fmtAmt(win * fee / 10000)} fee. If ${side === "yes" ? "NO" : "YES"} wins you lose ${fmtAmt(a)}.</span>`;
+    const q = impliedPayout(m, side, a, fee);
+    quote.innerHTML = `<span>If <b>${side.toUpperCase()}</b> wins you receive</span><span class="big">${fmtAmt(q.total)} ${TOKEN_SYMBOL}</span><span class="note">= your ${fmtAmt(a)} back + ${fmtAmt(q.fromLosers)} from the losing pool − ${fmtAmt(q.fee)} fee${q.fromSeed ? ` + ${fmtAmt(q.fromSeed)} house prize (fee-free)` : ""}. If ${side === "yes" ? "NO" : "YES"} wins you lose ${fmtAmt(a)}.</span>`;
   };
   amtEl.oninput = upd; upd();
   box.querySelectorAll<HTMLButtonElement>(".sides button").forEach((b) => (b.onclick = () => { side = b.dataset.s as any; renderBet(open, fee); }));
@@ -64,7 +64,7 @@ function renderBet(open: boolean, fee: number) {
       const tx = await buildPlaceBetTx(sess.publicKey, m, side, a, new PublicKey(cfg.mint));
       const sig = await sess.signAndSend(tx);
       msg.innerHTML = `<div class="msg">Sent. Waiting for confirmation… <span class="hash">${sig}</span></div>`;
-      await connection.confirmTransaction(sig, "confirmed");
+      await confirmBySig(sig);
       msg.innerHTML = `<div class="msg ok">Bet placed: ${fmtAmt(a)} ${TOKEN_SYMBOL} on ${side.toUpperCase()}.</div>`;
       await load(); await showPosition();
     } catch (e: any) { msg.innerHTML = `<div class="msg err">${e?.message ?? e}</div>`; go.disabled = false; }
