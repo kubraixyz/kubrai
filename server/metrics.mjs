@@ -36,16 +36,19 @@ export async function skrSupply(conn = new Connection(MAINNET)) {
   const s = await conn.getTokenSupply(SKR_MINT);
   return { value: Number(s.value.amount), raw: s.value, source: "rpc getTokenSupply" };
 }
+// SKR staking vault (found 2026-09-10 via getTokenLargestAccounts: the largest SKR
+// holder, owned by a PDA of the staking program). We re-verify that ownership on
+// every snapshot instead of trusting the constant.
+const SKR_STAKING_VAULT = new PublicKey("8isViKbwhuhFhsv2t8vaFL74pKCqaFPQXo1KkeQwZbB8");
 export async function skrStaked(conn = new Connection(MAINNET)) {
-  // The staking program's vault is the largest SKR holder. We verify the holder
-  // account's owner authority is a PDA of the staking program before trusting it.
-  const largest = await conn.getTokenLargestAccounts(SKR_MINT);
-  const parsed = await conn.getParsedAccountInfo(largest.value[0].address);
+  const parsed = await conn.getParsedAccountInfo(SKR_STAKING_VAULT);
   const info = parsed.value?.data?.parsed?.info;
+  if (!info || info.mint !== SKR_MINT.toBase58()) throw new Error("staking vault is not an SKR token account");
   const owner = new PublicKey(info.owner);
   const ownerAcc = await conn.getAccountInfo(owner);
   const ownedByStaking = ownerAcc?.owner?.equals(SKR_STAKING_PROGRAM) ?? false;
-  return { value: Number(info.tokenAmount.amount), raw: { vault: largest.value[0].address.toBase58(), vaultOwner: owner.toBase58(), vaultOwnerProgram: ownerAcc?.owner?.toBase58(), ownedByStaking, amount: info.tokenAmount.amount }, source: "rpc getTokenLargestAccounts(SKR)" };
+  if (!ownedByStaking) throw new Error("staking vault owner is no longer the staking program");
+  return { value: Number(info.tokenAmount.amount), raw: { vault: SKR_STAKING_VAULT.toBase58(), vaultOwner: owner.toBase58(), vaultOwnerProgram: ownerAcc.owner.toBase58(), amount: info.tokenAmount.amount, uiAmount: info.tokenAmount.uiAmountString }, source: "rpc getParsedAccountInfo(staking vault)" };
 }
 export async function skrPriceUsd() {
   const j = await getJson(`https://lite-api.jup.ag/price/v3?ids=${SKR_MINT.toBase58()}`);
