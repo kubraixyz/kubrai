@@ -1,6 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
 import { buildPlaceBetTx, confirmBySig, currentFeeBps, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
-import { METRIC_COPY, metricLabel } from "./metrics";
+import { METRIC_COPY, fmtValue, metricLabel } from "./metrics";
 import { fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, statusPill, timeLeft } from "./ui";
 import { TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 
@@ -17,7 +17,7 @@ function render() {
   document.title = `Kubrai · ${metricLabel(m.metric)}`;
   root.innerHTML = `
     <div class="meta" style="display:flex;gap:10px;color:var(--dim);font-size:13px">${statusPill(m)}<span>Market #${m.id}</span><span>${m.status === 0 ? timeLeft(m.closeTs) : ""}</span></div>
-    <h1>${metricLabel(m.metric)} ≥ <span class="mono">${m.threshold.toLocaleString("en-US")}</span>?</h1>
+    <h1>${metricLabel(m.metric)} ≥ <span class="mono">${fmtValue(m.metric, m.threshold)}</span>?</h1>
     <p class="lead">${copy?.how ?? ""}</p>
     ${poolsHtml(m)}
     <h2>Bet</h2>
@@ -27,7 +27,7 @@ function render() {
       <b>Betting opens</b><span>${fmtTs(m.openTs)}</span>
       <b>Betting closes</b><span>${fmtTs(m.closeTs)}</span>
       <b>Early-bird fee</b><span>${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyUntil)}, then ${cfg.feeBps / 100}%</span>
-      <b>Result proposed</b><span>${m.proposedAt ? `${fmtTs(m.proposedAt)} · ${m.proposedOutcome === 1 ? "YES" : "NO"} · observed <span class="mono">${m.proposedValue.toLocaleString("en-US")}</span>` : "after close"}</span>
+      <b>Result proposed</b><span>${m.proposedAt ? `${fmtTs(m.proposedAt)} · ${m.proposedOutcome === 1 ? "YES" : "NO"} · observed <span class="mono">${fmtValue(m.metric, m.proposedValue)}</span>` : "after close"}</span>
       <b>Dispute window</b><span>${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize</span>
       <b>Snapshot hash</b><span class="hash">${m.proposedAt ? m.snapshotHash : "—"}</span>
       <b>Market account</b><span class="hash">${m.pubkey.toBase58()}</span>
