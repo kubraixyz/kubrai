@@ -17,7 +17,7 @@ function render() {
   document.title = `Kubrai · ${metricLabel(m.metric)}`;
   root.innerHTML = `
     <div class="meta" style="display:flex;gap:10px;color:var(--dim);font-size:13px">${statusPill(m)}<span>Market #${m.id}</span><span>${m.status === 0 ? timeLeft(m.closeTs) : ""}</span></div>
-    <h1>${metricLabel(m.metric)} ≥ <span class="mono">${fmtValue(m.metric, m.threshold)}</span>?</h1>
+    <h1>${metricLabel(m.metric)} ≥&nbsp;<span class="mono">${fmtValue(m.metric, m.threshold)}</span>?</h1>
     <p class="lead">${copy?.how ?? ""}</p>
     ${poolsHtml(m)}
     <h2>Bet</h2>
