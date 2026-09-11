@@ -31,12 +31,12 @@ async function storeGql(query, variables = {}, timeoutMs = 60000) {
 const SUMMARY = `fragment S on DApp { androidPackage auxStatus { __typename } rating { rating reviewsByRating } lastRelease(systemContext: $systemContext) { displayName updatedOn androidDetails { versionCode } } }`;
 /** Every listed app, deduplicated across categories (an app can sit in several). */
 export async function storeCatalog() {
-  const cats = (await storeGql(`query C($systemContext: SystemContext!) { topCategories(systemContext: $systemContext, first: 50) { edges { node { id name } } } }`)).topCategories.edges.map((e) => e.node);
+  const cats = (await storeGql(`query C($systemContext: SystemContext!) { topCategories(systemContext: $systemContext, first: 20) { edges { node { id name } } } }`)).topCategories.edges.map((e) => e.node);
   const apps = new Map(); const perCategory = {};
   for (const c of cats) {
     let after = null, n = 0;
-    for (let page = 0; page < 60; page++) {
-      const d = await storeGql(`query P($systemContext: SystemContext!, $id: ID!, $after: String) { dAppsCategory { dApps(systemContext: $systemContext, categoryId: $id, first: 100, after: $after) { edges { node { ...S } } pageInfo { hasNextPage endCursor } } } } ${SUMMARY}`, { id: c.id, after });
+    for (let page = 0; page < 80; page++) {
+      const d = await storeGql(`query P($systemContext: SystemContext!, $id: ID!, $after: String) { dAppsCategory { dApps(systemContext: $systemContext, categoryId: $id, first: 20, after: $after) { edges { node { ...S } } pageInfo { hasNextPage endCursor } } } } ${SUMMARY}`, { id: c.id, after });
       const conn = d.dAppsCategory.dApps;
       for (const e of conn.edges) { n++; const a = e.node; if (!apps.has(a.androidPackage)) apps.set(a.androidPackage, { name: a.lastRelease?.displayName, reviews: (a.rating?.reviewsByRating ?? []).reduce((x, y) => x + y, 0), rating: a.rating?.rating ?? null, updatedOn: a.lastRelease?.updatedOn, aux: a.auxStatus?.__typename ?? null }); }
       if (!conn.pageInfo.hasNextPage) break; after = conn.pageInfo.endCursor;
