@@ -29,8 +29,12 @@ const t0 = Date.parse(today + "T00:00:00Z");
 const isMonday = new Date(t0).getUTCDay() === 1;
 const closeFor = (cadence) => Math.floor((cadence === "day" ? t0 + 864e5 : t0 + ((8 - new Date(t0).getUTCDay()) % 7 || 7) * 864e5) / 1000);
 const baseSlot = today + "T00";
-const baseFile = [path.join(SNAP, baseSlot + ".json"), path.join(SNAP, today + ".json")].find((f) => fs.existsSync(f));
-if (!baseFile) { log(`no snapshot for ${baseSlot}; nothing opened`); process.exit(1); }
+// The baseline must be the same reading that closes yesterday's markets, so wait for the 00:05 snapshot to land
+// (cron starts us at 00:06; the file usually appears within a minute or two). Give up after WAIT_MIN minutes.
+const findBase = () => [path.join(SNAP, baseSlot + ".json"), path.join(SNAP, today + ".json")].find((f) => fs.existsSync(f) && fs.existsSync(f + ".sha256"));
+let baseFile = findBase(); const deadline = Date.now() + Number(process.env.WAIT_MIN ?? 20) * 60e3;
+while (!baseFile && Date.now() < deadline) { await new Promise((r) => setTimeout(r, 10e3)); baseFile = findBase(); }
+if (!baseFile) { log(`no snapshot for ${baseSlot} after waiting; nothing opened`); try { const { notify } = await import("./notify.mjs"); await notify(`Markets NOT opened ${today}`, `snapshot ${baseSlot} never appeared`, "open-markets-fail", 0); } catch {} process.exit(1); }
 const baseBundle = JSON.parse(fs.readFileSync(baseFile, "utf8"));
 
 const cfg = await program.account.config.fetch(configPda);
