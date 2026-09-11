@@ -19,7 +19,10 @@ export function HomeNavigator() {
       header: () => <TopBar />,
       tabBarActiveTintColor: theme.colors.primary,
       tabBarInactiveTintColor: theme.colors.onSurfaceVariant,
-      tabBarStyle: { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.outlineVariant, height: 56 + bottom, paddingBottom: bottom, paddingTop: 6 },
+      tabBarStyle: { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.outlineVariant, height: 60 + bottom, paddingBottom: bottom },
+      tabBarItemStyle: { paddingVertical: 6, justifyContent: "center" },
+      tabBarLabelStyle: { fontSize: 12, marginTop: 2 },
+      tabBarIconStyle: { marginTop: 2 },
       tabBarIcon: ({ focused, color, size }) => <MaterialCommunityIcon name={route.name === "Markets" ? (focused ? "chart-box" : "chart-box-outline") : focused ? "ticket-confirmation" : "ticket-confirmation-outline"} size={size} color={color} />,
     })}>
       <Tab.Screen name="Markets" component={MarketsScreen} />
