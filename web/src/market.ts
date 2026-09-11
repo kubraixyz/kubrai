@@ -1,6 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
 import { bs58 } from "./wallet";
-import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
+import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, earlyBirdUntil, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
 import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel } from "./metrics";
 import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill, timeLeft } from "./ui";
 import { API_BASE, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
@@ -14,7 +14,7 @@ async function load() { [m, cfg] = await Promise.all([fetchMarket(id), fetchConf
 function render() {
   const copy = metricInfo(m.metric);
   const now = Date.now() / 1000, open = m.status === 0 && now >= m.openTs && now < m.closeTs;
-  const fee = currentFeeBps(cfg, m), earlyUntil = m.openTs + cfg.earlyBirdSecs.toNumber();
+  const fee = currentFeeBps(cfg, m), earlyUntil = earlyBirdUntil(cfg, m);
   document.title = `Kubrai · ${metricLabel(m.metric)}`;
   root.innerHTML = `
     <div class="meta" style="display:flex;gap:10px;color:var(--dim);font-size:13px">${statusPill(m)}<span>Market #${m.id}</span><span>${m.status === 0 ? timeLeft(m.closeTs) : ""}</span></div>
@@ -30,7 +30,7 @@ function render() {
       <b>Betting closes</b><span>${fmtTs(m.closeTs)}</span>
       <b>Early-bird fee</b><span>${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyUntil)}, then ${cfg.feeBps / 100}%</span>
       <b>Result proposed</b><span>${m.proposedAt ? `${fmtTs(m.proposedAt)} · observed <span class="mono">${fmtValue(m.metric, m.proposedValue)}</span> → <b>${bucketLabel(m, m.proposedOutcome)}</b>` : "after close"}</span>
-      ${m.nBuckets > 2 ? `<b>How ranges are set</b><span>Cut at the quantiles of the last 12 weekly values, so every range started out roughly equally likely. Odds then move with the pools.</span>` : ""}
+      ${m.nBuckets > 2 ? `<b>How ranges are set</b><span>Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely. Odds then move with the pools.</span>` : ""}
       <b>Dispute window</b><span>${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize</span>
       <b>Snapshot hash</b><span class="hash">${m.proposedAt ? m.snapshotHash : "—"}</span>
       ${m.status === 1 ? `<b>Disagree?</b><span><div id="dispute"><button id="dbtn">Dispute this result</button> <span class="note">Open until ${fmtTs(m.proposedAt + cfg.disputeWindowSecs.toNumber())}. You sign a message with your wallet; the operator is paged and must re-propose or void before the window ends.</span></div><div id="dlist" class="note"></div></span>` : ""}

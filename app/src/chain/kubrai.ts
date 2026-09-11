@@ -47,8 +47,13 @@ export async function fetchPositionsByOwner(connection: Connection, u: PublicKey
 }
 export function currentFeeBps(cfg: any, m: MarketView, nowSec = Math.floor(Date.now() / 1000)) {
   let fee: number = cfg.feeBps;
-  if (nowSec < m.openTs + cfg.earlyBirdSecs.toNumber()) fee = Math.max(0, fee - cfg.earlyBirdDiscountBps);
+  if (nowSec < earlyBirdUntil(cfg, m)) fee = Math.max(0, fee - cfg.earlyBirdDiscountBps);
   return fee;
+}
+/** End of the early-bird window: first quarter of the betting window, capped by config (mirrors on-chain). */
+export function earlyBirdUntil(cfg: any, m: MarketView) {
+  const quarter = Math.floor((m.closeTs - m.openTs) / 4);
+  return m.openTs + Math.max(0, Math.min(cfg.earlyBirdSecs.toNumber(), quarter));
 }
 export function impliedPayout(m: MarketView, bucket: number, stake: number, feeBps: number) {
   const win = m.pools[bucket] + stake, lose = totalPool(m) - m.pools[bucket];

@@ -126,16 +126,18 @@ reason=${reason}`;
       return handleOps(req, res, url);
     }
     if (url.pathname === "/snapshots") {
-      const days = fs.readdirSync(SNAP).filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f)).map((f) => f.slice(0, 10)).sort();
-      return json(res, 200, { days, latest: days.at(-1) ?? null });
+      // slots: "YYYY-MM-DDTHH" (hourly, since 2026-09-12) or "YYYY-MM-DD" (the earlier daily files)
+      const slots = fs.readdirSync(SNAP).filter((f) => /^\d{4}-\d{2}-\d{2}(T\d{2})?\.json$/.test(f)).map((f) => f.slice(0, -5)).sort();
+      const days = [...new Set(slots.map((x) => x.slice(0, 10)))];
+      return json(res, 200, { slots, days, latest: slots.at(-1) ?? null });
     }
-    const m = url.pathname.match(/^\/snapshots\/(\d{4}-\d{2}-\d{2})$/);
+    const m = url.pathname.match(/^\/snapshots\/(\d{4}-\d{2}-\d{2}(?:T\d{2})?)$/);
     if (m) {
-      const f = path.join(SNAP, m[1] + ".json"); if (!fs.existsSync(f)) return json(res, 404, { error: "no snapshot for that day" });
+      const f = path.join(SNAP, m[1] + ".json"); if (!fs.existsSync(f)) return json(res, 404, { error: "no snapshot for that slot" });
       const bundle = JSON.parse(fs.readFileSync(f, "utf8"));
       const sha256 = fs.existsSync(f + ".sha256") ? fs.readFileSync(f + ".sha256", "utf8").trim() : null;
       const memo = fs.existsSync(f + ".memo") ? JSON.parse(fs.readFileSync(f + ".memo", "utf8")) : null;
-      return json(res, 200, { day: m[1], sha256, memo, bundle }, { "cache-control": "public, max-age=300" });
+      return json(res, 200, { slot: m[1], day: m[1].slice(0, 10), sha256, memo, bundle }, { "cache-control": "public, max-age=300" });
     }
     if (url.pathname === "/faucet" && req.method === "POST") {
       if (!FAUCET_ENABLED || !faucet) return json(res, 403, { error: "faucet is disabled on this network" });

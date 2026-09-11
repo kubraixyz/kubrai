@@ -7,7 +7,7 @@ import { useBalances, useConfig, useInvalidateAll, useMarket, usePositions } fro
 import { metricInfo, metricLabel, fmtValue, SOURCE_LABEL } from "../chain/metrics";
 import { PoolBar } from "../components/PoolBar";
 import { bucketColor, bucketLabel, fmtAmt, fmtTs, statusLabel, timeLeft } from "../chain/format";
-import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, impliedPayout } from "../chain/kubrai";
+import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, impliedPayout, earlyBirdUntil } from "../chain/kubrai";
 import { useConnection } from "../utils/ConnectionProvider";
 import { useAuthorization } from "../utils/useAuthorization";
 import { useMobileWallet } from "../utils/useMobileWallet";
@@ -112,9 +112,9 @@ export function MarketScreen() {
       <Text variant="titleMedium" style={styles.h2}>SCHEDULE</Text>
       <KV k="Betting opens" v={fmtTs(m.openTs)} />
       <KV k="Betting closes" v={fmtTs(m.closeTs)} />
-      {cfg && <KV k="Early-bird fee" v={`${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(m.openTs + cfg.earlyBirdSecs.toNumber())}, then ${cfg.feeBps / 100}%`} />}
+      {cfg && <KV k="Early-bird fee" v={`${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyBirdUntil(cfg, m))}, then ${cfg.feeBps / 100}%`} />}
       <KV k="Result proposed" v={m.proposedAt ? `${fmtTs(m.proposedAt)} · observed ${fmtValue(m.metric, m.proposedValue)} → ${bucketLabel(m, m.proposedOutcome)}` : "after close"} />
-      {m.nBuckets > 2 && <KV k="How ranges are set" v="Cut at the quantiles of the last 12 weekly values, so every range started out roughly equally likely." />}
+      {m.nBuckets > 2 && <KV k="How ranges are set" v="Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely." />}
       {cfg && <KV k="Dispute window" v={`${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize`} />}
       <KV k="Snapshot hash" v={m.proposedAt ? m.snapshotHash : "—"} mono />
       {m.status === 1 && cfg && (

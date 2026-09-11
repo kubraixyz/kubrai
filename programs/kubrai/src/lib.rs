@@ -126,8 +126,10 @@ pub mod kubrai {
             require!(amount >= c.min_bet, KubraiError::BelowMinBet);
             require!((bucket as usize) < m.n_buckets as usize, KubraiError::BadBuckets);
             // Fee tier is decided now and locked into the position, stake-weighted.
+            // Early-bird window = the first quarter of the betting window, capped by config.early_bird_secs
+            // (a weekly market keeps its 24 h; a daily market gets 6 h instead of the whole day).
             let mut fee_bps = c.fee_bps;
-            if now < m.open_ts.saturating_add(c.early_bird_secs) {
+            if now < m.open_ts.saturating_add(Market::early_bird_secs(c, m)) {
                 fee_bps = fee_bps.saturating_sub(c.early_bird_discount_bps);
             }
             // TODO(v1.1): SKR staking tier discount — read the staker account of the
@@ -280,6 +282,11 @@ pub fn compute_payout(m: &Market, p: &Position) -> Result<(u64, u64)> {
 // ---------- state ----------
 
 impl Market {
+    /// Seconds after open during which the early-bird discount applies: min(config cap, 25 % of the window).
+    pub fn early_bird_secs(c: &Config, m: &Market) -> i64 {
+        let quarter = m.close_ts.saturating_sub(m.open_ts) / 4;
+        c.early_bird_secs.min(quarter).max(0)
+    }
     /// Bucket index for a value: number of active thresholds the value reaches.
     /// bucket 0 = below thresholds[0]; bucket n-1 = at or above thresholds[n-2].
     pub fn bucket_of(&self, value: i64) -> u8 {

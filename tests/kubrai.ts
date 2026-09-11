@@ -80,7 +80,7 @@ describe("kubrai parimutuel", () => {
   });
 
   it("full lifecycle: seed, early-bird + normal bets, propose, admin finalize, permissionless settle, sweep", async () => {
-    const { m, v } = await createMarket(-1, 9);
+    const { m, v } = await createMarket(-1, 15);   // early-bird = min(3 s, window/4) = 3 s
     // house seed 100
     await program.methods.seedMarket(new BN(100 * T)).accounts({ market: m, vault: v, funderToken: ata.admin, funder: admin.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).rpc();
     await expectErr(bet(m, v, alice, "yes", T / 2), "BelowMinBet");
@@ -95,7 +95,7 @@ describe("kubrai parimutuel", () => {
     let mk = await program.account.market.fetch(m);
     assert.equal(mk.pools[1].toNumber(), 200 * T); assert.equal(mk.pools[0].toNumber(), 300 * T); assert.equal(mk.positions, 3);
     await expectErr(program.methods.proposeResolution(new BN(1500), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc(), "TooEarlyToResolve");
-    await sleep(6000);                         // past close
+    await sleep(11000);                        // past close
     await expectErr(bet(m, v, alice, "yes", T), "BettingClosed");
     await expectErr(program.methods.proposeResolution(new BN(1500), qhash).accounts({ config: configPda, market: m, proposer: alice.publicKey }).signers([alice]).rpc(), "Unauthorized");
     await program.methods.proposeResolution(new BN(1500), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc();
@@ -149,11 +149,11 @@ describe("kubrai parimutuel", () => {
   });
 
   it("multi-bucket: 4 buckets, winners share every losing pool, bucket derived on-chain", async () => {
-    const { m, v } = await createMarket(-1, 4, proposer, [100, 250, 500]);   // buckets: <100 | 100–249 | 250–499 | ≥500
+    const { m, v } = await createMarket(-1, 13, proposer, [100, 250, 500]);  // buckets: <100 | 100–249 | 250–499 | ≥500; window/4 ≥ 3 s keeps the early-bird window at 3 s
     let mk = await program.account.market.fetch(m); assert.equal(mk.nBuckets, 4);
     await expectErr(bet(m, v, alice, 4, 10 * T), "BadBuckets");
     await bet(m, v, alice, 0, 100 * T); await bet(m, v, bob, 2, 50 * T); await bet(m, v, carol, 3, 150 * T); await bet(m, v, dave, 2, 150 * T);
-    await sleep(5500);
+    await sleep(14500);
     await program.methods.proposeResolution(new BN(300), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc();
     mk = await program.account.market.fetch(m); assert.equal(mk.proposedOutcome, 2, "300 falls in bucket 2");
     await program.methods.finalizeResolution().accounts({ config: configPda, market: m, signer: admin.publicKey }).rpc();
@@ -174,9 +174,9 @@ describe("kubrai parimutuel", () => {
   it("negative paths: re-propose restarts the window, boundary value, bad buckets, double finalize, void after resolve, settle after sweep, foreign owner_token", async () => {
     await expectErr(createMarket(-1, 60, proposer, [300, 200]), "BadBuckets");          // unsorted
     await expectErr(createMarket(-1, 60, proposer, [1, 2, 3, 4, 5, 6, 7, 8]), "BadBuckets"); // 9 buckets
-    const { m, v } = await createMarket(-1, 4, proposer, [100, 250]);                  // <100 | 100–249 | ≥250
+    const { m, v } = await createMarket(-1, 13, proposer, [100, 250]);                 // <100 | 100–249 | ≥250
     await bet(m, v, alice, 1, 40 * T); await bet(m, v, bob, 2, 60 * T);
-    await sleep(5500);
+    await sleep(14500);
     await expectErr(program.methods.seedMarket(new BN(T)).accounts({ market: m, vault: v, funderToken: ata.admin, funder: admin.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).rpc(), "BettingClosed");
     // first proposal says 99 (bucket 0), corrected to exactly 250 (boundary → bucket 2) while still disputable
     await program.methods.proposeResolution(new BN(99), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc();

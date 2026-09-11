@@ -4,10 +4,11 @@
 //   2. finalize: for each Proposed market whose dispute window elapsed, finalize.
 //   3. settle  : for each Resolved/Voided market, settle every outstanding position
 //                (winners paid, losers' rent refunded), then sweep the vault.
-// Metrics:
-//   *_week  -> value(day_close) - value(day_open)       (cumulative counters)
-//   *_med7  -> median of the last 7 daily values ending at day_close   (levels)
-//   skr_price_close -> value at day_close
+// Snapshots are hourly slots "YYYY-MM-DDTHH" (taken at :05); the older daily files "YYYY-MM-DD" count as that
+// day's T00 slot. Metric tags:
+//   <base>_day | <base>_week | rev_week:<app> | rev_day:<app>  -> value(close slot) - baseline   (cumulative counters)
+//   <base>_dmed | <base>_wmed  -> median of every hourly slot in (open, close], needs ≥75 % coverage   (levels)
+//   legacy: *_med7 -> median of the 7 daily T00 slots ending at close (≥4);  skr_price_close -> value at close
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -40,58 +41,67 @@ const tag = (b) => Buffer.from(b).toString("utf8").replace(/\0+$/, "");
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 // ---------- metric evaluation from snapshot bundles ----------
-// metric tag → snapshot field. skr_ids prefers the on-chain count and falls back to the aggregator.
-// One source per metric — never fall back between counting bases inside a _week market.
-const SOURCE = { sgt_week: ["sgt_total"], skr_ids_week: ["skr_ids_onchain"], dapps_week: ["dapp_store_active_apps"], skr_staked_med7: ["skr_staked"], das_med7: ["das"], skr_price_close: ["skr_price_usd_e8"] };
-const dayOf = (ts) => new Date(ts * 1000).toISOString().slice(0, 10);
-// A day's bundle is only trusted if its bytes hash to the sidecar AND to the hash published on-chain.
+// metric base → snapshot field. One source per metric — never fall back between counting bases inside a market.
+const BASE = { sgt: "sgt_total", skr_ids: "skr_ids_onchain", dapps: "dapp_store_active_apps", reviews: "store_reviews_total", reviewers: "reviewers_7d", skr_staked: "skr_staked", das: "das", skr_price: "skr_price_usd_e8" };
+const LEGACY = { skr_staked_med7: { kind: "med7", src: "skr_staked" }, das_med7: { kind: "med7", src: "das" }, skr_price_close: { kind: "close", src: "skr_price_usd_e8" } };
+function parseMetric(metric) {
+  if (LEGACY[metric]) return LEGACY[metric];
+  let m = metric.match(/^rev_(week|day):(.+)$/); if (m) return APP_SLUGS[m[2]] ? { kind: "cum", src: "rev:" + m[2] } : null;
+  m = metric.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASE[m[1]]) return null;
+  return { kind: m[2] === "day" || m[2] === "week" ? "cum" : "med", src: BASE[m[1]] };
+}
+const slotOf = (ts) => new Date(ts * 1000).toISOString().slice(0, 13);          // hour containing ts (UTC)
+const slotFile = (slot) => { const h = path.join(SNAP, slot + ".json"); if (fs.existsSync(h)) return h; if (slot.endsWith("T00")) { const d = path.join(SNAP, slot.slice(0, 10) + ".json"); if (fs.existsSync(d)) return d; } return null; };
+// A slot's bundle is only trusted if its bytes hash to the sidecar AND to the hash published on-chain.
 const memoOk = new Map();
-async function verifyDay(day) {
-  const f = path.join(SNAP, day + ".json"); if (!fs.existsSync(f)) return { ok: false, reason: `no snapshot ${day}` };
+async function verifySlot(slot) {
+  const f = slotFile(slot); if (!f) return { ok: false, reason: `no snapshot ${slot}` };
   const raw = fs.readFileSync(f); const sha = createHash("sha256").update(raw).digest("hex");
   const side = fs.existsSync(f + ".sha256") ? fs.readFileSync(f + ".sha256", "utf8").trim() : null;
-  if (side !== sha) return { ok: false, reason: `snapshot ${day} was modified after it was recorded (sha256 mismatch)` };
-  if (!fs.existsSync(f + ".memo")) return { ok: false, reason: `snapshot ${day} has no on-chain memo` };
-  if (!memoOk.has(day)) {
+  if (side !== sha) return { ok: false, reason: `snapshot ${slot} was modified after it was recorded (sha256 mismatch)` };
+  if (!fs.existsSync(f + ".memo")) return { ok: false, reason: `snapshot ${slot} has no on-chain memo` };
+  if (!memoOk.has(slot)) {
     const memo = JSON.parse(fs.readFileSync(f + ".memo", "utf8"));
     const tx = await conn.getTransaction(memo.signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
     const logs = (tx?.meta?.logMessages ?? []).join("\n");
-    memoOk.set(day, !!tx && logs.includes(`sha256=${sha}`));
+    memoOk.set(slot, !!tx && logs.includes(`sha256=${sha}`));
   }
-  if (!memoOk.get(day)) return { ok: false, reason: `on-chain memo for ${day} does not match the file` };
+  if (!memoOk.get(slot)) return { ok: false, reason: `on-chain memo for ${slot} does not match the file` };
   return { ok: true, sha };
 }
-const readDay = (day) => { const f = path.join(SNAP, day + ".json"); return fs.existsSync(f) ? { file: f, bundle: JSON.parse(fs.readFileSync(f, "utf8")), sha: fs.existsSync(f + ".sha256") ? fs.readFileSync(f + ".sha256", "utf8").trim() : null } : null; };
-const valueOn = (day, src) => {
-  const d = readDay(day); if (!d) return null;
-  if (src.startsWith("rev:")) { const v = d.bundle?.metrics?.dapp_reviews?.raw?.[src.slice(4)]?.reviews; return typeof v === "number" ? v : null; }
-  for (const f of Array.isArray(src) ? src : [src]) { const v = d.bundle?.metrics?.[f]?.value; if (typeof v === "number") return v; }
-  return null;
+const bundleCache = new Map();
+const readSlot = (slot) => { if (!bundleCache.has(slot)) { const f = slotFile(slot); bundleCache.set(slot, f ? JSON.parse(fs.readFileSync(f, "utf8")) : null); } return bundleCache.get(slot); };
+const valueAt = (slot, src) => {
+  const b = readSlot(slot); if (!b) return null;
+  if (src.startsWith("rev:")) { const v = b?.metrics?.dapp_reviews?.raw?.[src.slice(4)]?.reviews; return typeof v === "number" ? v : null; }
+  const v = b?.metrics?.[src]?.value; return typeof v === "number" ? v : null;
 };
-const shiftDay = (day, n) => new Date(Date.parse(day + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+const median = (vals) => { const s = [...vals].sort((x, y) => x - y); return s.length % 2 ? s[(s.length - 1) / 2] : Math.floor((s[s.length / 2 - 1] + s[s.length / 2]) / 2); };
+const addHours = (slot, n) => new Date(Date.parse(slot + ":00:00Z") + n * 3600e3).toISOString().slice(0, 13);
 
 function evaluate(metric, openTs, closeTs, baseline) {
-  let src = SOURCE[metric];
-  if (!src && metric.startsWith("rev_week:")) { const slug = metric.slice(9); if (!APP_SLUGS[slug]) return { ok: false, reason: `unknown app slug ${slug}` }; src = "rev:" + slug; }
-  if (!src) return { ok: false, reason: `unknown metric ${metric}` };
-  const dClose = dayOf(closeTs), dOpen = dayOf(openTs);
-  const used = [];
-  if (metric.endsWith("_week") || metric.startsWith("rev_week:")) {
-    // Baseline is fixed on-chain at creation; the close value comes from the closing snapshot.
-    const b = valueOn(dClose, src);
-    if (b == null) return { ok: false, reason: `missing snapshot ${dClose}` };
-    const a = valueOn(dOpen, src);
-    used.push(dClose); if (a != null) used.push(dOpen);
-    return { ok: true, value: b - baseline, used, detail: { baseline, close: b, openDaySnapshot: a, openDayDelta: a == null ? null : a - baseline } };
+  const spec = parseMetric(metric); if (!spec) return { ok: false, reason: `unknown metric ${metric}` };
+  const { kind, src } = spec; const sClose = slotOf(closeTs), sOpen = slotOf(openTs); const used = [];
+  if (kind === "cum") {
+    // Baseline is fixed on-chain at creation; the close value comes from the closing slot's snapshot (taken after close).
+    const b = valueAt(sClose, src); if (b == null) return { ok: false, reason: `missing snapshot ${sClose}` };
+    used.push(sClose);
+    return { ok: true, value: b - baseline, used, detail: { baseline, close: b, closeSlot: sClose } };
   }
-  if (metric.endsWith("_med7")) {
-    const vals = []; for (let i = 6; i >= 0; i--) { const d = shiftDay(dClose, -i); const v = valueOn(d, src); if (v != null) { vals.push(v); used.push(d); } }
-    if (vals.length < 4) return { ok: false, reason: `only ${vals.length}/7 snapshots for median` };
-    const s = [...vals].sort((x, y) => x - y); const med = s.length % 2 ? s[(s.length - 1) / 2] : Math.floor((s[s.length / 2 - 1] + s[s.length / 2]) / 2);
-    return { ok: true, value: med, used, detail: { values: vals } };
+  if (kind === "med") {
+    const expected = Math.max(1, Math.round((closeTs - openTs) / 3600)); const vals = [];
+    for (let i = 1; i <= expected; i++) { const sl = addHours(sOpen, i); if (sl > sClose) break; const v = valueAt(sl, src); if (v != null) { vals.push(v); used.push(sl); } }
+    const need = Math.ceil(expected * 0.75);
+    if (vals.length < need) return { ok: false, reason: `only ${vals.length}/${expected} hourly snapshots (need ${need}) for the median` };
+    return { ok: true, value: median(vals), used, detail: { samples: vals.length, expected, min: Math.min(...vals), max: Math.max(...vals) } };
   }
-  const v = valueOn(dClose, src); if (v == null) return { ok: false, reason: `missing snapshot ${dClose}` };
-  used.push(dClose); return { ok: true, value: v, used, detail: {} };
+  if (kind === "med7") {
+    const vals = []; for (let i = 6; i >= 0; i--) { const sl = addHours(sClose, -24 * i); const v = valueAt(sl, src); if (v != null) { vals.push(v); used.push(sl); } }
+    if (vals.length < 4) return { ok: false, reason: `only ${vals.length}/7 daily snapshots for median` };
+    return { ok: true, value: median(vals), used, detail: { values: vals } };
+  }
+  const v = valueAt(sClose, src); if (v == null) return { ok: false, reason: `missing snapshot ${sClose}` };
+  used.push(sClose); return { ok: true, value: v, used, detail: {} };
 }
 // Evidence hash = sha256 over the (verified) per-day bundle hashes, in the order used.
 const evidenceHash = (used, shas) => createHash("sha256").update(used.map((d) => `${d}:${shas[d]}`).join("\n")).digest();
@@ -120,16 +130,16 @@ async function propose(markets, now) {
     if (!ev.ok) { log(`market #${m.id} (${metric}): cannot resolve yet — ${ev.reason}`); continue; }
     if (!Number.isInteger(ev.value)) { log(`market #${m.id}: observed value ${ev.value} is not an integer — refusing to propose`); continue; }
     const shas = {}; let bad = null;
-    for (const d of ev.used) { const v = await verifyDay(d); if (!v.ok) { bad = v.reason; break; } shas[d] = v.sha; }
+    for (const d of ev.used) { const v = await verifySlot(d); if (!v.ok) { bad = v.reason; break; } shas[d] = v.sha; }
     if (bad) { log(`market #${m.id}: NOT proposing — ${bad}`); continue; }
     const n = m.nBuckets, thr = m.thresholds.slice(0, n - 1).map((t) => t.toNumber());
     const bucket = thr.filter((t) => ev.value >= t).length; // same rule as on-chain Market::bucket_of
-    log(`market #${m.id} (${metric}): observed ${ev.value}; thresholds ${thr.join("/")} → bucket ${bucket} of ${n}`, JSON.stringify(ev.detail), "days", ev.used.join(","));
+    log(`market #${m.id} (${metric}): observed ${ev.value}; thresholds ${thr.join("/")} → bucket ${bucket} of ${n}`, JSON.stringify(ev.detail), "slots", ev.used.join(","));
     if (DRY) continue;
     const eh = evidenceHash(ev.used, shas);
     const sig = await program.methods.proposeResolution(new BN(ev.value), Array.from(eh))
       .accounts({ config: configPda, market: publicKey, proposer: proposer.publicKey }).rpc();
-    fs.writeFileSync(path.join(SNAP, `resolution-${m.id}.json`), JSON.stringify({ market: publicKey.toBase58(), id: m.id.toNumber(), metric, thresholds: thr, nBuckets: n, observed: ev.value, bucket, days: ev.used, daySha256: shas, detail: ev.detail, evidenceHash: eh.toString("hex"), signature: sig, at: new Date().toISOString() }, null, 2));
+    fs.writeFileSync(path.join(SNAP, `resolution-${m.id}.json`), JSON.stringify({ market: publicKey.toBase58(), id: m.id.toNumber(), metric, thresholds: thr, nBuckets: n, observed: ev.value, bucket, slots: ev.used, slotSha256: shas, detail: ev.detail, evidenceHash: eh.toString("hex"), signature: sig, at: new Date().toISOString() }, null, 2));
     log(`  proposed ${sig}`);
    } catch (e) { log(`market #${m.id}: propose failed: ${e?.message?.split("\n")[0]}`); }
   }

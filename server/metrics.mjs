@@ -23,11 +23,14 @@ const STORE_GQL = "https://dappstore.solanamobile.com/graphql";
 const SYSTEM_CONTEXT = { locale: "en-US", platformSdk: 36, pixelDensity: 440, model: "Seeker" };
 // Be a polite client: one request at a time, ≥250 ms apart, back off when the edge answers with HTML (WAF / rate limit).
 let storeChain = Promise.resolve(); let lastStoreCall = 0;
-const STORE_GAP_MS = Number(process.env.STORE_GAP_MS ?? 1000);  // ≤60 req/min. Even 100/min got the VPS IP a ~1 h CloudFront 403 after ~1,400 requests, so the daily run must stay in the low hundreds (diff mode below).
-function storeGql(query, variables = {}, timeoutMs = 60000) {
+// The edge is CloudFront with a rate rule: ~1,400 requests in 20 min (even at 100/min) earned the VPS IP a ~1 h 403.
+// Catalog paging (≈70 requests/hour) runs at 1 req/s; the per-app review scan runs slower (STORE_REVIEW_GAP_MS).
+const STORE_GAP_MS = Number(process.env.STORE_GAP_MS ?? 1000);
+const STORE_REVIEW_GAP_MS = Number(process.env.STORE_REVIEW_GAP_MS ?? 2400);
+function storeGql(query, variables = {}, timeoutMs = 60000, gapMs = STORE_GAP_MS) {
   const run = async () => {
     for (let attempt = 0; attempt < 4; attempt++) {
-      const wait = lastStoreCall + STORE_GAP_MS - Date.now(); if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      const wait = lastStoreCall + gapMs - Date.now(); if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       lastStoreCall = Date.now();
       const ac = new AbortController(); const t = setTimeout(() => ac.abort(), timeoutMs);
       try {
@@ -59,26 +62,19 @@ export async function storeCatalog() {
 }
 import fs from "node:fs"; import path from "node:path";
 const snapshotDir = () => process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots");
-const TOTALS_SIDECAR = "store-review-totals.json";   // unhashed side file so the diff mode works even when the last snapshot predates reviewTotals
-/** Per-app lifetime review totals from the most recent snapshot before today, else the side file (null if neither). */
-function previousCatalogTotals() {
-  try {
-    const dir = snapshotDir(); const today = new Date().toISOString().slice(0, 10);
-    const days = fs.readdirSync(dir).filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f) && f.slice(0, 10) < today).sort();
-    for (let i = days.length - 1; i >= 0; i--) { const t = JSON.parse(fs.readFileSync(path.join(dir, days[i]), "utf8")).metrics?.dapp_store_active_apps?.raw?.reviewTotals; if (t) return t; }
-    const side = JSON.parse(fs.readFileSync(path.join(dir, TOTALS_SIDECAR), "utf8")); if (side?.totals && side.date < today) return side.totals;
-  } catch {}
-  return null;
-}
-function saveTotalsSidecar(totals) { try { fs.writeFileSync(path.join(snapshotDir(), TOTALS_SIDECAR), JSON.stringify({ date: new Date().toISOString().slice(0, 10), totals })); } catch {} }
 let catalogCache = null;
 const catalog = async () => (catalogCache ??= await storeCatalog());
 export async function dappStoreActiveApps() {
   const c = await catalog();
   const active = [...c.apps.values()].filter((a) => !a.aux || !/Uninstall/.test(a.aux)).length;
   const reviewTotals = Object.fromEntries([...c.apps.entries()].filter(([, a]) => a.reviews > 0).map(([p, a]) => [p, a.reviews]));
-  saveTotalsSidecar(reviewTotals);
   return { value: active, raw: { activeCount: active, uniqueListed: c.apps.size, categories: c.categories, perCategory: c.perCategory, reviewTotals }, source: "dappstore.solanamobile.com/graphql (dAppsCategory, all categories, deduplicated by package)" };
+}
+/** Store-wide lifetime review count (sum over every listed app). Reviews are device-gated, so this counts phones acting. */
+export async function storeReviewsTotal() {
+  const c = await catalog(); let total = 0, appsWithReviews = 0;
+  for (const a of c.apps.values()) { total += a.reviews; if (a.reviews > 0) appsWithReviews++; }
+  return { value: total, raw: { total, appsWithReviews, appsListed: c.apps.size }, source: "dappstore.solanamobile.com/graphql (sum of every app's rating histogram)" };
 }
 export const APP_SLUGS = { jupiter: "ag.jup.jupiter.android", tokenrun: "com.tokenrun.app", mattle: "fun.mattle.twa", cherry: "fun.cherry", seedvault: "com.solanamobile.wallet", lootgo: "com.lootgo.app", jito: "network.jito.www.twa", sleepagotchi: "com.sleepagotchi.soft.app", moonwalk: "fit.moonwalk.mobile.app", ore: "supply.ore.app" };
 /** Total reviews per watched app, straight from the store (sum of the 1–5★ histogram). */
@@ -91,26 +87,39 @@ export async function dappReviews() {
 }
 
 /** Distinct reviewers and review count over the trailing 7 days, store-wide. Reviews are device-gated (one per
- *  device per app), so each extra reviewer is a phone. Pages each app's reviews newest-first until older than 8 days. */
+ *  device per app), so each extra reviewer is a phone.
+ *  Cost control: recent reviews per app are cached (store-reviews-cache.json, unhashed). An app is re-scanned only
+ *  when its lifetime total differs from the cached one; otherwise its cached recent reviews are reused. Deleted
+ *  reviews therefore linger until the app's total changes again (rare, and the market uses a median anyway). */
+const REVIEW_CACHE = "store-reviews-cache.json";
+const readReviewCache = () => { try { return JSON.parse(fs.readFileSync(path.join(snapshotDir(), REVIEW_CACHE), "utf8")); } catch { return { apps: {} }; } };
+const writeReviewCache = (cache) => { try { fs.writeFileSync(path.join(snapshotDir(), REVIEW_CACHE), JSON.stringify({ ...cache, savedAt: new Date().toISOString() })); } catch {} };
 export async function storeReviewers7d() {
-  const c = await catalog(); const since = Date.now() - 7 * 864e5, hardStop = Date.now() - 8 * 864e5;
-  // Only apps whose lifetime review total moved since the last snapshot can have new reviews; the rest are skipped.
-  const prev = previousCatalogTotals();
-  const pkgs = [...c.apps.entries()].filter(([p, a]) => a.reviews > 0 && (prev == null || (prev[p] ?? 0) !== a.reviews)).map(([p]) => p);
-  const wallets = new Set(), domains = new Set(); let reviews = 0, appsWithNew = 0, requests = 0, failures = 0;
-  const worker = async (pkg) => {
-    let after = null, newHere = 0;
+  const c = await catalog(); const now = Date.now(), since = now - 7 * 864e5, hardStop = now - 8 * 864e5;
+  const cache = readReviewCache(); cache.apps ??= {};
+  const apps = [...c.apps.entries()].filter(([, a]) => a.reviews > 0);
+  const toScan = apps.filter(([p, a]) => cache.apps[p]?.total !== a.reviews).map(([p]) => p);
+  let requests = 0, failures = 0, scanned = 0;
+  const scan = async (pkg, total) => {
+    let after = null; const recent = [];
     for (let page = 0; page < 30; page++) {
-      let d; try { requests++; d = await storeGql(`query R($systemContext: SystemContext!, $p: String!, $after: String) { dAppReviews(systemContext: $systemContext, androidPackage: $p, first: 10, after: $after) { edges { node { id createdAt rating walletAddress domain } } pageInfo { hasNextPage endCursor } } }`, { p: pkg, after }); } catch { failures++; return; }
-      const conn = d?.dAppReviews; if (!conn) { failures++; return; } let oldest = Infinity;
-      for (const { node: r } of conn.edges) { const t = Date.parse(r.createdAt); oldest = Math.min(oldest, t); if (t >= since) { reviews++; newHere++; if (r.walletAddress) wallets.add(r.walletAddress); if (r.domain) domains.add(r.domain); } }
+      let d; try { requests++; d = await storeGql(`query R($systemContext: SystemContext!, $p: String!, $after: String) { dAppReviews(systemContext: $systemContext, androidPackage: $p, first: 10, after: $after) { edges { node { id createdAt rating walletAddress domain } } pageInfo { hasNextPage endCursor } } }`, { p: pkg, after }, 60000, STORE_REVIEW_GAP_MS); } catch { return false; }
+      const conn = d?.dAppReviews; if (!conn) return false; let oldest = Infinity;
+      for (const { node: r } of conn.edges) { const t = Date.parse(r.createdAt); oldest = Math.min(oldest, t); if (t >= hardStop) recent.push({ t, w: r.walletAddress ?? null, d: r.domain ?? null, s: r.rating ?? null }); }
       if (!conn.pageInfo.hasNextPage || oldest < hardStop) break; after = conn.pageInfo.endCursor;
     }
-    if (newHere) appsWithNew++;
+    cache.apps[pkg] = { total, at: now, recent }; return true;
   };
-  for (const pkg of pkgs) await worker(pkg);   // storeGql already serializes; keep it simple
-  if (failures > 0) throw new Error(`reviewers_7d: ${failures}/${pkgs.length} apps failed to scan; refusing to report a partial count`);
-  return { value: wallets.size, raw: { reviewers7d: wallets.size, reviews7d: reviews, domains7d: domains.size, appsWithNewReviews: appsWithNew, appsScanned: pkgs.length, appsTotal: c.apps.size, usedDiff: prev != null, requests, failures }, source: "dappstore.solanamobile.com/graphql (dAppReviews per app, trailing 7 days, distinct walletAddress)" };
+  for (const pkg of toScan) {
+    const ok = await scan(pkg, c.apps.get(pkg).reviews); if (ok) scanned++; else failures++;
+    if (scanned % 25 === 0) writeReviewCache(cache);   // keep progress so a blocked run resumes instead of restarting
+  }
+  for (const p of Object.keys(cache.apps)) if (!c.apps.has(p)) delete cache.apps[p];   // delisted apps
+  writeReviewCache(cache);
+  if (failures > 0) throw new Error(`reviewers_7d: ${failures}/${toScan.length} apps failed to scan; refusing to report a partial count`);
+  const wallets = new Set(), domains = new Set(); let reviews = 0, appsWithNew = 0;
+  for (const [p] of apps) { const e = cache.apps[p]; if (!e) continue; let n = 0; for (const r of e.recent) { if (r.t < since || r.t > now) continue; n++; if (r.w) wallets.add(r.w); if (r.d) domains.add(r.d); } if (n) { appsWithNew++; reviews += n; } }
+  return { value: wallets.size, raw: { reviewers7d: wallets.size, reviews7d: reviews, domains7d: domains.size, appsWithNewReviews: appsWithNew, appsRescanned: scanned, appsWithReviews: apps.length, appsTotal: c.apps.size, requests, failures }, source: "dappstore.solanamobile.com/graphql (dAppReviews per app, trailing 7 days, distinct walletAddress)" };
 }
 
 // --- Seeker Genesis Token: one per activated device; the Token-2022 group on the mint holds the count ---
@@ -163,15 +172,21 @@ export async function skrPriceUsd() {
   return { value: Math.round(Number(p.usdPrice) * 1e8), raw: p, source: "jup.ag price v3 (scaled 1e8)" };
 }
 
-export const METRICS = {
-  skr_ids_onchain: skrIdsOnchain,
-  skr_ids_total: skrIdsTotal,
-  dapp_reviews: dappReviews,
+// Hourly tier: cheap reads (≈80 store requests + a handful of RPC calls). Daily tier (the 00:05 UTC run) adds the
+// expensive scans. Markets settle on whichever tier carries their source.
+export const HOURLY_METRICS = {
   sgt_total: seekerGenesisTokens,
-  reviewers_7d: storeReviewers7d,
-  das: dailyActiveSeekers,
   dapp_store_active_apps: dappStoreActiveApps,
+  store_reviews_total: storeReviewsTotal,
+  dapp_reviews: dappReviews,
   skr_supply: skrSupply,
   skr_staked: skrStaked,
   skr_price_usd_e8: skrPriceUsd,
+  skr_ids_total: skrIdsTotal,
+  das: dailyActiveSeekers,
 };
+export const DAILY_METRICS = {
+  skr_ids_onchain: skrIdsOnchain,   // ~20 s getProgramAccounts; still needed by market #14 until 2026-09-19
+  reviewers_7d: storeReviewers7d,   // per-app review scan, minutes
+};
+export const METRICS = { ...HOURLY_METRICS, ...DAILY_METRICS };

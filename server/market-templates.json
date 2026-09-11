@@ -1,0 +1,15 @@
+{
+  "_doc": "Markets opened automatically by open-markets.mjs after the 00:05 UTC snapshot. cadence day = every day (closes next 00:00 UTC); week = Mondays (closes next Monday 00:00 UTC). thresholds: 'auto' cuts N buckets at quantiles of the metric's own hourly history once >= minWindows windows exist, else 'seed' is used; a single seed value makes a yes/no market. seedSkr = fee-free prize added from the operator wallet.",
+  "templates": [
+    { "metric": "sgt_day",         "cadence": "day",  "question": "How many Seekers get activated today?",            "buckets": 4, "seed": [13, 16, 19],   "seedSkr": 100 },
+    { "metric": "skr_staked_dmed", "cadence": "day",  "question": "SKR staked, 24-hour median: at or above today's opening level?", "buckets": 2, "seed": "baseline", "seedSkr": 100 },
+    { "metric": "reviews_day",     "cadence": "day",  "question": "How many dApp Store reviews get written today?",    "buckets": 2, "seed": [210],         "seedSkr": 100 },
+    { "metric": "sgt_week",        "cadence": "week", "question": "How many Seekers get activated this week?",         "buckets": 4, "seed": [108, 116, 124], "seedSkr": 100 },
+    { "metric": "skr_staked_wmed", "cadence": "week", "question": "SKR staked, 7-day median: at or above this week's opening level?", "buckets": 2, "seed": "baseline", "seedSkr": 100 },
+    { "metric": "reviews_week",    "cadence": "week", "question": "How many dApp Store reviews get written this week?", "buckets": 2, "seed": [1450],        "seedSkr": 100 },
+    { "metric": "dapps_week",      "cadence": "week", "question": "How many new dApp Store listings this week?",       "buckets": 2, "seed": [30],          "seedSkr": 100 },
+    { "metric": "rev_week:jupiter",  "cadence": "week", "question": "How many new Jupiter Mobile reviews this week?",  "buckets": 2, "seed": [15],          "seedSkr": 100 },
+    { "metric": "rev_week:seedvault","cadence": "week", "question": "How many new Seed Vault Wallet reviews this week?","buckets": 2, "seed": [40],          "seedSkr": 100 }
+  ],
+  "minWindows": 8
+}

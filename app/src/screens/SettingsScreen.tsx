@@ -42,7 +42,7 @@ export function SettingsScreen() {
       <Text style={styles.dim}>Program {APP.programId}</Text>
       <Divider style={{ marginVertical: 16 }} />
       <Text variant="titleMedium">About</Text>
-      <Text>Kubrai runs parimutuel pools on Seeker-ecosystem numbers. Every market settles from a daily snapshot whose hash is on-chain, the winning range is derived on-chain from the observed value, and payouts are pushed to your wallet automatically after a 24 h dispute window.</Text>
+      <Text>Kubrai runs parimutuel pools on Seeker-ecosystem numbers. Every market settles from hourly snapshots whose hash is on-chain, the winning range is derived on-chain from the observed value, and payouts are pushed to your wallet automatically after a 24 h dispute window.</Text>
       <Text style={styles.dim}>kubrai.xyz</Text>
       <Divider style={{ marginVertical: 16 }} />
       <Text variant="titleMedium">Diagnostics</Text>
