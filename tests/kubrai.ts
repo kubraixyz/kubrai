@@ -58,7 +58,7 @@ describe("kubrai parimutuel", () => {
     const id = cfg.marketCount.toNumber();
     const m = marketPda(id), v = vaultPda(m);
     const t = now();
-    await program.methods.createMarket({ metric, questionHash: qhash, threshold: new BN(1234), openTs: new BN(t + openIn), closeTs: new BN(t + closeIn), resolveAfterTs: new BN(t + closeIn) })
+    await program.methods.createMarket({ metric, questionHash: qhash, threshold: new BN(1234), openTs: new BN(t + openIn), closeTs: new BN(t + closeIn), resolveAfterTs: new BN(t + closeIn), baseline: new BN(0) })
       .accounts({ config: configPda, market: m, vault: v, mint, signer: signer.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).signers([signer]).rpc();
     return { id, m, v };
   }
@@ -72,7 +72,7 @@ describe("kubrai parimutuel", () => {
 
   it("rejects bad schedules and unauthorized creators", async () => {
     const t = now();
-    const bad = program.methods.createMarket({ metric, questionHash: qhash, threshold: new BN(0), openTs: new BN(t + 10), closeTs: new BN(t + 5), resolveAfterTs: new BN(t + 5) })
+    const bad = program.methods.createMarket({ metric, questionHash: qhash, threshold: new BN(0), openTs: new BN(t + 10), closeTs: new BN(t + 5), resolveAfterTs: new BN(t + 5), baseline: new BN(0) })
       .accounts({ config: configPda, market: marketPda(0), vault: vaultPda(marketPda(0)), mint, signer: proposer.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).signers([proposer]).rpc();
     await expectErr(bad, "BadSchedule");
     await expectErr(createMarket(0, 60, alice), "Unauthorized");

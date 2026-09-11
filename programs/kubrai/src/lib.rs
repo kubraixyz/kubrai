@@ -75,6 +75,7 @@ pub mod kubrai {
         m.open_ts = args.open_ts;
         m.close_ts = args.close_ts;
         m.resolve_after_ts = args.resolve_after_ts;
+        m.baseline = args.baseline;
         m.status = MarketStatus::Open as u8;
         m.vault = ctx.accounts.vault.key();
         m.bump = ctx.bumps.market;
@@ -313,6 +314,9 @@ pub struct MarketArgs {
     pub open_ts: i64,
     pub close_ts: i64,
     pub resolve_after_ts: i64,
+    /// Value of the metric at market open (from the opening snapshot). For weekly-increase
+    /// markets the observed value is close − baseline; for level markets it is informational.
+    pub baseline: i64,
 }
 
 #[account]
@@ -342,6 +346,8 @@ pub struct Market {
     pub open_ts: i64,
     pub close_ts: i64,
     pub resolve_after_ts: i64,
+    /// Metric value at open (see MarketArgs::baseline).
+    pub baseline: i64,
     pub pool_yes: u64,
     pub pool_no: u64,
     pub seed_amount: u64,

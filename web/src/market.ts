@@ -1,6 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
 import { buildPlaceBetTx, confirmBySig, currentFeeBps, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
-import { METRIC_COPY, fmtValue, metricLabel } from "./metrics";
+import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel } from "./metrics";
 import { fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, statusPill, timeLeft } from "./ui";
 import { TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 
@@ -11,7 +11,7 @@ let m: MarketView, cfg: any, side: "yes" | "no" = "yes";
 
 async function load() { [m, cfg] = await Promise.all([fetchMarket(id), fetchConfig()]); render(); }
 function render() {
-  const copy = METRIC_COPY[m.metric];
+  const copy = metricInfo(m.metric);
   const now = Date.now() / 1000, open = m.status === 0 && now >= m.openTs && now < m.closeTs;
   const fee = currentFeeBps(cfg, m), earlyUntil = m.openTs + cfg.earlyBirdSecs.toNumber();
   document.title = `Kubrai · ${metricLabel(m.metric)}`;
@@ -19,6 +19,7 @@ function render() {
     <div class="meta" style="display:flex;gap:10px;color:var(--dim);font-size:13px">${statusPill(m)}<span>Market #${m.id}</span><span>${m.status === 0 ? timeLeft(m.closeTs) : ""}</span></div>
     <h1>${metricLabel(m.metric)} ≥&nbsp;<span class="mono">${fmtValue(m.metric, m.threshold)}</span>?</h1>
     <p class="lead">${copy?.how ?? ""}</p>
+    <div class="kv" style="margin-bottom:16px">${copy?.cumulative ? `<b>Baseline at open</b><span class="mono">${fmtValue(m.metric, m.baseline)}</span>` : `<b>Value at open</b><span class="mono">${fmtValue(m.metric, m.baseline)}</span>`}<b>Data source</b><span>${SOURCE_LABEL[copy?.source ?? "thirdparty"]}</span></div>
     ${poolsHtml(m)}
     <h2>Bet</h2>
     <div id="bet"></div>

@@ -7,6 +7,23 @@ import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { createHash } from "crypto";
 import idl from "../idl/kubrai.json";
+import * as fs from "fs";
+import * as path from "path";
+
+const SNAP = process.env.SNAPSHOT_DIR ?? path.join(__dirname, "..", "server", "snapshots");
+const APP_SLUGS: Record<string, string> = { jupiter: "ag.jup.jupiter.android", tokenrun: "com.tokenrun.app", mattle: "fun.mattle.twa", cherry: "fun.cherry", seedvault: "com.solanamobile.wallet", lootgo: "com.lootgo.app", jito: "network.jito.www.twa", sleepagotchi: "com.sleepagotchi.soft.app", moonwalk: "fit.moonwalk.mobile.app", ore: "supply.ore.app" };
+const SOURCE: Record<string, string[]> = { skr_ids_week: ["skr_ids_onchain", "skr_ids_total"], dapps_week: ["dapp_store_active_apps"], skr_staked_med7: ["skr_staked"], das_med7: ["das"], skr_price_close: ["skr_price_usd_e8"] };
+/** Baseline = metric value in the latest snapshot. Refuses to create a market without one unless NO_BASELINE=1. */
+function baselineFor(metric: string): { value: number; day: string } {
+  const days = fs.existsSync(SNAP) ? fs.readdirSync(SNAP).filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort() : [];
+  const latest = days.at(-1); if (!latest) throw new Error(`no snapshots in ${SNAP}; run server/snapshot.mjs first (or NO_BASELINE=1)`);
+  const b = JSON.parse(fs.readFileSync(path.join(SNAP, latest), "utf8"));
+  let v: number | undefined;
+  if (metric.startsWith("rev_week:")) { const slug = metric.slice(9); if (!APP_SLUGS[slug]) throw new Error(`unknown app slug ${slug}`); v = b.metrics?.dapp_reviews?.raw?.[slug]?.reviews; }
+  else for (const f of SOURCE[metric] ?? []) { v = b.metrics?.[f]?.value; if (typeof v === "number") break; }
+  if (typeof v !== "number") throw new Error(`snapshot ${latest} has no value for ${metric}`);
+  return { value: v, day: latest.slice(0, 10) };
+}
 
 async function main() {
   const [metric, thresholdStr, question, opensInH = "0", durH = "168", seedStr = "0"] = process.argv.slice(2);
@@ -21,11 +38,13 @@ async function main() {
   const [vault] = PublicKey.findProgramAddressSync([Buffer.from("vault"), market.toBuffer()], program.programId);
   const now = Math.floor(Date.now() / 1000);
   const openTs = now + Math.round(Number(opensInH) * 3600), closeTs = openTs + Math.round(Number(durH) * 3600);
+  if (Buffer.byteLength(metric) > 32) throw new Error("metric tag must be ≤ 32 bytes");
+  const base = process.env.NO_BASELINE === "1" ? { value: 0, day: "none" } : baselineFor(metric);
   const metricBytes = Array.from(Buffer.from(metric.padEnd(32, "\0").slice(0, 32)));
   const qhash = Array.from(createHash("sha256").update(question).digest());
-  await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, threshold: new BN(thresholdStr), openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(closeTs) })
+  await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, threshold: new BN(thresholdStr), openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(closeTs), baseline: new BN(base.value) })
     .accounts({ config, market, vault, mint: cfg.mint, signer: signer.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).rpc();
-  console.log(JSON.stringify({ id: id.toNumber(), market: market.toBase58(), vault: vault.toBase58(), metric, threshold: thresholdStr, question, questionHash: Buffer.from(qhash).toString("hex"), openTs, closeTs }, null, 2));
+  console.log(JSON.stringify({ id: id.toNumber(), market: market.toBase58(), vault: vault.toBase58(), metric, threshold: thresholdStr, question, questionHash: Buffer.from(qhash).toString("hex"), openTs, closeTs, baseline: base.value, baselineSnapshot: base.day }, null, 2));
   const seed = Number(seedStr);
   if (seed > 0) {
     const funderToken = getAssociatedTokenAddressSync(new PublicKey(cfg.mint), signer.publicKey);

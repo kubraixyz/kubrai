@@ -16,6 +16,7 @@ import anchor from "@coral-xyz/anchor";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import idlJson from "../idl/kubrai.json" with { type: "json" };
+import { APP_SLUGS } from "./metrics.mjs";
 
 const { AnchorProvider, Program, BN, Wallet } = anchor;
 const CLUSTER = process.env.CLUSTER ?? "devnet";
@@ -37,20 +38,31 @@ const tag = (b) => Buffer.from(b).toString("utf8").replace(/\0+$/, "");
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 // ---------- metric evaluation from snapshot bundles ----------
-const SOURCE = { skr_ids_week: "skr_ids_total", dapps_week: "dapp_store_active_apps", skr_staked_med7: "skr_staked", das_med7: "das", skr_price_close: "skr_price_usd_e8" };
+// metric tag → snapshot field. skr_ids prefers the on-chain count and falls back to the aggregator.
+const SOURCE = { skr_ids_week: ["skr_ids_onchain", "skr_ids_total"], dapps_week: ["dapp_store_active_apps"], skr_staked_med7: ["skr_staked"], das_med7: ["das"], skr_price_close: ["skr_price_usd_e8"] };
 const dayOf = (ts) => new Date(ts * 1000).toISOString().slice(0, 10);
 const readDay = (day) => { const f = path.join(SNAP, day + ".json"); return fs.existsSync(f) ? { file: f, bundle: JSON.parse(fs.readFileSync(f, "utf8")), sha: fs.existsSync(f + ".sha256") ? fs.readFileSync(f + ".sha256", "utf8").trim() : null } : null; };
-const valueOn = (day, src) => { const d = readDay(day); const v = d?.bundle?.metrics?.[src]?.value; return typeof v === "number" ? v : null; };
+const valueOn = (day, src) => {
+  const d = readDay(day); if (!d) return null;
+  if (src.startsWith("rev:")) { const v = d.bundle?.metrics?.dapp_reviews?.raw?.[src.slice(4)]?.reviews; return typeof v === "number" ? v : null; }
+  for (const f of Array.isArray(src) ? src : [src]) { const v = d.bundle?.metrics?.[f]?.value; if (typeof v === "number") return v; }
+  return null;
+};
 const shiftDay = (day, n) => new Date(Date.parse(day + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 
-function evaluate(metric, openTs, closeTs) {
-  const src = SOURCE[metric]; if (!src) return { ok: false, reason: `unknown metric ${metric}` };
+function evaluate(metric, openTs, closeTs, baseline) {
+  let src = SOURCE[metric];
+  if (!src && metric.startsWith("rev_week:")) { const slug = metric.slice(9); if (!APP_SLUGS[slug]) return { ok: false, reason: `unknown app slug ${slug}` }; src = "rev:" + slug; }
+  if (!src) return { ok: false, reason: `unknown metric ${metric}` };
   const dClose = dayOf(closeTs), dOpen = dayOf(openTs);
   const used = [];
-  if (metric.endsWith("_week")) {
-    const a = valueOn(dOpen, src), b = valueOn(dClose, src);
-    if (a == null || b == null) return { ok: false, reason: `missing snapshot ${a == null ? dOpen : dClose}` };
-    used.push(dOpen, dClose); return { ok: true, value: b - a, used, detail: { open: a, close: b } };
+  if (metric.endsWith("_week") || metric.startsWith("rev_week:")) {
+    // Baseline is fixed on-chain at creation; the close value comes from the closing snapshot.
+    const b = valueOn(dClose, src);
+    if (b == null) return { ok: false, reason: `missing snapshot ${dClose}` };
+    const a = valueOn(dOpen, src);
+    used.push(dClose); if (a != null) used.push(dOpen);
+    return { ok: true, value: b - baseline, used, detail: { baseline, close: b, openDaySnapshot: a, openDayDelta: a == null ? null : a - baseline } };
   }
   if (metric.endsWith("_med7")) {
     const vals = []; for (let i = 6; i >= 0; i--) { const d = shiftDay(dClose, -i); const v = valueOn(d, src); if (v != null) { vals.push(v); used.push(d); } }
@@ -68,7 +80,7 @@ async function propose(markets, now) {
   for (const { publicKey, account: m } of markets) {
     if (m.status !== 0 || now < m.resolveAfterTs.toNumber()) continue;
     const metric = tag(m.metric);
-    const ev = evaluate(metric, m.openTs.toNumber(), m.closeTs.toNumber());
+    const ev = evaluate(metric, m.openTs.toNumber(), m.closeTs.toNumber(), m.baseline.toNumber());
     if (!ev.ok) { log(`market #${m.id} (${metric}): cannot resolve yet — ${ev.reason}`); continue; }
     const outcome = ev.value >= m.threshold.toNumber() ? 1 : 2; const outcomeArg = outcome === 1 ? { yes: {} } : { no: {} };
     log(`market #${m.id} (${metric}): observed ${ev.value} vs threshold ${m.threshold} → ${outcome === 1 ? "YES" : "NO"}`, JSON.stringify(ev.detail), "days", ev.used.join(","));
@@ -119,10 +131,11 @@ async function settle(markets, cfg) {
 }
 
 const cfg = await program.account.config.fetch(configPda);
-const markets = await program.account.market.all();
+const marketFilter = [{ dataSize: program.account.market.size }]; // ignores accounts from older layouts
+const markets = await program.account.market.all(marketFilter);
 const now = Math.floor(Date.now() / 1000);
 log(`cluster=${CLUSTER} markets=${markets.length} proposer=${proposer.publicKey.toBase58()} dry=${DRY} steps=${ONLY.join(",")}`);
 if (ONLY.includes("propose")) await propose(markets, now);
-if (ONLY.includes("finalize")) await finalize(await program.account.market.all(), now, cfg);
-if (ONLY.includes("settle")) await settle(await program.account.market.all(), cfg);
+if (ONLY.includes("finalize")) await finalize(await program.account.market.all(marketFilter), now, cfg);
+if (ONLY.includes("settle")) await settle(await program.account.market.all(marketFilter), cfg);
 log("done");

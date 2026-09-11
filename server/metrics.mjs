@@ -1,6 +1,7 @@
 // Metric sources. Every fetcher returns { value, raw, source } so the snapshot
 // bundle carries the evidence, not just the number.
 import { Connection, PublicKey } from "@solana/web3.js";
+import { findAllDomainsForTld } from "@onsol/tldparser";
 
 const UA = "kubrai-snapshot/0.1 (+https://kubrai.xyz)";
 const SKR_MINT = new PublicKey("SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3");
@@ -25,13 +26,36 @@ export async function dailyActiveSeekers() {
   const j = await getJson("https://seekertracker.com/api/das");
   return { value: j.das, raw: { das: j.das, was: j.was, mas: j.mas, totalIndexed: j.totalIndexed, updatedAt: j.updatedAt }, source: "seekertracker.com/api/das" };
 }
+// Apps we open per-app markets on. Slug (≤16 chars, used inside the 32-byte metric tag) → android package.
+export const APP_SLUGS = { jupiter: "ag.jup.jupiter.android", tokenrun: "com.tokenrun.app", mattle: "fun.mattle.twa", cherry: "fun.cherry", seedvault: "com.solanamobile.wallet", lootgo: "com.lootgo.app", jito: "network.jito.www.twa", sleepagotchi: "com.sleepagotchi.soft.app", moonwalk: "fit.moonwalk.mobile.app", ore: "supply.ore.app" };
+let dappstoreCache = null;
+async function dappstoreJson() { return (dappstoreCache ??= await getJson("https://seekertracker.com/api/dappstore", 120000)); }
 export async function dappStoreActiveApps() {
-  const j = await getJson("https://seekertracker.com/api/dappstore", 120000);
+  const j = await dappstoreJson();
   const cats = (j.data?.explore?.units?.edges ?? []).map((u) => ({ cat: u.node.category.name, n: u.node.dApps.edges.length }));
   return { value: j.activeCount, raw: { activeCount: j.activeCount, removedCount: j.removedCount, totalApps: j.totalApps, lastSyncAt: j.lastSyncAt, byCategory: cats }, source: "seekertracker.com/api/dappstore" };
 }
 
+/** Total dApp Store reviews per watched app (sum of the 1–5★ histogram). Reviews come from
+ *  verified devices only, so each extra review costs a Seeker. Source is the store catalog (off-chain). */
+export async function dappReviews() {
+  const j = await dappstoreJson();
+  const byPkg = {};
+  for (const u of j.data?.explore?.units?.edges ?? []) for (const e of u.node.dApps.edges) {
+    const n = e.node; if (!n.rating?.reviewsByRating) continue;
+    byPkg[n.androidPackage] = { reviews: n.rating.reviewsByRating.reduce((a, b) => a + b, 0), rating: n.rating.rating, name: n.lastRelease?.displayName };
+  }
+  const watched = Object.fromEntries(Object.entries(APP_SLUGS).map(([slug, pkg]) => [slug, byPkg[pkg] ?? null]));
+  return { value: Object.values(watched).filter(Boolean).length, raw: watched, source: "dApp Store catalog via seekertracker.com/api/dappstore (reviews are device-gated)" };
+}
+
 // --- On-chain (anyone can recompute against any RPC) ---
+const SKR_TLD_PARENT = new PublicKey("F3A8kuikEiu6k2399oSJ1PWfcJYDHqpwoQ2e8psSDNuF"); // AllDomains parent account of the .skr TLD
+/** Number of .skr name records on-chain (getProgramAccounts on the AllDomains name program, ~20 s). */
+export async function skrIdsOnchain(conn = new Connection(MAINNET)) {
+  const accts = await findAllDomainsForTld(conn, SKR_TLD_PARENT);
+  return { value: accts.length, raw: { tldParent: SKR_TLD_PARENT.toBase58(), method: "findAllDomainsForTld (@onsol/tldparser)" }, source: "rpc getProgramAccounts(.skr name records)" };
+}
 export async function skrSupply(conn = new Connection(MAINNET)) {
   const s = await conn.getTokenSupply(SKR_MINT);
   return { value: Number(s.value.amount), raw: s.value, source: "rpc getTokenSupply" };
@@ -57,7 +81,9 @@ export async function skrPriceUsd() {
 }
 
 export const METRICS = {
+  skr_ids_onchain: skrIdsOnchain,
   skr_ids_total: skrIdsTotal,
+  dapp_reviews: dappReviews,
   das: dailyActiveSeekers,
   dapp_store_active_apps: dappStoreActiveApps,
   skr_supply: skrSupply,

@@ -28,21 +28,21 @@ export const positionPda = (m: PublicKey, u: PublicKey) => PublicKey.findProgram
 
 export type MarketView = {
   pubkey: PublicKey; id: number; metric: string; threshold: number; openTs: number; closeTs: number; resolveAfterTs: number;
-  poolYes: number; poolNo: number; seed: number; status: number; outcome: number; proposedOutcome: number; proposedValue: number; proposedAt: number; positions: number; positionsOpen: number; feeCollected: number; snapshotHash: string;
+  baseline: number; poolYes: number; poolNo: number; seed: number; status: number; outcome: number; proposedOutcome: number; proposedValue: number; proposedAt: number; positions: number; positionsOpen: number; feeCollected: number; snapshotHash: string;
 };
 export const STATUS = ["Open", "Proposed", "Resolved", "Voided", "Swept"] as const;
 const tag = (b: number[]) => Buffer.from(b).toString("utf8").replace(/\0+$/, "");
 
 export function toView(pubkey: PublicKey, a: any): MarketView {
   return {
-    pubkey, id: a.id.toNumber(), metric: tag(a.metric), threshold: a.threshold.toNumber(), openTs: a.openTs.toNumber(), closeTs: a.closeTs.toNumber(), resolveAfterTs: a.resolveAfterTs.toNumber(),
+    pubkey, id: a.id.toNumber(), metric: tag(a.metric), threshold: a.threshold.toNumber(), openTs: a.openTs.toNumber(), closeTs: a.closeTs.toNumber(), resolveAfterTs: a.resolveAfterTs.toNumber(), baseline: a.baseline.toNumber(),
     poolYes: a.poolYes.toNumber(), poolNo: a.poolNo.toNumber(), seed: a.seedAmount.toNumber(), status: a.status, outcome: a.outcome, proposedOutcome: a.proposedOutcome, proposedValue: a.proposedValue.toNumber(), proposedAt: a.proposedAt.toNumber(),
     positions: a.positions, positionsOpen: a.positionsOpen, feeCollected: a.feeCollected.toNumber(), snapshotHash: Buffer.from(a.snapshotHash).toString("hex"),
   };
 }
 export async function fetchConfig() { return (program.account as any).config.fetch(configPda); }
 export async function fetchMarkets(): Promise<MarketView[]> {
-  const all = await (program.account as any).market.all();
+  const all = await (program.account as any).market.all([{ dataSize: (program.account as any).market.size }]); // skip legacy-layout accounts
   return all.map((x: any) => toView(x.publicKey, x.account)).sort((a: MarketView, b: MarketView) => b.id - a.id);
 }
 export async function fetchMarket(id: number): Promise<MarketView> {
