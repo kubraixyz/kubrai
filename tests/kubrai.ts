@@ -53,17 +53,18 @@ describe("kubrai parimutuel", () => {
     await expectErr(program.methods.updateConfig({ ...cfgArgs, feeBps: 2000 }, null, false).accounts({ config: configPda, admin: admin.publicKey }).rpc(), "FeeTooHigh");
   });
 
-  async function createMarket(openIn: number, closeIn: number, signer = proposer) {
+  const thr = (...xs: number[]) => Array.from({ length: 7 }, (_, i) => new BN(xs[i] ?? 0));
+  async function createMarket(openIn: number, closeIn: number, signer = proposer, thresholds: number[] = [1234]) {
     const cfg = await program.account.config.fetch(configPda);
     const id = cfg.marketCount.toNumber();
     const m = marketPda(id), v = vaultPda(m);
     const t = now();
-    await program.methods.createMarket({ metric, questionHash: qhash, threshold: new BN(1234), openTs: new BN(t + openIn), closeTs: new BN(t + closeIn), resolveAfterTs: new BN(t + closeIn), baseline: new BN(0) })
+    await program.methods.createMarket({ metric, questionHash: qhash, thresholds: thr(...thresholds), nBuckets: thresholds.length + 1, openTs: new BN(t + openIn), closeTs: new BN(t + closeIn), resolveAfterTs: new BN(t + closeIn), baseline: new BN(0) })
       .accounts({ config: configPda, market: m, vault: v, mint, signer: signer.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).signers([signer]).rpc();
     return { id, m, v };
   }
-  const bet = (m: PublicKey, v: PublicKey, who: Keypair, side: "yes" | "no", amt: number) =>
-    program.methods.placeBet({ [side]: {} } as any, new BN(amt)).accounts({ config: configPda, market: m, position: posPda(m, who.publicKey), vault: v, userToken: ata[nameOf(who)], user: who.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).signers([who]).rpc();
+  const bet = (m: PublicKey, v: PublicKey, who: Keypair, side: "yes" | "no" | number, amt: number) =>
+    program.methods.placeBet(typeof side === "number" ? side : side === "yes" ? 1 : 0, new BN(amt)).accounts({ config: configPda, market: m, position: posPda(m, who.publicKey), vault: v, userToken: ata[nameOf(who)], user: who.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).signers([who]).rpc();
   const nameOf = (k: Keypair) => (k === alice ? "alice" : k === bob ? "bob" : k === carol ? "carol" : k === dave ? "dave" : "admin");
   const settle = (m: PublicKey, v: PublicKey, owner: Keypair, cranker: Keypair) =>
     program.methods.settlePosition().accounts({ market: m, position: posPda(m, owner.publicKey), payer: owner.publicKey, vault: v, ownerToken: ata[nameOf(owner)], cranker: cranker.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).signers([cranker]).rpc();
@@ -72,7 +73,7 @@ describe("kubrai parimutuel", () => {
 
   it("rejects bad schedules and unauthorized creators", async () => {
     const t = now();
-    const bad = program.methods.createMarket({ metric, questionHash: qhash, threshold: new BN(0), openTs: new BN(t + 10), closeTs: new BN(t + 5), resolveAfterTs: new BN(t + 5), baseline: new BN(0) })
+    const bad = program.methods.createMarket({ metric, questionHash: qhash, thresholds: thr(0), nBuckets: 2, openTs: new BN(t + 10), closeTs: new BN(t + 5), resolveAfterTs: new BN(t + 5), baseline: new BN(0) })
       .accounts({ config: configPda, market: marketPda(0), vault: vaultPda(marketPda(0)), mint, signer: proposer.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).signers([proposer]).rpc();
     await expectErr(bad, "BadSchedule");
     await expectErr(createMarket(0, 60, alice), "Unauthorized");
@@ -86,18 +87,18 @@ describe("kubrai parimutuel", () => {
     await bet(m, v, alice, "yes", 100 * T);   // early bird: 200 bps
     await bet(m, v, bob, "no", 300 * T);      // early bird
     const pA = await program.account.position.fetch(posPda(m, alice.publicKey));
-    assert.equal(pA.yesFeeW.toString(), new BN(100 * T).muln(200).toString());
+    assert.equal(pA.feeW[1].toString(), new BN(100 * T).muln(200).toString());
     await sleep(4500);                         // past early-bird window
     await bet(m, v, carol, "yes", 100 * T);   // 300 bps
     const pC = await program.account.position.fetch(posPda(m, carol.publicKey));
-    assert.equal(pC.yesFeeW.toString(), new BN(100 * T).muln(300).toString());
+    assert.equal(pC.feeW[1].toString(), new BN(100 * T).muln(300).toString());
     let mk = await program.account.market.fetch(m);
-    assert.equal(mk.poolYes.toNumber(), 200 * T); assert.equal(mk.poolNo.toNumber(), 300 * T); assert.equal(mk.positions, 3);
-    await expectErr(program.methods.proposeResolution({ yes: {} }, new BN(1500), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc(), "TooEarlyToResolve");
+    assert.equal(mk.pools[1].toNumber(), 200 * T); assert.equal(mk.pools[0].toNumber(), 300 * T); assert.equal(mk.positions, 3);
+    await expectErr(program.methods.proposeResolution(new BN(1500), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc(), "TooEarlyToResolve");
     await sleep(6000);                         // past close
     await expectErr(bet(m, v, alice, "yes", T), "BettingClosed");
-    await expectErr(program.methods.proposeResolution({ yes: {} }, new BN(1500), qhash).accounts({ config: configPda, market: m, proposer: alice.publicKey }).signers([alice]).rpc(), "Unauthorized");
-    await program.methods.proposeResolution({ yes: {} }, new BN(1500), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc();
+    await expectErr(program.methods.proposeResolution(new BN(1500), qhash).accounts({ config: configPda, market: m, proposer: alice.publicKey }).signers([alice]).rpc(), "Unauthorized");
+    await program.methods.proposeResolution(new BN(1500), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc();
     await expectErr(settle(m, v, alice, dave), "NotResolved");
     await expectErr(program.methods.finalizeResolution().accounts({ config: configPda, market: m, signer: dave.publicKey }).signers([dave]).rpc(), "DisputeWindowOpen");
     await program.methods.finalizeResolution().accounts({ config: configPda, market: m, signer: admin.publicKey }).rpc(); // admin = Seeker key
@@ -138,12 +139,31 @@ describe("kubrai parimutuel", () => {
     const { m, v } = await createMarket(-1, 4);
     await bet(m, v, alice, "no", 30 * T); await bet(m, v, bob, "no", 70 * T);
     await sleep(5500);
-    await program.methods.proposeResolution({ yes: {} }, new BN(99), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc();
+    await program.methods.proposeResolution(new BN(1500), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc();
     await sleep(4000);
     await program.methods.finalizeResolution().accounts({ config: configPda, market: m, signer: dave.publicKey }).signers([dave]).rpc();
     const a0 = await bal(ata.alice), b0 = await bal(ata.bob);
     await settle(m, v, alice, dave); await settle(m, v, bob, dave);
     assert.equal((await bal(ata.alice)) - a0, 30 * T); assert.equal((await bal(ata.bob)) - b0, 70 * T);
+    await sweep(m, v, dave);
+  });
+
+  it("multi-bucket: 4 buckets, winners share every losing pool, bucket derived on-chain", async () => {
+    const { m, v } = await createMarket(-1, 4, proposer, [100, 250, 500]);   // buckets: <100 | 100–249 | 250–499 | ≥500
+    let mk = await program.account.market.fetch(m); assert.equal(mk.nBuckets, 4);
+    await expectErr(bet(m, v, alice, 4, 10 * T), "BadBuckets");
+    await bet(m, v, alice, 0, 100 * T); await bet(m, v, bob, 2, 50 * T); await bet(m, v, carol, 3, 150 * T); await bet(m, v, dave, 2, 150 * T);
+    await sleep(5500);
+    await program.methods.proposeResolution(new BN(300), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc();
+    mk = await program.account.market.fetch(m); assert.equal(mk.proposedOutcome, 2, "300 falls in bucket 2");
+    await program.methods.finalizeResolution().accounts({ config: configPda, market: m, signer: admin.publicKey }).rpc();
+    const b0 = await bal(ata.bob), d0 = await bal(ata.dave), a0 = await bal(ata.alice);
+    await settle(m, v, alice, dave); await settle(m, v, bob, dave); await settle(m, v, carol, dave); await settle(m, v, dave, dave);
+    // losing pools = 100 + 150 = 250; bucket-2 pool = 200; early-bird fee 2%
+    // bob: 50 + 250*50/200=62.5 - 1.25 = 111.25 ; dave: 150 + 187.5 - 3.75 = 333.75 ; alice 0
+    assert.equal((await bal(ata.bob)) - b0, 111_250_000);
+    assert.equal((await bal(ata.dave)) - d0, 333_750_000);
+    assert.equal((await bal(ata.alice)) - a0, 0);
     await sweep(m, v, dave);
   });
 

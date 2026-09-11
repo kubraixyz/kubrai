@@ -27,7 +27,11 @@ function baselineFor(metric: string): { value: number; day: string } {
 
 async function main() {
   const [metric, thresholdStr, question, opensInH = "0", durH = "168", seedStr = "0"] = process.argv.slice(2);
-  if (!metric || !thresholdStr || !question) throw new Error("usage: <metric> <threshold> <question> [opensInHours] [durationHours] [seedSKR]");
+  if (!metric || !thresholdStr || !question) throw new Error("usage: <metric> <threshold|t1,t2,...> <question> [opensInHours] [durationHours] [seedSKR]");
+  const thresholds = thresholdStr.split(",").map((x) => new BN(x.trim()));
+  if (thresholds.length < 1 || thresholds.length > 7) throw new Error("1 to 7 thresholds");
+  for (let i = 1; i < thresholds.length; i++) if (!thresholds[i].gt(thresholds[i - 1])) throw new Error("thresholds must be strictly increasing");
+  const thrArr = Array.from({ length: 7 }, (_, i) => thresholds[i] ?? new BN(0));
   const provider = anchor.AnchorProvider.env(); anchor.setProvider(provider);
   const program = new Program(idl as anchor.Idl, provider);
   const signer = (provider.wallet as anchor.Wallet).payer;
@@ -45,9 +49,9 @@ async function main() {
   const base = process.env.NO_BASELINE === "1" ? { value: 0, day: "none" } : baselineFor(metric);
   const metricBytes = Array.from(Buffer.from(metric.padEnd(32, "\0").slice(0, 32)));
   const qhash = Array.from(createHash("sha256").update(question).digest());
-  await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, threshold: new BN(thresholdStr), openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(closeTs), baseline: new BN(base.value) })
+  await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, thresholds: thrArr, nBuckets: thresholds.length + 1, openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(closeTs), baseline: new BN(base.value) })
     .accounts({ config, market, vault, mint: cfg.mint, signer: signer.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).rpc();
-  console.log(JSON.stringify({ id: id.toNumber(), market: market.toBase58(), vault: vault.toBase58(), metric, threshold: thresholdStr, question, questionHash: Buffer.from(qhash).toString("hex"), openTs, closeTs, baseline: base.value, baselineSnapshot: base.day }, null, 2));
+  console.log(JSON.stringify({ id: id.toNumber(), market: market.toBase58(), vault: vault.toBase58(), metric, thresholds: thresholds.map(String), nBuckets: thresholds.length + 1, question, questionHash: Buffer.from(qhash).toString("hex"), openTs, closeTs, baseline: base.value, baselineSnapshot: base.day }, null, 2));
   const seed = Number(seedStr);
   if (seed > 0) {
     const funderToken = getAssociatedTokenAddressSync(new PublicKey(cfg.mint), signer.publicKey);

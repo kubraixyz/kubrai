@@ -82,12 +82,13 @@ async function propose(markets, now) {
     const metric = tag(m.metric);
     const ev = evaluate(metric, m.openTs.toNumber(), m.closeTs.toNumber(), m.baseline.toNumber());
     if (!ev.ok) { log(`market #${m.id} (${metric}): cannot resolve yet — ${ev.reason}`); continue; }
-    const outcome = ev.value >= m.threshold.toNumber() ? 1 : 2; const outcomeArg = outcome === 1 ? { yes: {} } : { no: {} };
-    log(`market #${m.id} (${metric}): observed ${ev.value} vs threshold ${m.threshold} → ${outcome === 1 ? "YES" : "NO"}`, JSON.stringify(ev.detail), "days", ev.used.join(","));
+    const n = m.nBuckets, thr = m.thresholds.slice(0, n - 1).map((t) => t.toNumber());
+    const bucket = thr.filter((t) => ev.value >= t).length; // same rule as on-chain Market::bucket_of
+    log(`market #${m.id} (${metric}): observed ${ev.value}; thresholds ${thr.join("/")} → bucket ${bucket} of ${n}`, JSON.stringify(ev.detail), "days", ev.used.join(","));
     if (DRY) continue;
-    const sig = await program.methods.proposeResolution(outcomeArg, new BN(ev.value), Array.from(evidenceHash(ev.used)))
+    const sig = await program.methods.proposeResolution(new BN(ev.value), Array.from(evidenceHash(ev.used)))
       .accounts({ config: configPda, market: publicKey, proposer: proposer.publicKey }).rpc();
-    fs.writeFileSync(path.join(SNAP, `resolution-${m.id}.json`), JSON.stringify({ market: publicKey.toBase58(), id: m.id.toNumber(), metric, threshold: m.threshold.toString(), observed: ev.value, outcome, days: ev.used, detail: ev.detail, evidenceHash: evidenceHash(ev.used).toString("hex"), signature: sig, at: new Date().toISOString() }, null, 2));
+    fs.writeFileSync(path.join(SNAP, `resolution-${m.id}.json`), JSON.stringify({ market: publicKey.toBase58(), id: m.id.toNumber(), metric, thresholds: thr, nBuckets: n, observed: ev.value, bucket, days: ev.used, detail: ev.detail, evidenceHash: evidenceHash(ev.used).toString("hex"), signature: sig, at: new Date().toISOString() }, null, 2));
     log(`  proposed ${sig}`);
   }
 }

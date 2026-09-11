@@ -1,16 +1,20 @@
 //! Kubrai — parimutuel prediction pools on Seeker-ecosystem metrics.
 //!
 //! Money model (see README):
-//! * Each market has a YES pool and a NO pool (SPL token, SKR on mainnet).
-//! * Winners get their stake back plus a pro-rata share of the losing pool.
+//! * Each market has 2..=8 outcome buckets defined by sorted thresholds on one
+//!   metric (bucket i = value in [thresholds[i-1], thresholds[i])). A yes/no
+//!   market is simply 2 buckets with 1 threshold. Each bucket has its own pool
+//!   (SPL token, SKR on mainnet).
+//! * Winners get their stake back plus a pro-rata share of all losing pools.
 //! * The protocol fee is charged ONLY on the share of the losing pool a winner
 //!   receives, never on the winner's own stake. Fee bps is locked per bet
 //!   (stake-weighted per position) so early-bird / staking discounts cannot be
 //!   gamed by topping up later.
 //! * House "seed" (prize added by the treasury) is split pro-rata among winners
 //!   with no fee.
-//! * Resolution is two-step: the proposer (server key) proposes an outcome with
-//!   the snapshot hash it used; anyone can finalize after the dispute window,
+//! * Resolution is two-step: the proposer (server key) submits only the observed
+//!   VALUE plus the snapshot hash; the winning bucket is derived on-chain, so the
+//!   proposer never picks an outcome directly. Anyone can finalize after the dispute window,
 //!   or the admin key can finalize/void immediately.
 //! * Settlement is permissionless: a crank pays every position out to its
 //!   owner's token account and closes it, refunding rent to whoever paid it.
@@ -22,6 +26,9 @@ declare_id!("F9qowxW3hmwrzDeKQXpL4rVmFcPvWe7e43oGnWU3AvQb");
 
 pub const BPS: u128 = 10_000;
 pub const MAX_FEE_BPS: u16 = 1_000; // 10% hard ceiling, protects users from a hostile config
+pub const MAX_BUCKETS: usize = 8;
+pub const MAX_THRESHOLDS: usize = MAX_BUCKETS - 1;
+pub const NO_OUTCOME: u8 = 255;
 
 #[program]
 pub mod kubrai {
@@ -66,12 +73,20 @@ pub mod kubrai {
         require!(args.close_ts > args.open_ts, KubraiError::BadSchedule);
         require!(args.close_ts > now, KubraiError::BadSchedule);
         require!(args.resolve_after_ts >= args.close_ts, KubraiError::BadSchedule);
+        let n = args.n_buckets as usize;
+        require!((2..=MAX_BUCKETS).contains(&n), KubraiError::BadBuckets);
+        for i in 1..(n - 1) {
+            require!(args.thresholds[i] > args.thresholds[i - 1], KubraiError::BadBuckets);
+        }
         let c = &mut ctx.accounts.config;
         let m = &mut ctx.accounts.market;
         m.id = c.market_count;
         m.metric = args.metric;
         m.question_hash = args.question_hash;
-        m.threshold = args.threshold;
+        m.thresholds = args.thresholds;
+        m.n_buckets = args.n_buckets;
+        m.outcome = NO_OUTCOME;
+        m.proposed_outcome = NO_OUTCOME;
         m.open_ts = args.open_ts;
         m.close_ts = args.close_ts;
         m.resolve_after_ts = args.resolve_after_ts;
@@ -80,7 +95,7 @@ pub mod kubrai {
         m.vault = ctx.accounts.vault.key();
         m.bump = ctx.bumps.market;
         c.market_count = c.market_count.checked_add(1).unwrap();
-        emit!(MarketCreated { market: m.key(), id: m.id, metric: m.metric, threshold: m.threshold, open_ts: m.open_ts, close_ts: m.close_ts });
+        emit!(MarketCreated { market: m.key(), id: m.id, metric: m.metric, n_buckets: m.n_buckets, thresholds: m.thresholds, open_ts: m.open_ts, close_ts: m.close_ts });
         Ok(())
     }
 
@@ -98,7 +113,7 @@ pub mod kubrai {
         Ok(())
     }
 
-    pub fn place_bet(ctx: Context<PlaceBet>, side: Side, amount: u64) -> Result<()> {
+    pub fn place_bet(ctx: Context<PlaceBet>, bucket: u8, amount: u64) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
         let fee_bps = {
             let c = &ctx.accounts.config;
@@ -108,6 +123,7 @@ pub mod kubrai {
             require!(now >= m.open_ts, KubraiError::BettingNotStarted);
             require!(now < m.close_ts, KubraiError::BettingClosed);
             require!(amount >= c.min_bet, KubraiError::BelowMinBet);
+            require!((bucket as usize) < m.n_buckets as usize, KubraiError::BadBuckets);
             // Fee tier is decided now and locked into the position, stake-weighted.
             let mut fee_bps = c.fee_bps;
             if now < m.open_ts.saturating_add(c.early_bird_secs) {
@@ -133,35 +149,28 @@ pub mod kubrai {
             m.positions_open = m.positions_open.checked_add(1).unwrap();
         }
         let fee_w = (amount as u128).checked_mul(fee_bps as u128).unwrap();
-        match side {
-            Side::Yes => {
-                p.yes_amount = p.yes_amount.checked_add(amount).unwrap();
-                p.yes_fee_w = p.yes_fee_w.checked_add(fee_w).unwrap();
-                m.pool_yes = m.pool_yes.checked_add(amount).unwrap();
-            }
-            Side::No => {
-                p.no_amount = p.no_amount.checked_add(amount).unwrap();
-                p.no_fee_w = p.no_fee_w.checked_add(fee_w).unwrap();
-                m.pool_no = m.pool_no.checked_add(amount).unwrap();
-            }
-        }
-        emit!(BetPlaced { market: m.key(), user: p.owner, side: side.code(), amount, fee_bps, pool_yes: m.pool_yes, pool_no: m.pool_no });
+        let b = bucket as usize;
+        p.amounts[b] = p.amounts[b].checked_add(amount).unwrap();
+        p.fee_w[b] = p.fee_w[b].checked_add(fee_w).unwrap();
+        m.pools[b] = m.pools[b].checked_add(amount).unwrap();
+        emit!(BetPlaced { market: m.key(), user: p.owner, bucket, amount, fee_bps, pools: m.pools });
         Ok(())
     }
 
-    /// Proposer publishes the outcome plus the hash of the snapshot bundle it
-    /// derived it from. Starts the dispute window.
-    pub fn propose_resolution(ctx: Context<Propose>, outcome: Side, observed_value: i64, snapshot_hash: [u8; 32]) -> Result<()> {
+    /// Proposer publishes the observed value plus the hash of the snapshot bundle
+    /// it came from. The winning bucket is derived here, on-chain. Starts the dispute window.
+    pub fn propose_resolution(ctx: Context<Propose>, observed_value: i64, snapshot_hash: [u8; 32]) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
         let m = &mut ctx.accounts.market;
         require!(m.status == MarketStatus::Open as u8, KubraiError::MarketNotOpen);
         require!(now >= m.resolve_after_ts, KubraiError::TooEarlyToResolve);
+        let bucket = m.bucket_of(observed_value);
         m.status = MarketStatus::Proposed as u8;
-        m.proposed_outcome = outcome.code();
+        m.proposed_outcome = bucket;
         m.proposed_value = observed_value;
         m.proposed_at = now;
         m.snapshot_hash = snapshot_hash;
-        emit!(ResolutionProposed { market: m.key(), outcome: outcome.code(), observed_value, snapshot_hash, proposed_at: now });
+        emit!(ResolutionProposed { market: m.key(), bucket, observed_value, snapshot_hash, proposed_at: now });
         Ok(())
     }
 
@@ -176,7 +185,7 @@ pub mod kubrai {
         m.status = MarketStatus::Resolved as u8;
         m.outcome = m.proposed_outcome;
         m.resolved_at = now;
-        emit!(MarketResolved { market: m.key(), outcome: m.outcome, voided: false });
+        emit!(MarketResolved { market: m.key(), bucket: m.outcome, voided: false });
         Ok(())
     }
 
@@ -186,7 +195,7 @@ pub mod kubrai {
         require!(m.status == MarketStatus::Open as u8 || m.status == MarketStatus::Proposed as u8, KubraiError::AlreadyFinal);
         m.status = MarketStatus::Voided as u8;
         m.resolved_at = Clock::get()?.unix_timestamp;
-        emit!(MarketResolved { market: m.key(), outcome: 0, voided: true });
+        emit!(MarketResolved { market: m.key(), bucket: NO_OUTCOME, voided: true });
         Ok(())
     }
 
@@ -236,15 +245,17 @@ pub mod kubrai {
 
 /// Returns (payout_to_owner, fee_taken_from_that_payout).
 pub fn compute_payout(m: &Market, p: &Position) -> Result<(u64, u64)> {
-    let refund_all = || Ok::<(u64, u64), Error>((p.yes_amount.checked_add(p.no_amount).unwrap(), 0));
+    let total_stake: u64 = p.amounts.iter().fold(0u64, |a, x| a.checked_add(*x).unwrap());
+    let refund_all = || Ok::<(u64, u64), Error>((total_stake, 0));
     if m.status == MarketStatus::Voided as u8 {
         return refund_all();
     }
-    let (win_pool, lose_pool, stake, fee_w) = if m.outcome == Side::Yes.code() {
-        (m.pool_yes, m.pool_no, p.yes_amount, p.yes_fee_w)
-    } else {
-        (m.pool_no, m.pool_yes, p.no_amount, p.no_fee_w)
-    };
+    let w = m.outcome as usize;
+    require!(w < m.n_buckets as usize, KubraiError::NotResolved);
+    let win_pool = m.pools[w];
+    let lose_pool = m.total_pool().checked_sub(win_pool).unwrap();
+    let stake = p.amounts[w];
+    let fee_w = p.fee_w[w];
     // Nobody on the winning side: everyone is made whole, house seed returns via sweep.
     if win_pool == 0 {
         return refund_all();
@@ -263,18 +274,21 @@ pub fn compute_payout(m: &Market, p: &Position) -> Result<(u64, u64)> {
 
 // ---------- state ----------
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
-pub enum Side {
-    Yes,
-    No,
-}
-impl Side {
-    /// Stored value; 0 is reserved for "no outcome".
-    pub fn code(self) -> u8 {
-        match self {
-            Side::Yes => 1,
-            Side::No => 2,
+impl Market {
+    /// Bucket index for a value: number of active thresholds the value reaches.
+    /// bucket 0 = below thresholds[0]; bucket n-1 = at or above thresholds[n-2].
+    pub fn bucket_of(&self, value: i64) -> u8 {
+        let n = self.n_buckets as usize;
+        let mut b = 0u8;
+        for i in 0..(n - 1) {
+            if value >= self.thresholds[i] {
+                b = (i + 1) as u8;
+            }
         }
+        b
+    }
+    pub fn total_pool(&self) -> u64 {
+        self.pools.iter().fold(0u64, |a, x| a.checked_add(*x).unwrap())
     }
 }
 
@@ -310,7 +324,9 @@ impl ConfigArgs {
 pub struct MarketArgs {
     pub metric: [u8; 32],
     pub question_hash: [u8; 32],
-    pub threshold: i64,
+    /// Sorted, strictly increasing; only the first n_buckets-1 entries are used.
+    pub thresholds: [i64; MAX_THRESHOLDS],
+    pub n_buckets: u8,
     pub open_ts: i64,
     pub close_ts: i64,
     pub resolve_after_ts: i64,
@@ -342,16 +358,17 @@ pub struct Market {
     pub id: u64,
     pub metric: [u8; 32],
     pub question_hash: [u8; 32],
-    pub threshold: i64,
+    pub thresholds: [i64; MAX_THRESHOLDS],
+    pub n_buckets: u8,
     pub open_ts: i64,
     pub close_ts: i64,
     pub resolve_after_ts: i64,
     /// Metric value at open (see MarketArgs::baseline).
     pub baseline: i64,
-    pub pool_yes: u64,
-    pub pool_no: u64,
+    pub pools: [u64; MAX_BUCKETS],
     pub seed_amount: u64,
     pub status: u8,
+    /// Winning bucket index once resolved; NO_OUTCOME otherwise.
     pub outcome: u8,
     pub proposed_outcome: u8,
     pub proposed_value: i64,
@@ -373,10 +390,8 @@ pub struct Position {
     pub market: Pubkey,
     pub owner: Pubkey,
     pub payer: Pubkey,
-    pub yes_amount: u64,
-    pub no_amount: u64,
-    pub yes_fee_w: u128,
-    pub no_fee_w: u128,
+    pub amounts: [u64; MAX_BUCKETS],
+    pub fee_w: [u128; MAX_BUCKETS],
     pub bump: u8,
 }
 
@@ -560,13 +575,13 @@ impl<'info> Sweep<'info> {
 // ---------- events & errors ----------
 
 #[event]
-pub struct MarketCreated { pub market: Pubkey, pub id: u64, pub metric: [u8; 32], pub threshold: i64, pub open_ts: i64, pub close_ts: i64 }
+pub struct MarketCreated { pub market: Pubkey, pub id: u64, pub metric: [u8; 32], pub n_buckets: u8, pub thresholds: [i64; MAX_THRESHOLDS], pub open_ts: i64, pub close_ts: i64 }
 #[event]
-pub struct BetPlaced { pub market: Pubkey, pub user: Pubkey, pub side: u8, pub amount: u64, pub fee_bps: u16, pub pool_yes: u64, pub pool_no: u64 }
+pub struct BetPlaced { pub market: Pubkey, pub user: Pubkey, pub bucket: u8, pub amount: u64, pub fee_bps: u16, pub pools: [u64; MAX_BUCKETS] }
 #[event]
-pub struct ResolutionProposed { pub market: Pubkey, pub outcome: u8, pub observed_value: i64, pub snapshot_hash: [u8; 32], pub proposed_at: i64 }
+pub struct ResolutionProposed { pub market: Pubkey, pub bucket: u8, pub observed_value: i64, pub snapshot_hash: [u8; 32], pub proposed_at: i64 }
 #[event]
-pub struct MarketResolved { pub market: Pubkey, pub outcome: u8, pub voided: bool }
+pub struct MarketResolved { pub market: Pubkey, pub bucket: u8, pub voided: bool }
 #[event]
 pub struct PositionSettled { pub market: Pubkey, pub user: Pubkey, pub payout: u64, pub fee: u64 }
 
@@ -587,4 +602,5 @@ pub enum KubraiError {
     #[msg("market already final")] AlreadyFinal,
     #[msg("market not resolved")] NotResolved,
     #[msg("positions still outstanding")] PositionsOutstanding,
+    #[msg("bad bucket definition or index")] BadBuckets,
 }
