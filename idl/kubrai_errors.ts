@@ -14,7 +14,8 @@ export const KubraiErrorCode = {
   DisputeWindowOpen: 6011,
   AlreadyFinal: 6012,
   NotResolved: 6013,
-  PositionsOutstanding: 6014
+  PositionsOutstanding: 6014,
+  BadBuckets: 6015
 };
 
 export type KubraiErrorName = keyof typeof KubraiErrorCode;

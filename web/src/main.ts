@@ -1,4 +1,4 @@
-import { fetchMarkets, type MarketView } from "./kubrai";
+import { fetchMarkets, totalPool, type MarketView } from "./kubrai";
 import { fmtValue, metricInfo, metricLabel } from "./metrics";
 import { fmtAmt, mountNetBadge, mountWallet, poolsHtml, statusPill, timeLeft } from "./ui";
 import { TOKEN_SYMBOL } from "./config";
@@ -9,10 +9,10 @@ function card(m: MarketView) {
   const q = metricLabel(m.metric);
   return `<a class="card" href="/market.html?id=${m.id}">
     <div class="meta">${statusPill(m)}<span>#${m.id}</span><span>${m.status === 0 ? timeLeft(m.closeTs) : ""}</span></div>
-    <div class="title">${q} ≥&nbsp;<span class="mono">${fmtValue(m.metric, m.threshold)}</span>?</div>
+    <div class="title">${m.nBuckets === 2 ? `${q} ≥&nbsp;<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>?` : `${q}: which range?`}</div>
     <div class="meta"><span class="pill">${{ onchain: "on-chain", store: "store data", thirdparty: "3rd-party data" }[metricInfo(m.metric)?.source ?? "thirdparty"]}</span>${metricInfo(m.metric)?.cumulative ? `<span>from ${fmtValue(m.metric, m.baseline)} at open</span>` : ""}</div>
     ${poolsHtml(m)}
-    <div class="meta"><span>${m.positions} bettors</span><span>${fmtAmt(m.poolYes + m.poolNo + m.seed, 0)} ${TOKEN_SYMBOL} in pot</span></div>
+    <div class="meta"><span>${m.positions} bettors</span><span>${fmtAmt(totalPool(m) + m.seed, 0)} ${TOKEN_SYMBOL} in pot</span></div>
   </a>`;
 }
 (async () => {

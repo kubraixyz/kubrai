@@ -27,16 +27,20 @@ export const vaultPda = (m: PublicKey) => PublicKey.findProgramAddressSync([Buff
 export const positionPda = (m: PublicKey, u: PublicKey) => PublicKey.findProgramAddressSync([Buffer.from("position"), m.toBuffer(), u.toBuffer()], programId)[0];
 
 export type MarketView = {
-  pubkey: PublicKey; id: number; metric: string; threshold: number; openTs: number; closeTs: number; resolveAfterTs: number;
-  baseline: number; poolYes: number; poolNo: number; seed: number; status: number; outcome: number; proposedOutcome: number; proposedValue: number; proposedAt: number; positions: number; positionsOpen: number; feeCollected: number; snapshotHash: string;
+  pubkey: PublicKey; id: number; metric: string; thresholds: number[]; nBuckets: number; openTs: number; closeTs: number; resolveAfterTs: number;
+  baseline: number; pools: number[]; seed: number; status: number; outcome: number; proposedOutcome: number; proposedValue: number; proposedAt: number; positions: number; positionsOpen: number; feeCollected: number; snapshotHash: string;
 };
+export const NO_OUTCOME = 255;
+/** Same rule as on-chain Market::bucket_of. */
+export const bucketOf = (m: MarketView, value: number) => m.thresholds.filter((t) => value >= t).length;
+export const totalPool = (m: MarketView) => m.pools.reduce((a, b) => a + b, 0);
 export const STATUS = ["Open", "Proposed", "Resolved", "Voided", "Swept"] as const;
 const tag = (b: number[]) => Buffer.from(b).toString("utf8").replace(/\0+$/, "");
 
 export function toView(pubkey: PublicKey, a: any): MarketView {
   return {
-    pubkey, id: a.id.toNumber(), metric: tag(a.metric), threshold: a.threshold.toNumber(), openTs: a.openTs.toNumber(), closeTs: a.closeTs.toNumber(), resolveAfterTs: a.resolveAfterTs.toNumber(), baseline: a.baseline.toNumber(),
-    poolYes: a.poolYes.toNumber(), poolNo: a.poolNo.toNumber(), seed: a.seedAmount.toNumber(), status: a.status, outcome: a.outcome, proposedOutcome: a.proposedOutcome, proposedValue: a.proposedValue.toNumber(), proposedAt: a.proposedAt.toNumber(),
+    pubkey, id: a.id.toNumber(), metric: tag(a.metric), nBuckets: a.nBuckets, thresholds: a.thresholds.slice(0, a.nBuckets - 1).map((t: any) => t.toNumber()), openTs: a.openTs.toNumber(), closeTs: a.closeTs.toNumber(), resolveAfterTs: a.resolveAfterTs.toNumber(), baseline: a.baseline.toNumber(),
+    pools: a.pools.slice(0, a.nBuckets).map((x: any) => x.toNumber()), seed: a.seedAmount.toNumber(), status: a.status, outcome: a.outcome, proposedOutcome: a.proposedOutcome, proposedValue: a.proposedValue.toNumber(), proposedAt: a.proposedAt.toNumber(),
     positions: a.positions, positionsOpen: a.positionsOpen, feeCollected: a.feeCollected.toNumber(), snapshotHash: Buffer.from(a.snapshotHash).toString("hex"),
   };
 }
@@ -58,16 +62,16 @@ export function currentFeeBps(cfg: any, m: MarketView, nowSec = Math.floor(Date.
   if (nowSec < m.openTs + cfg.earlyBirdSecs.toNumber()) fee = Math.max(0, fee - cfg.earlyBirdDiscountBps);
   return fee;
 }
-/** Payout breakdown if `side` wins with current pools + this stake. Fee applies to `fromLosers` only (mirrors on-chain). */
-export function impliedPayout(m: MarketView, side: "yes" | "no", stake: number, feeBps: number) {
-  const win = (side === "yes" ? m.poolYes : m.poolNo) + stake, lose = side === "yes" ? m.poolNo : m.poolYes;
+/** Payout breakdown if `bucket` wins with current pools + this stake. Fee applies to `fromLosers` only (mirrors on-chain). */
+export function impliedPayout(m: MarketView, bucket: number, stake: number, feeBps: number) {
+  const win = m.pools[bucket] + stake, lose = totalPool(m) - m.pools[bucket];
   const fromLosers = win ? (lose * stake) / win : 0, fromSeed = win ? (m.seed * stake) / win : 0;
   const fee = (fromLosers * feeBps) / 10000;
   return { fromLosers, fromSeed, fee, total: stake + fromLosers - fee + fromSeed };
 }
 
-export async function buildPlaceBetTx(user: PublicKey, m: MarketView, side: "yes" | "no", amountBase: number, mint: PublicKey): Promise<Transaction> {
-  const ix: TransactionInstruction = await program.methods.placeBet({ [side]: {} } as any, new BN(amountBase))
+export async function buildPlaceBetTx(user: PublicKey, m: MarketView, bucket: number, amountBase: number, mint: PublicKey): Promise<Transaction> {
+  const ix: TransactionInstruction = await program.methods.placeBet(bucket, new BN(amountBase))
     .accounts({ config: configPda, market: m.pubkey, position: positionPda(m.pubkey, user), vault: vaultPda(m.pubkey), userToken: getAssociatedTokenAddressSync(mint, user), user, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId })
     .instruction();
   const tx = new Transaction().add(ix);

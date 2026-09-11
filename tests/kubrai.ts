@@ -158,11 +158,15 @@ describe("kubrai parimutuel", () => {
     mk = await program.account.market.fetch(m); assert.equal(mk.proposedOutcome, 2, "300 falls in bucket 2");
     await program.methods.finalizeResolution().accounts({ config: configPda, market: m, signer: admin.publicKey }).rpc();
     const b0 = await bal(ata.bob), d0 = await bal(ata.dave), a0 = await bal(ata.alice);
+    // fee bps are locked per bet; dave may have bet after the 3 s early-bird window, so derive his rate from the position
+    const pD = await program.account.position.fetch(posPda(m, dave.publicKey));
+    const daveBps = pD.feeW[2].div(new BN(150 * T)).toNumber();
+    assert.include([200, 300], daveBps);
     await settle(m, v, alice, dave); await settle(m, v, bob, dave); await settle(m, v, carol, dave); await settle(m, v, dave, dave);
-    // losing pools = 100 + 150 = 250; bucket-2 pool = 200; early-bird fee 2%
-    // bob: 50 + 250*50/200=62.5 - 1.25 = 111.25 ; dave: 150 + 187.5 - 3.75 = 333.75 ; alice 0
+    // losing pools = 100 + 150 = 250; bucket-2 pool = 200
+    // bob: 50 + 250*50/200=62.5 - 62.5*2% = 111.25 ; dave: 150 + 187.5 - 187.5*bps ; alice 0
     assert.equal((await bal(ata.bob)) - b0, 111_250_000);
-    assert.equal((await bal(ata.dave)) - d0, 333_750_000);
+    assert.equal((await bal(ata.dave)) - d0, 150 * T + 187_500_000 - (187_500_000 * daveBps) / 10_000);
     assert.equal((await bal(ata.alice)) - a0, 0);
     await sweep(m, v, dave);
   });

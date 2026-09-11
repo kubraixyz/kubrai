@@ -353,12 +353,8 @@ export type Kubrai = {
       ],
       "args": [
         {
-          "name": "side",
-          "type": {
-            "defined": {
-              "name": "side"
-            }
-          }
+          "name": "bucket",
+          "type": "u8"
         },
         {
           "name": "amount",
@@ -369,8 +365,8 @@ export type Kubrai = {
     {
       "name": "proposeResolution",
       "docs": [
-        "Proposer publishes the outcome plus the hash of the snapshot bundle it",
-        "derived it from. Starts the dispute window."
+        "Proposer publishes the observed value plus the hash of the snapshot bundle",
+        "it came from. The winning bucket is derived here, on-chain. Starts the dispute window."
       ],
       "discriminator": [
         19,
@@ -431,14 +427,6 @@ export type Kubrai = {
         }
       ],
       "args": [
-        {
-          "name": "outcome",
-          "type": {
-            "defined": {
-              "name": "side"
-            }
-          }
-        },
         {
           "name": "observedValue",
           "type": "i64"
@@ -1025,6 +1013,11 @@ export type Kubrai = {
       "code": 6014,
       "name": "positionsOutstanding",
       "msg": "positions still outstanding"
+    },
+    {
+      "code": 6015,
+      "name": "badBuckets",
+      "msg": "bad bucket definition or index"
     }
   ],
   "types": [
@@ -1042,7 +1035,7 @@ export type Kubrai = {
             "type": "pubkey"
           },
           {
-            "name": "side",
+            "name": "bucket",
             "type": "u8"
           },
           {
@@ -1054,12 +1047,13 @@ export type Kubrai = {
             "type": "u16"
           },
           {
-            "name": "poolYes",
-            "type": "u64"
-          },
-          {
-            "name": "poolNo",
-            "type": "u64"
+            "name": "pools",
+            "type": {
+              "array": [
+                "u64",
+                8
+              ]
+            }
           }
         ]
       }
@@ -1180,8 +1174,17 @@ export type Kubrai = {
             }
           },
           {
-            "name": "threshold",
-            "type": "i64"
+            "name": "thresholds",
+            "type": {
+              "array": [
+                "i64",
+                7
+              ]
+            }
+          },
+          {
+            "name": "nBuckets",
+            "type": "u8"
           },
           {
             "name": "openTs",
@@ -1203,12 +1206,13 @@ export type Kubrai = {
             "type": "i64"
           },
           {
-            "name": "poolYes",
-            "type": "u64"
-          },
-          {
-            "name": "poolNo",
-            "type": "u64"
+            "name": "pools",
+            "type": {
+              "array": [
+                "u64",
+                8
+              ]
+            }
           },
           {
             "name": "seedAmount",
@@ -1220,6 +1224,9 @@ export type Kubrai = {
           },
           {
             "name": "outcome",
+            "docs": [
+              "Winning bucket index once resolved; NO_OUTCOME otherwise."
+            ],
             "type": "u8"
           },
           {
@@ -1302,8 +1309,20 @@ export type Kubrai = {
             }
           },
           {
-            "name": "threshold",
-            "type": "i64"
+            "name": "thresholds",
+            "docs": [
+              "Sorted, strictly increasing; only the first n_buckets-1 entries are used."
+            ],
+            "type": {
+              "array": [
+                "i64",
+                7
+              ]
+            }
+          },
+          {
+            "name": "nBuckets",
+            "type": "u8"
           },
           {
             "name": "openTs",
@@ -1351,8 +1370,17 @@ export type Kubrai = {
             }
           },
           {
-            "name": "threshold",
-            "type": "i64"
+            "name": "nBuckets",
+            "type": "u8"
+          },
+          {
+            "name": "thresholds",
+            "type": {
+              "array": [
+                "i64",
+                7
+              ]
+            }
           },
           {
             "name": "openTs",
@@ -1375,7 +1403,7 @@ export type Kubrai = {
             "type": "pubkey"
           },
           {
-            "name": "outcome",
+            "name": "bucket",
             "type": "u8"
           },
           {
@@ -1403,20 +1431,22 @@ export type Kubrai = {
             "type": "pubkey"
           },
           {
-            "name": "yesAmount",
-            "type": "u64"
+            "name": "amounts",
+            "type": {
+              "array": [
+                "u64",
+                8
+              ]
+            }
           },
           {
-            "name": "noAmount",
-            "type": "u64"
-          },
-          {
-            "name": "yesFeeW",
-            "type": "u128"
-          },
-          {
-            "name": "noFeeW",
-            "type": "u128"
+            "name": "feeW",
+            "type": {
+              "array": [
+                "u128",
+                8
+              ]
+            }
           },
           {
             "name": "bump",
@@ -1459,7 +1489,7 @@ export type Kubrai = {
             "type": "pubkey"
           },
           {
-            "name": "outcome",
+            "name": "bucket",
             "type": "u8"
           },
           {
@@ -1478,20 +1508,6 @@ export type Kubrai = {
           {
             "name": "proposedAt",
             "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "side",
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "yes"
-          },
-          {
-            "name": "no"
           }
         ]
       }

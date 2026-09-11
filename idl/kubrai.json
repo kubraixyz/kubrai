@@ -347,12 +347,8 @@
       ],
       "args": [
         {
-          "name": "side",
-          "type": {
-            "defined": {
-              "name": "Side"
-            }
-          }
+          "name": "bucket",
+          "type": "u8"
         },
         {
           "name": "amount",
@@ -363,8 +359,8 @@
     {
       "name": "propose_resolution",
       "docs": [
-        "Proposer publishes the outcome plus the hash of the snapshot bundle it",
-        "derived it from. Starts the dispute window."
+        "Proposer publishes the observed value plus the hash of the snapshot bundle",
+        "it came from. The winning bucket is derived here, on-chain. Starts the dispute window."
       ],
       "discriminator": [
         19,
@@ -425,14 +421,6 @@
         }
       ],
       "args": [
-        {
-          "name": "outcome",
-          "type": {
-            "defined": {
-              "name": "Side"
-            }
-          }
-        },
         {
           "name": "observed_value",
           "type": "i64"
@@ -1019,6 +1007,11 @@
       "code": 6014,
       "name": "PositionsOutstanding",
       "msg": "positions still outstanding"
+    },
+    {
+      "code": 6015,
+      "name": "BadBuckets",
+      "msg": "bad bucket definition or index"
     }
   ],
   "types": [
@@ -1036,7 +1029,7 @@
             "type": "pubkey"
           },
           {
-            "name": "side",
+            "name": "bucket",
             "type": "u8"
           },
           {
@@ -1048,12 +1041,13 @@
             "type": "u16"
           },
           {
-            "name": "pool_yes",
-            "type": "u64"
-          },
-          {
-            "name": "pool_no",
-            "type": "u64"
+            "name": "pools",
+            "type": {
+              "array": [
+                "u64",
+                8
+              ]
+            }
           }
         ]
       }
@@ -1174,8 +1168,17 @@
             }
           },
           {
-            "name": "threshold",
-            "type": "i64"
+            "name": "thresholds",
+            "type": {
+              "array": [
+                "i64",
+                7
+              ]
+            }
+          },
+          {
+            "name": "n_buckets",
+            "type": "u8"
           },
           {
             "name": "open_ts",
@@ -1197,12 +1200,13 @@
             "type": "i64"
           },
           {
-            "name": "pool_yes",
-            "type": "u64"
-          },
-          {
-            "name": "pool_no",
-            "type": "u64"
+            "name": "pools",
+            "type": {
+              "array": [
+                "u64",
+                8
+              ]
+            }
           },
           {
             "name": "seed_amount",
@@ -1214,6 +1218,9 @@
           },
           {
             "name": "outcome",
+            "docs": [
+              "Winning bucket index once resolved; NO_OUTCOME otherwise."
+            ],
             "type": "u8"
           },
           {
@@ -1296,8 +1303,20 @@
             }
           },
           {
-            "name": "threshold",
-            "type": "i64"
+            "name": "thresholds",
+            "docs": [
+              "Sorted, strictly increasing; only the first n_buckets-1 entries are used."
+            ],
+            "type": {
+              "array": [
+                "i64",
+                7
+              ]
+            }
+          },
+          {
+            "name": "n_buckets",
+            "type": "u8"
           },
           {
             "name": "open_ts",
@@ -1345,8 +1364,17 @@
             }
           },
           {
-            "name": "threshold",
-            "type": "i64"
+            "name": "n_buckets",
+            "type": "u8"
+          },
+          {
+            "name": "thresholds",
+            "type": {
+              "array": [
+                "i64",
+                7
+              ]
+            }
           },
           {
             "name": "open_ts",
@@ -1369,7 +1397,7 @@
             "type": "pubkey"
           },
           {
-            "name": "outcome",
+            "name": "bucket",
             "type": "u8"
           },
           {
@@ -1397,20 +1425,22 @@
             "type": "pubkey"
           },
           {
-            "name": "yes_amount",
-            "type": "u64"
+            "name": "amounts",
+            "type": {
+              "array": [
+                "u64",
+                8
+              ]
+            }
           },
           {
-            "name": "no_amount",
-            "type": "u64"
-          },
-          {
-            "name": "yes_fee_w",
-            "type": "u128"
-          },
-          {
-            "name": "no_fee_w",
-            "type": "u128"
+            "name": "fee_w",
+            "type": {
+              "array": [
+                "u128",
+                8
+              ]
+            }
           },
           {
             "name": "bump",
@@ -1453,7 +1483,7 @@
             "type": "pubkey"
           },
           {
-            "name": "outcome",
+            "name": "bucket",
             "type": "u8"
           },
           {
@@ -1472,20 +1502,6 @@
           {
             "name": "proposed_at",
             "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "Side",
-      "type": {
-        "kind": "enum",
-        "variants": [
-          {
-            "name": "Yes"
-          },
-          {
-            "name": "No"
           }
         ]
       }

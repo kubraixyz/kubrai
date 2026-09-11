@@ -1,6 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { API_BASE, CLUSTER, IS_TEST, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
-import { STATUS, type MarketView } from "./kubrai";
+import { STATUS, totalPool, type MarketView } from "./kubrai";
+import { fmtValue } from "./metrics";
 import { connectWallet, devWallet, listWallets, type Session } from "./wallet";
 
 export const fmtAmt = (base: number, digits = 2) => (base / 10 ** TOKEN_DECIMALS).toLocaleString("en-US", { maximumFractionDigits: digits });
@@ -17,12 +18,22 @@ export function timeLeft(ts: number) {
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
   return d > 0 ? `${d}d ${h}h left` : h > 0 ? `${h}h ${m}m left` : `${m}m left`;
 }
-export function poolsHtml(m: MarketView) {
-  const tot = m.poolYes + m.poolNo, py = tot ? Math.round((m.poolYes / tot) * 100) : 50;
-  return `<div class="pools">
-    <div class="pool yes"><b>Yes</b><span class="amt">${fmtAmt(m.poolYes, 0)} ${TOKEN_SYMBOL}</span><div class="pct">${tot ? py + "% of pool" : "no bets yet"}</div></div>
-    <div class="pool no"><b>No</b><span class="amt">${fmtAmt(m.poolNo, 0)} ${TOKEN_SYMBOL}</span><div class="pct">${tot ? 100 - py + "% of pool" : "no bets yet"}</div></div>
-  </div><div class="bar"><i style="width:${py}%"></i></div>${m.seed ? `<div class="note">+ ${fmtAmt(m.seed, 0)} ${TOKEN_SYMBOL} house prize added to the winning side, fee-free.</div>` : ""}`;
+/** Human label of bucket i: "< t0", "t0 – t1", "≥ tlast". Yes/no markets read "No (< t)" / "Yes (≥ t)". */
+export function bucketLabel(m: MarketView, i: number) {
+  const f = (v: number) => fmtValue(m.metric, v).replace(/ [^ ]+$/, "");
+  const t = m.thresholds, n = m.nBuckets;
+  if (n === 2) return i === 1 ? `Yes · ≥ ${f(t[0])}` : `No · < ${f(t[0])}`;
+  if (i === 0) return `< ${f(t[0])}`;
+  if (i === n - 1) return `≥ ${f(t[n - 2])}`;
+  return `${f(t[i - 1])} – ${f(t[i] - 1)}`;
+}
+const BUCKET_COLORS = ["#c4553f", "#c98a3a", "#a3a03a", "#5f9f4a", "#0f8f7c", "#2f7fb8", "#6a5fb8", "#9a4f9a"];
+export const bucketColor = (m: MarketView, i: number) => (m.nBuckets === 2 ? (i === 1 ? "var(--yes)" : "var(--no)") : BUCKET_COLORS[Math.round((i * (BUCKET_COLORS.length - 1)) / Math.max(1, m.nBuckets - 1))]);
+export function poolsHtml(m: MarketView, highlight = -1) {
+  const tot = totalPool(m);
+  const cells = m.pools.map((p, i) => `<div class="pool" style="--c:${bucketColor(m, i)}${highlight === i ? ";outline:2px solid var(--c)" : ""}"><b>${bucketLabel(m, i)}</b><span class="amt">${fmtAmt(p, 0)} ${TOKEN_SYMBOL}</span><div class="pct">${tot ? Math.round((p / tot) * 100) + "% of pool" : "no bets yet"}</div></div>`).join("");
+  const bar = m.pools.map((p, i) => `<i style="width:${tot ? (p / tot) * 100 : 100 / m.nBuckets}%;background:${bucketColor(m, i)}"></i>`).join("");
+  return `<div class="pools n${m.nBuckets}">${cells}</div><div class="bar multi">${bar}</div>${m.seed ? `<div class="note">+ ${fmtAmt(m.seed, 0)} ${TOKEN_SYMBOL} house prize added to the winning bucket, fee-free.</div>` : ""}`;
 }
 
 export function mountNetBadge() {

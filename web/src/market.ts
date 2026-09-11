@@ -1,13 +1,13 @@
 import { PublicKey } from "@solana/web3.js";
-import { buildPlaceBetTx, confirmBySig, currentFeeBps, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
+import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
 import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel } from "./metrics";
-import { fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, statusPill, timeLeft } from "./ui";
+import { bucketColor, bucketLabel, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, statusPill, timeLeft } from "./ui";
 import { TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 
 mountNetBadge(); mountWallet();
 const root = document.getElementById("market")!;
 const id = Number(new URLSearchParams(location.search).get("id"));
-let m: MarketView, cfg: any, side: "yes" | "no" = "yes";
+let m: MarketView, cfg: any, bucket = 0;
 
 async function load() { [m, cfg] = await Promise.all([fetchMarket(id), fetchConfig()]); render(); }
 function render() {
@@ -17,10 +17,10 @@ function render() {
   document.title = `Kubrai · ${metricLabel(m.metric)}`;
   root.innerHTML = `
     <div class="meta" style="display:flex;gap:10px;color:var(--dim);font-size:13px">${statusPill(m)}<span>Market #${m.id}</span><span>${m.status === 0 ? timeLeft(m.closeTs) : ""}</span></div>
-    <h1>${metricLabel(m.metric)} ≥&nbsp;<span class="mono">${fmtValue(m.metric, m.threshold)}</span>?</h1>
+    <h1>${m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥&nbsp;<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>?` : `${metricLabel(m.metric)}: which range?`}</h1>
     <p class="lead">${copy?.how ?? ""}</p>
     <div class="kv" style="margin-bottom:16px">${copy?.cumulative ? `<b>Baseline at open</b><span class="mono">${fmtValue(m.metric, m.baseline)}</span>` : `<b>Value at open</b><span class="mono">${fmtValue(m.metric, m.baseline)}</span>`}<b>Data source</b><span>${SOURCE_LABEL[copy?.source ?? "thirdparty"]}</span></div>
-    ${poolsHtml(m)}
+    ${poolsHtml(m, m.status >= 1 && m.proposedOutcome !== NO_OUTCOME ? m.proposedOutcome : -1)}
     <h2>Bet</h2>
     <div id="bet"></div>
     <h2>Schedule</h2>
@@ -28,7 +28,7 @@ function render() {
       <b>Betting opens</b><span>${fmtTs(m.openTs)}</span>
       <b>Betting closes</b><span>${fmtTs(m.closeTs)}</span>
       <b>Early-bird fee</b><span>${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyUntil)}, then ${cfg.feeBps / 100}%</span>
-      <b>Result proposed</b><span>${m.proposedAt ? `${fmtTs(m.proposedAt)} · ${m.proposedOutcome === 1 ? "YES" : "NO"} · observed <span class="mono">${fmtValue(m.metric, m.proposedValue)}</span>` : "after close"}</span>
+      <b>Result proposed</b><span>${m.proposedAt ? `${fmtTs(m.proposedAt)} · observed <span class="mono">${fmtValue(m.metric, m.proposedValue)}</span> → <b>${bucketLabel(m, m.proposedOutcome)}</b>` : "after close"}</span>
       <b>Dispute window</b><span>${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize</span>
       <b>Snapshot hash</b><span class="hash">${m.proposedAt ? m.snapshotHash : "—"}</span>
       <b>Market account</b><span class="hash">${m.pubkey.toBase58()}</span>
@@ -40,33 +40,33 @@ function renderBet(open: boolean, fee: number) {
   const s = getSession();
   if (!open) { box.innerHTML = `<div class="note">${m.status === 0 && Date.now() / 1000 < m.openTs ? "Betting has not opened yet." : "Betting is closed for this market."}</div>`; return; }
   box.innerHTML = `<div class="betbox">
-    <div class="sides"><button class="yes-side ${side === "yes" ? "on" : ""}" data-s="yes">YES</button><button class="no-side ${side === "no" ? "on" : ""}" data-s="no">NO</button></div>
+    <div class="sides">${m.pools.map((_, i) => `<button class="${bucket === i ? "on" : ""}" style="--c:${bucketColor(m, i)}" data-b="${i}">${bucketLabel(m, i)}</button>`).join("")}</div>
     <input id="amt" type="number" min="${cfg.minBet.toNumber() / 10 ** TOKEN_DECIMALS}" step="1" placeholder="Amount in ${TOKEN_SYMBOL}">
     <div class="quote" id="quote"></div>
-    ${s ? `<button class="primary ${side}" id="go">Place bet</button>` : `<div class="note">Connect a wallet above to bet.</div>`}
+    ${s ? `<button class="primary" id="go" style="background:${bucketColor(m, bucket)};border-color:${bucketColor(m, bucket)}">Place bet on “${bucketLabel(m, bucket)}”</button>` : `<div class="note">Connect a wallet above to bet.</div>`}
     <div id="msg"></div>
     <div class="note">Parimutuel: the quote is what you'd get if pools stayed as they are now. Fee (${fee / 100}%) applies to winnings only, locked in at the time of this bet.</div>
   </div>`;
   const amtEl = box.querySelector<HTMLInputElement>("#amt")!, quote = box.querySelector("#quote")!;
   const upd = () => {
     const a = Math.round((Number(amtEl.value) || 0) * 10 ** TOKEN_DECIMALS);
-    if (!a) { quote.innerHTML = `<span class="note">Enter an amount to see the payout if ${side.toUpperCase()} wins.</span>`; return; }
-    const q = impliedPayout(m, side, a, fee);
-    quote.innerHTML = `<span>If <b>${side.toUpperCase()}</b> wins you receive</span><span class="big">${fmtAmt(q.total)} ${TOKEN_SYMBOL}</span><span class="note">= your ${fmtAmt(a)} back + ${fmtAmt(q.fromLosers)} from the losing pool − ${fmtAmt(q.fee)} fee${q.fromSeed ? ` + ${fmtAmt(q.fromSeed)} house prize (fee-free)` : ""}. If ${side === "yes" ? "NO" : "YES"} wins you lose ${fmtAmt(a)}.</span>`;
+    if (!a) { quote.innerHTML = `<span class="note">Enter an amount to see the payout if “${bucketLabel(m, bucket)}” wins.</span>`; return; }
+    const q = impliedPayout(m, bucket, a, fee);
+    quote.innerHTML = `<span>If <b>${bucketLabel(m, bucket)}</b> wins you receive</span><span class="big">${fmtAmt(q.total)} ${TOKEN_SYMBOL}</span><span class="note">= your ${fmtAmt(a)} back + ${fmtAmt(q.fromLosers)} from the losing pools − ${fmtAmt(q.fee)} fee${q.fromSeed ? ` + ${fmtAmt(q.fromSeed)} house prize (fee-free)` : ""}. Any other outcome loses ${fmtAmt(a)}.</span>`;
   };
   amtEl.oninput = upd; upd();
-  box.querySelectorAll<HTMLButtonElement>(".sides button").forEach((b) => (b.onclick = () => { side = b.dataset.s as any; renderBet(open, fee); }));
+  box.querySelectorAll<HTMLButtonElement>(".sides button").forEach((b) => (b.onclick = () => { bucket = Number(b.dataset.b); renderBet(open, fee); }));
   const go = box.querySelector<HTMLButtonElement>("#go"), msg = box.querySelector("#msg")!;
   if (go) go.onclick = async () => {
     const sess = getSession()!; const a = Math.round((Number(amtEl.value) || 0) * 10 ** TOKEN_DECIMALS);
     if (a < cfg.minBet.toNumber()) { msg.innerHTML = `<div class="msg err">Minimum bet is ${fmtAmt(cfg.minBet.toNumber())} ${TOKEN_SYMBOL}.</div>`; return; }
     go.disabled = true; msg.innerHTML = `<div class="msg">Confirm in your wallet…</div>`;
     try {
-      const tx = await buildPlaceBetTx(sess.publicKey, m, side, a, new PublicKey(cfg.mint));
+      const tx = await buildPlaceBetTx(sess.publicKey, m, bucket, a, new PublicKey(cfg.mint));
       const sig = await sess.signAndSend(tx);
       msg.innerHTML = `<div class="msg">Sent. Waiting for confirmation… <span class="hash">${sig}</span></div>`;
       await confirmBySig(sig);
-      msg.innerHTML = `<div class="msg ok">Bet placed: ${fmtAmt(a)} ${TOKEN_SYMBOL} on ${side.toUpperCase()}.</div>`;
+      msg.innerHTML = `<div class="msg ok">Bet placed: ${fmtAmt(a)} ${TOKEN_SYMBOL} on “${bucketLabel(m, bucket)}”.</div>`;
       await load(); await showPosition();
     } catch (e: any) { msg.innerHTML = `<div class="msg err">${e?.message ?? e}</div>`; go.disabled = false; }
   };
@@ -75,7 +75,8 @@ async function showPosition() {
   const s = getSession(); if (!s) return;
   const p = await fetchPosition(m.pubkey, s.publicKey); if (!p) return;
   const el = document.createElement("div"); el.className = "kv"; el.style.marginTop = "12px";
-  el.innerHTML = `<b>Your position</b><span>YES ${fmtAmt(p.yesAmount.toNumber())} · NO ${fmtAmt(p.noAmount.toNumber())} ${TOKEN_SYMBOL}</span>`;
+  const parts = (p.amounts as any[]).slice(0, m.nBuckets).map((x, i) => [x.toNumber(), i]).filter(([x]) => x > 0).map(([x, i]) => `${bucketLabel(m, i)}: ${fmtAmt(x)}`);
+  el.innerHTML = `<b>Your position</b><span>${parts.length ? parts.join(" · ") + " " + TOKEN_SYMBOL : "none"}</span>`;
   document.getElementById("bet")!.appendChild(el);
 }
 onSession(() => { if (m) { render(); showPosition(); } });
