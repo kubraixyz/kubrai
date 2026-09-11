@@ -14,10 +14,10 @@ import { toUint8Array } from "js-base64";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
-const CHAIN = "solana";
 import Constants from "expo-constants";
 const CLUSTER = (Constants.expoConfig?.extra?.cluster as string) === "mainnet" ? "mainnet" : "devnet";
-const CHAIN_IDENTIFIER = `${CHAIN}:${CLUSTER}`;
+// Literal type so it satisfies the MWA `Chain` type.
+const CHAIN_IDENTIFIER: "solana:mainnet" | "solana:devnet" = CLUSTER === "mainnet" ? "solana:mainnet" : "solana:devnet";
 
 export type Account = Readonly<{
   address: Base64EncodedAddress;

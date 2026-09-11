@@ -24,7 +24,7 @@ export function MarketScreen() {
   const open = !!m && m.status === 0 && Date.now() / 1000 >= m.openTs && Date.now() / 1000 < m.closeTs;
   const a = Math.round((Number(amt) || 0) * 10 ** TOKEN_DECIMALS);
   const quote = useMemo(() => (m && a ? impliedPayout(m, bucket, a, fee) : null), [m, a, bucket, fee]);
-  const myPos = positions.data?.find((p) => m && p.market.equals(m.pubkey));
+  const myPos = positions.data?.find((p: any) => m && p.market.equals(m.pubkey));
 
   async function placeBet() {
     if (!m || !cfg) return;
@@ -72,7 +72,7 @@ export function MarketScreen() {
           <Button mode="contained" buttonColor={bucketColor(m, bucket)} textColor="#fff" loading={busy} disabled={busy} onPress={placeBet}>{selectedAccount ? `Place bet on “${bucketLabel(m, bucket)}”` : "Connect wallet & bet"}</Button>
           {msg && <Text style={{ color: msg.kind === "err" ? theme.colors.error : msg.kind === "ok" ? "#0f8f7c" : undefined }}>{msg.text}</Text>}
           <Text variant="bodySmall" style={styles.dim}>Parimutuel: the quote assumes pools stay as they are. Fee ({fee / 100}%) applies to winnings only and is locked in at the time of this bet.</Text>
-          {myPos && <KV k="Your position" v={myPos.amounts.slice(0, m.nBuckets).map((x, i) => (x ? `${bucketLabel(m, i)}: ${fmtAmt(x)}` : "")).filter(Boolean).join(" · ") + " " + TOKEN_SYMBOL} />}
+          {myPos && <KV k="Your position" v={myPos.amounts.slice(0, m.nBuckets).map((x: number, i: number) => (x ? `${bucketLabel(m, i)}: ${fmtAmt(x)}` : "")).filter(Boolean).join(" · ") + " " + TOKEN_SYMBOL} />}
         </View>
       )}
 

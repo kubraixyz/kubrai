@@ -18,7 +18,7 @@ export function MyBetsScreen() {
   const settled = useQuery({ queryKey: ["settled", selectedAccount?.publicKey.toBase58()], queryFn: () => fetchSettled(selectedAccount!.publicKey.toBase58()), enabled: !!selectedAccount, refetchInterval: 60_000 });
   if (!selectedAccount) return <View style={styles.center}><Text style={{ marginBottom: 12 }}>Connect a wallet to see your bets.</Text><Button mode="contained" onPress={() => connect()}>Connect wallet</Button></View>;
   const byKey = new Map((markets.data ?? []).map((m) => [m.pubkey.toBase58(), m]));
-  const rows = (positions.data ?? []).map((p) => ({ p, m: byKey.get(p.market.toBase58()) })).filter((x) => x.m) as { p: any; m: any }[];
+  const rows = (positions.data ?? []).map((p: any) => ({ p, m: byKey.get(p.market.toBase58()) })).filter((x: any) => x.m) as { p: any; m: any }[];
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <Text variant="headlineSmall" style={{ marginBottom: 8 }}>My bets</Text>
