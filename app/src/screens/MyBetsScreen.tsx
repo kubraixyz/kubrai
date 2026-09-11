@@ -14,6 +14,17 @@ import { PoolBar } from "../components/PoolBar";
 import { APP, TOKEN_SYMBOL } from "../config";
 
 const GREEN = "#0f8f7c", RED = "#c4553f";
+function Big({ label, value, color, right }: { label: string; value: string; color?: string; right?: boolean }) {
+  return (
+    <View style={{ flex: 1, alignItems: right ? "flex-end" : "flex-start" }}>
+      <Text variant="labelSmall" style={styles.dim}>{label}</Text>
+      <View style={{ flexDirection: "row", alignItems: "baseline", gap: 5 }}>
+        <Text style={[styles.bigNum, color ? { color } : null]}>{value}</Text>
+        <Text variant="labelMedium" style={styles.dim}>{TOKEN_SYMBOL}</Text>
+      </View>
+    </View>
+  );
+}
 
 export function MyBetsScreen() {
   const nav = useNavigation<any>(); const theme = useTheme();
@@ -51,8 +62,8 @@ export function MyBetsScreen() {
           <View style={{ marginTop: 10 }}><PoolBar m={m} compact highlight={w !== NO_OUTCOME ? w : myBuckets.length === 1 ? myBuckets[0].i : -1} /></View>
           <View style={styles.chips}>{myBuckets.map((b: any) => <View key={b.i} style={[styles.chip, { borderColor: bucketColor(m, b.i) }]}><View style={[styles.dot, { backgroundColor: bucketColor(m, b.i) }]} /><Text variant="labelMedium">{bucketLabel(m, b.i)} · {fmtAmt(b.a)}</Text></View>)}</View>
           <View style={styles.nums}>
-            <View style={{ flex: 1 }}><Text variant="labelSmall" style={styles.dim}>You staked</Text><Text variant="headlineSmall" style={styles.mono}>{fmtAmt(staked)} <Text variant="labelMedium" style={styles.dim}>{TOKEN_SYMBOL}</Text></Text></View>
-            <View style={{ flex: 1, alignItems: "flex-end" }}><Text variant="labelSmall" style={styles.dim}>{valueLabel}</Text><Text variant="headlineSmall" style={[styles.mono, { color: tone }]}>{fmtAmt(value)} <Text variant="labelMedium" style={styles.dim}>{TOKEN_SYMBOL}</Text></Text></View>
+            <Big label="You staked" value={fmtAmt(staked)} />
+            <Big label={valueLabel} value={fmtAmt(value)} color={tone} right />
           </View>
           <Text variant="labelSmall" style={styles.dim}>{sub}</Text>
         </>, () => nav.navigate("Market", { id: m.id }), p.pubkey.toBase58());
@@ -70,8 +81,8 @@ export function MyBetsScreen() {
           <Text variant="titleMedium" style={{ marginTop: 6 }}>{m ? title(m) : s.metric}</Text>
           <Text variant="bodySmall" style={[styles.dim, { marginTop: 2 }]}>{s.status === 3 ? "Market voided" : `Result: ${m ? bucketLabel(m, s.outcome) : "bucket " + s.outcome} · observed ${m ? fmtValue(m.metric, Number(s.observed)) : s.observed}`}</Text>
           <View style={styles.nums}>
-            <View style={{ flex: 1 }}><Text variant="labelSmall" style={styles.dim}>You staked</Text><Text variant="headlineSmall" style={styles.mono}>{fmtAmt(staked)} <Text variant="labelMedium" style={styles.dim}>{TOKEN_SYMBOL}</Text></Text></View>
-            <View style={{ flex: 1, alignItems: "flex-end" }}><Text variant="labelSmall" style={styles.dim}>Paid to you</Text><Text variant="headlineSmall" style={[styles.mono, { color: won ? GREEN : lost ? RED : theme.colors.onSurface }]}>{lost ? "0" : fmtAmt(Number(s.payout))} <Text variant="labelMedium" style={styles.dim}>{TOKEN_SYMBOL}</Text></Text></View>
+            <Big label="You staked" value={fmtAmt(staked)} />
+            <Big label="Paid to you" value={lost ? "0" : fmtAmt(Number(s.payout))} color={won ? GREEN : lost ? RED : undefined} right />
           </View>
           <Button compact style={{ alignSelf: "flex-start", marginTop: 4 }} onPress={() => Linking.openURL(`https://explorer.solana.com/tx/${s.signature}?cluster=${APP.cluster === "mainnet" ? "mainnet-beta" : "devnet"}`)}>View transaction</Button>
         </>, undefined, s.signature);
@@ -83,5 +94,6 @@ const styles = StyleSheet.create({
   screen: { padding: 16, paddingBottom: 48 }, center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }, dim: { opacity: 0.7 },
   card: { borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 12 }, row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }, chip: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 999, paddingVertical: 4, paddingHorizontal: 10 }, dot: { width: 8, height: 8, borderRadius: 4 },
-  nums: { flexDirection: "row", marginTop: 12, gap: 12 }, mono: { fontVariant: ["tabular-nums"], fontWeight: "600" }, badge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  nums: { flexDirection: "row", marginTop: 12, gap: 12 }, mono: { fontVariant: ["tabular-nums"], fontWeight: "600" },
+  bigNum: { fontSize: 26, lineHeight: 32, fontWeight: "700", fontVariant: ["tabular-nums"], includeFontPadding: false }, badge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
 });
