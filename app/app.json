@@ -39,8 +39,14 @@
       "programId": "F9qowxW3hmwrzDeKQXpL4rVmFcPvWe7e43oGnWU3AvQb"
     },
     "plugins": [
-      "expo-asset",
-      "expo-font"
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf"
+          ]
+        }
+      ]
     ]
   }
 }

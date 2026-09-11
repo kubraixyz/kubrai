@@ -1,5 +1,5 @@
 import { StyleSheet } from "react-native";
-import { Appbar, useTheme } from "react-native-paper";
+import { Appbar, Button, useTheme } from "react-native-paper";
 import { TopBarWalletButton, TopBarWalletMenu } from "./top-bar-ui";
 import { useNavigation } from "@react-navigation/core";
 
@@ -12,14 +12,9 @@ export function TopBar() {
       <Appbar.Content title="Kubrai" titleStyle={{ fontWeight: "700", letterSpacing: 0.5 }} />
       <TopBarWalletMenu />
 
-      <Appbar.Action
-        icon="cog"
-        iconColor={theme.colors.onSurface}
-        mode="contained-tonal"
-        onPress={() => {
-          navigation.navigate("Settings");
-        }}
-      />
+      <Button mode="outlined" compact icon="cog" textColor={theme.colors.onSurface} onPress={() => navigation.navigate("Settings")} style={{ marginRight: 8 }}>
+        Settings
+      </Button>
     </Appbar.Header>
   );
 }
