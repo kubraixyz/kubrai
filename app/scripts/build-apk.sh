@@ -32,6 +32,9 @@ KP
 python3 - <<'PY'
 import re,io
 p='android/app/build.gradle'; s=open(p).read()
+# Prebuilt RN/Hermes libraries ship every ABI; abiFilters is what actually drops the other three from the APK.
+if 'abiFilters' not in s:
+    s=re.sub(r'(defaultConfig \{\n)', r'\1        ndk { abiFilters "arm64-v8a" }\n', s, count=1)
 if 'keystore.properties' not in s:
     s=s.replace('android {', '''def ksProps = new Properties()
 def ksFile = rootProject.file("keystore.properties")
