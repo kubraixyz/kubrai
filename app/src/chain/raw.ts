@@ -16,7 +16,7 @@ export const discBase58 = (d: Uint8Array) => bs58.encode(d);
 
 class Reader {
   private dv: DataView; private o: number;
-  constructor(private u8: Uint8Array, offset = 8) { this.dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength); this.o = offset; }
+  constructor(private buf: Uint8Array, offset = 8) { this.dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength); this.o = offset; }
   u8() { return this.dv.getUint8(this.o++); }
   bool() { return this.u8() !== 0; }
   u16() { const v = this.dv.getUint16(this.o, true); this.o += 2; return v; }
@@ -24,7 +24,7 @@ class Reader {
   u64() { const lo = this.dv.getUint32(this.o, true), hi = this.dv.getUint32(this.o + 4, true); this.o += 8; return hi * 4294967296 + lo; }          // exact up to 2^53
   i64() { const lo = this.dv.getUint32(this.o, true), hi = this.dv.getInt32(this.o + 4, true); this.o += 8; return hi * 4294967296 + lo; }
   u128() { const v = this.dv.getBigUint64(this.o, true) + (this.dv.getBigUint64(this.o + 8, true) << 64n); this.o += 16; return v; }
-  bytes(n: number) { const v = this.u8.subarray(this.o, this.o + n); this.o += n; return v; }
+  bytes(n: number) { const v = this.buf.subarray(this.o, this.o + n); this.o += n; return v; }
   pubkey() { return new PublicKey(this.bytes(32)); }
   get offset() { return this.o; }
 }
