@@ -445,7 +445,8 @@ export type Kubrai = {
     {
       "name": "seedMarket",
       "docs": [
-        "Anyone (normally the treasury) adds a fee-free prize to the pot."
+        "Anyone (normally the treasury) adds a fee-free prize to the pot. Note: on void or",
+        "no-winner the seed is swept to the treasury, not returned to a third-party funder."
       ],
       "discriminator": [
         135,
@@ -1018,6 +1019,11 @@ export type Kubrai = {
       "code": 6015,
       "name": "badBuckets",
       "msg": "bad bucket definition or index"
+    },
+    {
+      "code": 6016,
+      "name": "mathOverflow",
+      "msg": "arithmetic overflow"
     }
   ],
   "types": [

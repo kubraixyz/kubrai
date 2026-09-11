@@ -15,7 +15,8 @@ export const KubraiErrorCode = {
   AlreadyFinal: 6012,
   NotResolved: 6013,
   PositionsOutstanding: 6014,
-  BadBuckets: 6015
+  BadBuckets: 6015,
+  MathOverflow: 6016
 };
 
 export type KubraiErrorName = keyof typeof KubraiErrorCode;
