@@ -14,6 +14,7 @@ export function TopBar() {
 
       <Appbar.Action
         icon="cog"
+        iconColor={theme.colors.onSurface}
         mode="contained-tonal"
         onPress={() => {
           navigation.navigate("Settings");

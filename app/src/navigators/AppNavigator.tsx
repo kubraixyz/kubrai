@@ -66,34 +66,9 @@ export interface NavigationProps
 
 export const AppNavigator = (props: NavigationProps) => {
   const colorScheme = useColorScheme();
-  const { LightTheme, DarkTheme } = adaptNavigationTheme({
-    reactNavigationLight: NavigationDefaultTheme,
-    reactNavigationDark: NavigationDarkTheme,
-  });
-
-  const CombinedDefaultTheme = {
-    ...MD3LightTheme,
-    ...LightTheme,
-    colors: {
-      ...MD3LightTheme.colors,
-      ...LightTheme.colors,
-    },
-  };
-  const CombinedDarkTheme = {
-    ...MD3DarkTheme,
-    ...DarkTheme,
-    colors: {
-      ...MD3DarkTheme.colors,
-      ...DarkTheme.colors,
-    },
-  };
-
   return (
-    <NavigationContainer
-      theme={colorScheme === "dark" ? CombinedDarkTheme : CombinedDefaultTheme}
-      {...props}
-    >
-      <StatusBar />
+    <NavigationContainer {...props}>
+      <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
       <AppStack />
     </NavigationContainer>
   );
