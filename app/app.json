@@ -36,6 +36,10 @@
       "apiBase": "https://api-devnet.kubrai.xyz",
       "rpcUrl": "https://api.devnet.solana.com",
       "programId": "F9qowxW3hmwrzDeKQXpL4rVmFcPvWe7e43oGnWU3AvQb"
-    }
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-font"
+    ]
   }
 }
