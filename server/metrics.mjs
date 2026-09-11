@@ -72,7 +72,7 @@ export async function storeReviewers7d() {
     let after = null, newHere = 0;
     for (let page = 0; page < 30; page++) {
       let d; try { requests++; d = await storeGql(`query R($systemContext: SystemContext!, $p: String!, $after: String) { dAppReviews(systemContext: $systemContext, androidPackage: $p, first: 20, after: $after) { edges { node { id createdAt rating walletAddress domain } } pageInfo { hasNextPage endCursor } } }`, { p: pkg, after }); } catch { failures++; return; }
-      const conn = d.dAppReviews; let oldest = Infinity;
+      const conn = d?.dAppReviews; if (!conn) { failures++; return; } let oldest = Infinity;
       for (const { node: r } of conn.edges) { const t = Date.parse(r.createdAt); oldest = Math.min(oldest, t); if (t >= since) { reviews++; newHere++; if (r.walletAddress) wallets.add(r.walletAddress); if (r.domain) domains.add(r.domain); } }
       if (!conn.pageInfo.hasNextPage || oldest < hardStop) break; after = conn.pageInfo.endCursor;
     }
