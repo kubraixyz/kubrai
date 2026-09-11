@@ -1,11 +1,12 @@
-import { getRandomValues as expoCryptoGetRandomValues } from "expo-crypto";
 import { Buffer } from "buffer";
 
+// Every shim is isolated: a failing polyfill must never take the app down at startup.
 const g: any = globalThis as any;
-g.Buffer = Buffer;
+const safe = (name: string, fn: () => void) => { try { fn(); } catch (e) { try { (g.__polyfillErrors ??= []).push(name + ": " + String((e as any)?.message ?? e)); } catch {} } };
 
-// --- structuredClone: Hermes does not ship it; Anchor calls it. Three layers so we never end up with undefined.
-(() => {
+safe("Buffer", () => { if (!g.Buffer) g.Buffer = Buffer; });
+
+safe("structuredClone", () => {
   if (typeof g.structuredClone === "function") return;
   let impl: any;
   try { const m = require("@ungap/structured-clone"); impl = typeof m === "function" ? m : typeof m?.default === "function" ? m.default : undefined; } catch {}
@@ -22,27 +23,31 @@ g.Buffer = Buffer;
     };
   }
   g.structuredClone = impl;
-})();
+});
 
-// --- small ES2022/2023 gaps seen on older Hermes builds
-if (typeof Object.hasOwn !== "function") (Object as any).hasOwn = (o: any, k: PropertyKey) => Object.prototype.hasOwnProperty.call(o, k);
-if (typeof (Array.prototype as any).at !== "function") (Array.prototype as any).at = function (i: number) { i = Math.trunc(i) || 0; if (i < 0) i += this.length; return i < 0 || i >= this.length ? undefined : this[i]; };
-if (typeof (String.prototype as any).at !== "function") (String.prototype as any).at = function (i: number) { i = Math.trunc(i) || 0; if (i < 0) i += this.length; return i < 0 || i >= this.length ? undefined : this[i]; };
-if (typeof (Array.prototype as any).findLast !== "function") (Array.prototype as any).findLast = function (fn: any) { for (let i = this.length - 1; i >= 0; i--) if (fn(this[i], i, this)) return this[i]; };
-if (typeof g.TextEncoder === "undefined" || typeof g.TextDecoder === "undefined") {
-  try { const te = require("text-encoding"); g.TextEncoder ??= te.TextEncoder; g.TextDecoder ??= te.TextDecoder; } catch {}
-}
+safe("es-shims", () => {
+  if (typeof Object.hasOwn !== "function") (Object as any).hasOwn = (o: any, k: PropertyKey) => Object.prototype.hasOwnProperty.call(o, k);
+  if (typeof (Array.prototype as any).at !== "function") Object.defineProperty(Array.prototype, "at", { configurable: true, writable: true, value: function (i: number) { i = Math.trunc(i) || 0; if (i < 0) i += this.length; return i < 0 || i >= this.length ? undefined : this[i]; } });
+  if (typeof (String.prototype as any).at !== "function") Object.defineProperty(String.prototype, "at", { configurable: true, writable: true, value: function (i: number) { i = Math.trunc(i) || 0; if (i < 0) i += this.length; return i < 0 || i >= this.length ? undefined : this[i]; } });
+  if (typeof (Array.prototype as any).findLast !== "function") Object.defineProperty(Array.prototype, "findLast", { configurable: true, writable: true, value: function (fn: any) { for (let i = this.length - 1; i >= 0; i--) if (fn(this[i], i, this)) return this[i]; } });
+});
 
+safe("TextDecoder", () => {
+  if (typeof g.TextDecoder !== "undefined" && typeof g.TextEncoder !== "undefined") return;
+  const te = require("text-encoding");
+  if (typeof g.TextEncoder === "undefined") g.TextEncoder = te.TextEncoder;
+  if (typeof g.TextDecoder === "undefined") g.TextDecoder = te.TextDecoder;
+});
 
-// --- AbortSignal.timeout (used by Anchor's provider); Hermes has AbortController but not the static helper.
-if (typeof g.AbortSignal !== "undefined" && typeof g.AbortSignal.timeout !== "function") {
-  g.AbortSignal.timeout = (ms: number) => { const c = new AbortController(); setTimeout(() => c.abort(new Error("timeout")), ms); return c.signal; };
-}
+safe("AbortSignal.timeout", () => {
+  if (typeof g.AbortSignal === "undefined" || typeof g.AbortSignal.timeout === "function") return;
+  Object.defineProperty(g.AbortSignal, "timeout", { configurable: true, writable: true, value: (ms: number) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; } });
+});
 
-// --- crypto.getRandomValues
-class Crypto { getRandomValues = expoCryptoGetRandomValues; }
-const webCrypto = typeof crypto !== "undefined" ? crypto : new Crypto();
-(() => { if (typeof crypto === "undefined") Object.defineProperty(g, "crypto", { configurable: true, enumerable: true, get: () => webCrypto }); })();
+safe("crypto.getRandomValues", () => {
+  const { getRandomValues } = require("expo-crypto");
+  if (typeof g.crypto === "undefined") Object.defineProperty(g, "crypto", { configurable: true, enumerable: true, get: () => ({ getRandomValues }) });
+  else if (typeof g.crypto.getRandomValues !== "function") g.crypto.getRandomValues = getRandomValues;
+});
 
-// Keep the last few runtime errors for feedback reports.
-try { require("./utils/errorLog").installGlobalErrorLog(); } catch {}
+safe("errorLog", () => { require("./utils/errorLog").installGlobalErrorLog(); });

@@ -9,12 +9,14 @@ import { ConnectionProvider } from "./src/utils/ConnectionProvider";
 import { AppNavigator } from "./src/navigators/AppNavigator";
 import { ClusterProvider } from "./src/components/cluster/cluster-data-access";
 import { KubraiDark, KubraiLight } from "./src/theme";
+import { ErrorBoundary } from "./src/components/ErrorBoundary";
 
 const queryClient = new QueryClient();
 
 export default function App() {
   const theme = useColorScheme() === "dark" ? KubraiDark : KubraiLight;
   return (
+    <ErrorBoundary>
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <ClusterProvider>
@@ -29,6 +31,7 @@ export default function App() {
         </ClusterProvider>
       </QueryClientProvider>
     </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 const styles = StyleSheet.create({ shell: { flex: 1 } });

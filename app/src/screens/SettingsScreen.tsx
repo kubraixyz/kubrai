@@ -46,7 +46,7 @@ export function SettingsScreen() {
       <Text style={styles.dim}>kubrai.xyz</Text>
       <Divider style={{ marginVertical: 16 }} />
       <Text variant="titleMedium">Diagnostics</Text>
-      <Text style={styles.dim}>app {Constants.expoConfig?.version} · insets t{insets.top} b{insets.bottom} · structuredClone {typeof (globalThis as any).structuredClone} · TextDecoder {typeof (globalThis as any).TextDecoder} · hermes {typeof (globalThis as any).HermesInternal === "object" ? "yes" : "no"}</Text>
+      <Text style={styles.dim}>app {Constants.expoConfig?.version} · insets t{insets.top} b{insets.bottom} · structuredClone {typeof (globalThis as any).structuredClone} · TextDecoder {typeof (globalThis as any).TextDecoder} · hermes {typeof (globalThis as any).HermesInternal === "object" ? "yes" : "no"} · shim errors {((globalThis as any).__polyfillErrors ?? []).length}</Text>
     </ScrollView>
   );
 }
