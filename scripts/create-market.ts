@@ -12,7 +12,7 @@ import * as path from "path";
 
 const SNAP = process.env.SNAPSHOT_DIR ?? path.join(__dirname, "..", "server", "snapshots");
 const APP_SLUGS: Record<string, string> = { jupiter: "ag.jup.jupiter.android", tokenrun: "com.tokenrun.app", mattle: "fun.mattle.twa", cherry: "fun.cherry", seedvault: "com.solanamobile.wallet", lootgo: "com.lootgo.app", jito: "network.jito.www.twa", sleepagotchi: "com.sleepagotchi.soft.app", moonwalk: "fit.moonwalk.mobile.app", ore: "supply.ore.app" };
-const SOURCE: Record<string, string[]> = { skr_ids_week: ["skr_ids_onchain", "skr_ids_total"], dapps_week: ["dapp_store_active_apps"], skr_staked_med7: ["skr_staked"], das_med7: ["das"], skr_price_close: ["skr_price_usd_e8"] };
+const SOURCE: Record<string, string[]> = { sgt_week: ["sgt_total"], skr_ids_week: ["skr_ids_onchain", "skr_ids_total"], dapps_week: ["dapp_store_active_apps"], skr_staked_med7: ["skr_staked"], das_med7: ["das"], skr_price_close: ["skr_price_usd_e8"] };
 /** Baseline = metric value in the latest snapshot. Refuses to create a market without one unless NO_BASELINE=1. */
 function baselineFor(metric: string): { value: number; day: string } {
   const days = fs.existsSync(SNAP) ? fs.readdirSync(SNAP).filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort() : [];

@@ -9,7 +9,7 @@ import path from "node:path";
 const [metric, nb = "4", wk = "12"] = process.argv.slice(2);
 const N = Number(nb), W = Number(wk);
 const SNAP = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots");
-const SOURCE = { skr_ids_week: ["skr_ids_onchain", "skr_ids_total"], dapps_week: ["dapp_store_active_apps"], skr_staked_med7: ["skr_staked"] };
+const SOURCE = { sgt_week: ["sgt_total"], skr_ids_week: ["skr_ids_onchain", "skr_ids_total"], dapps_week: ["dapp_store_active_apps"], skr_staked_med7: ["skr_staked"] };
 const dayVal = (b, m) => { if (m.startsWith("rev_week:")) return b.metrics?.dapp_reviews?.raw?.[m.slice(9)]?.reviews; for (const f of SOURCE[m] ?? []) { const v = b.metrics?.[f]?.value; if (typeof v === "number") return v; } };
 
 let weekly = [];

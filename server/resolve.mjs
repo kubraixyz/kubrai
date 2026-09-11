@@ -42,7 +42,7 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 // ---------- metric evaluation from snapshot bundles ----------
 // metric tag → snapshot field. skr_ids prefers the on-chain count and falls back to the aggregator.
 // One source per metric — never fall back between counting bases inside a _week market.
-const SOURCE = { skr_ids_week: ["skr_ids_onchain"], dapps_week: ["dapp_store_active_apps"], skr_staked_med7: ["skr_staked"], das_med7: ["das"], skr_price_close: ["skr_price_usd_e8"] };
+const SOURCE = { sgt_week: ["sgt_total"], skr_ids_week: ["skr_ids_onchain"], dapps_week: ["dapp_store_active_apps"], skr_staked_med7: ["skr_staked"], das_med7: ["das"], skr_price_close: ["skr_price_usd_e8"] };
 const dayOf = (ts) => new Date(ts * 1000).toISOString().slice(0, 10);
 // A day's bundle is only trusted if its bytes hash to the sidecar AND to the hash published on-chain.
 const memoOk = new Map();
