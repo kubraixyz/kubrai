@@ -49,6 +49,13 @@ android {''',1)
     open(p,'w').write(s)
 PY
 ( cd android && ./gradlew --no-daemon -q assembleRelease )
-OUT="dist/kubrai-$(node -p "require('./app.json').expo.version")-$(node -p "require('./app.json').expo.extra.cluster").apk"
+VER="$(node -p "require('./app.json').expo.version")"; CODE="$(node -p "require('./app.json').expo.android.versionCode")"; CLUSTER="$(node -p "require('./app.json').expo.extra.cluster")"
+NAME="kubrai-${VER}-${CLUSTER}.apk"; OUT="dist/$NAME"
 mkdir -p dist && cp android/app/build/outputs/apk/release/app-release.apk "$OUT"
 echo "APK: $OUT ($(du -h "$OUT" | cut -f1))"
+# Publish: versioned file + latest.json, in a directory the web publish step never touches.
+PUB="${APK_PUBLISH_DIR:-$HOME/apps/kubrai/apk}"; mkdir -p "$PUB"; cp "$OUT" "$PUB/$NAME"
+SHA="$(sha256sum "$OUT" | cut -c1-64)"; SIZE="$(stat -c %s "$OUT")"
+printf '{"version":"%s","versionCode":%s,"cluster":"%s","file":"%s","sha256":"%s","bytes":%s,"builtAt":"%s"}\n' "$VER" "$CODE" "$CLUSTER" "$NAME" "$SHA" "$SIZE" "$(date -u +%FT%TZ)" > "$PUB/latest-$CLUSTER.json"
+ls -t "$PUB"/kubrai-*-"$CLUSTER".apk | tail -n +4 | xargs -r rm -f   # keep the last 3 builds
+echo "published $PUB/$NAME"

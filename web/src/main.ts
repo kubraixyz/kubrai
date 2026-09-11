@@ -24,3 +24,16 @@ function card(m: MarketView) {
     root.innerHTML = live.length ? live.map(card).join("") : `<div class="note">No open markets right now.</div>`;
   } catch (e: any) { root.innerHTML = `<div class="msg err">Could not load markets: ${e.message ?? e}</div>`; }
 })();
+
+// Android build link (served from /apk/, written by app/scripts/build-apk.sh)
+(async () => {
+  try {
+    const r = await fetch("/apk/latest-" + (import.meta.env.VITE_CLUSTER ?? "devnet") + ".json", { cache: "no-store" }); if (!r.ok) return;
+    const j = await r.json();
+    const a = document.getElementById("apklink") as HTMLAnchorElement | null, meta = document.getElementById("apkmeta"), p = document.getElementById("apk");
+    if (!a || !meta || !p) return;
+    a.href = "/apk/" + j.file; a.textContent = `Download Kubrai ${j.version} for Android (${j.cluster})`;
+    meta.textContent = `${(j.bytes / 1048576).toFixed(0)} MB · built ${new Date(j.builtAt).toLocaleDateString("en-GB", { dateStyle: "medium" })} · sha256 ${j.sha256.slice(0, 12)}…`;
+    p.hidden = false;
+  } catch {}
+})();
