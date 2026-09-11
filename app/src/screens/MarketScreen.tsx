@@ -11,13 +11,15 @@ import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, impliedPayout
 import { useConnection } from "../utils/ConnectionProvider";
 import { useAuthorization } from "../utils/useAuthorization";
 import { useMobileWallet } from "../utils/useMobileWallet";
-import { TOKEN_DECIMALS, TOKEN_SYMBOL } from "../config";
+import { APP, TOKEN_DECIMALS, TOKEN_SYMBOL } from "../config";
+import bs58 from "bs58";
 import { recordError } from "../utils/errorLog";
 
 export function MarketScreen() {
   const { params } = useRoute<any>(); const id = Number(params?.id);
   const theme = useTheme(); const { connection } = useConnection();
-  const { selectedAccount } = useAuthorization(); const { connect, signAndSendTransaction, signTransaction } = useMobileWallet();
+  const { selectedAccount } = useAuthorization(); const { connect, signAndSendTransaction, signTransaction, signMessage } = useMobileWallet();
+  const [dispute, setDispute] = useState<{ open: boolean; reason: string; claimed: string; msg: string; busy: boolean }>({ open: false, reason: "", claimed: "", msg: "", busy: false });
   const { data: m, isLoading } = useMarket(id); const { data: cfg } = useConfig(); const bal = useBalances(); const positions = usePositions(); const invalidate = useInvalidateAll();
   const [bucket, setBucket] = useState(0); const [amt, setAmt] = useState(""); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<{ kind: "ok" | "err" | "info"; text: string } | null>(null);
   const info = m ? metricInfo(m.metric) : undefined;
@@ -54,6 +56,20 @@ export function MarketScreen() {
       const friendly = /Cancellation/i.test(raw) ? "The wallet cancelled the request before signing. If you saw no wallet screen at all, the wallet may not accept devnet — try Phantom or Solflare with Testnet mode on." : /User declined|rejected/i.test(raw) ? "You declined the request in the wallet." : raw;
       setMsg({ kind: "err", text: friendly + (friendly !== raw ? `\n(${raw})` : "") });
     } finally { setBusy(false); }
+  }
+
+  async function fileDispute() {
+    if (!m) return; const account = selectedAccount ?? (await connect());
+    if (dispute.reason.trim().length < 5) { setDispute((d) => ({ ...d, msg: "Say what you observed (at least a sentence)." })); return; }
+    setDispute((d) => ({ ...d, busy: true, msg: "Sign the dispute in your wallet…" }));
+    try {
+      const reason = dispute.reason.trim().slice(0, 2000), claimed = dispute.claimed.trim();
+      const text = `kubrai-dispute v1\nmarket=${m.pubkey.toBase58()}\nwallet=${account.publicKey.toBase58()}\nclaimed=${claimed}\nreason=${reason}`;
+      const sig = await signMessage(new TextEncoder().encode(text));
+      const r = await fetch(APP.apiBase + "/dispute", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ market: m.pubkey.toBase58(), wallet: account.publicKey.toBase58(), reason, claimedValue: claimed || null, signature: bs58.encode(sig) }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.error ?? "failed");
+      setDispute({ open: false, reason: "", claimed: "", msg: "Dispute filed. The operator has been paged and must re-propose or void before the window ends.", busy: false });
+    } catch (e: any) { recordError(e, "dispute"); setDispute((d) => ({ ...d, busy: false, msg: e?.message ?? String(e) })); }
   }
 
   if (isLoading || !m) return <View style={styles.center}><ActivityIndicator /></View>;
@@ -101,6 +117,18 @@ export function MarketScreen() {
       {m.nBuckets > 2 && <KV k="How ranges are set" v="Cut at the quantiles of the last 12 weekly values, so every range started out roughly equally likely." />}
       {cfg && <KV k="Dispute window" v={`${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize`} />}
       <KV k="Snapshot hash" v={m.proposedAt ? m.snapshotHash : "—"} mono />
+      {m.status === 1 && cfg && (
+        <View style={[styles.quote, { backgroundColor: theme.colors.elevation.level2, marginTop: 12 }]}>
+          <Text variant="titleSmall">Disagree with the proposed result?</Text>
+          <Text variant="bodySmall" style={styles.dim}>Open until {fmtTs(m.proposedAt + cfg.disputeWindowSecs.toNumber())}. You sign a short message with your wallet; the operator is paged and must re-propose or void before the window ends. Nothing is charged.</Text>
+          {dispute.open ? (<>
+            <TextInput mode="outlined" dense multiline numberOfLines={3} value={dispute.reason} onChangeText={(v) => setDispute((d) => ({ ...d, reason: v }))} placeholder="What did you observe, and where?" />
+            <TextInput mode="outlined" dense keyboardType="numeric" value={dispute.claimed} onChangeText={(v) => setDispute((d) => ({ ...d, claimed: v }))} placeholder="Correct observed value (optional)" />
+            <View style={styles.row}><Button mode="contained" loading={dispute.busy} disabled={dispute.busy} onPress={fileDispute}>Sign &amp; file dispute</Button><Button onPress={() => setDispute((d) => ({ ...d, open: false }))}>Cancel</Button></View>
+          </>) : <Button mode="outlined" style={{ alignSelf: "flex-start" }} onPress={() => setDispute((d) => ({ ...d, open: true, msg: "" }))}>Dispute this result</Button>}
+          {!!dispute.msg && <Text style={{ color: /filed/.test(dispute.msg) ? "#0f8f7c" : theme.colors.error }}>{dispute.msg}</Text>}
+        </View>
+      )}
       <KV k="Market account" v={m.pubkey.toBase58()} mono />
     </ScrollView>
   );
