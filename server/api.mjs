@@ -5,6 +5,10 @@ import path from "node:path";
 import os from "node:os";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { getOrCreateAssociatedTokenAccount, getAssociatedTokenAddressSync, createTransferInstruction, createAssociatedTokenAccountIdempotentInstruction } from "@solana/spl-token";
+import nacl from "tweetnacl";
+import bs58 from "bs58";
+import { notify } from "./notify.mjs";
+import { renderOps, handleOpsAction } from "./ops.mjs";
 
 const PORT = Number(process.env.API_PORT ?? 8787);
 const CLUSTER = process.env.CLUSTER ?? "devnet";
@@ -22,6 +26,7 @@ const faucet = FAUCET_ENABLED && fs.existsSync(faucetKeyFile) ? Keypair.fromSecr
 const conn = new Connection(RPC, "confirmed");
 const mint = new PublicKey(state.mint);
 const FAUCET_DAILY_GLOBAL = Number(process.env.FAUCET_DAILY_GLOBAL ?? 300);
+const DISPUTES = path.join(SNAP, "disputes.jsonl");
 const DIAG_MAX = 32 * 1024;
 
 // rate limits: one faucet call per address per day, 20 per IP per day, a global daily cap; maps pruned daily
@@ -37,6 +42,14 @@ const FEEDBACK_DIR = process.env.FEEDBACK_DIR ?? path.join(os.homedir(), "apps",
 fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
 const seenFb = new Map();
 
+async function handleOps(req, res, url) {
+  const ctx = { conn, state, SNAP, FEEDBACK_DIR, DISPUTES, CLUSTER, mint, faucet, SECRETS, readBody };
+  if (req.method === "POST" && url.pathname === "/ops/action") { const out = await handleOpsAction(ctx, JSON.parse(await readBody(req, 64 * 1024))); return json(res, out.status ?? 200, out); }
+  const m = url.pathname.match(/^\/ops\/feedback\/([A-Za-z0-9._-]+\.(png|jpg))$/);
+  if (m) { const f = path.join(FEEDBACK_DIR, m[1]); if (!fs.existsSync(f)) return json(res, 404, { error: "no such file" }); res.writeHead(200, { "content-type": m[2] === "png" ? "image/png" : "image/jpeg", "cache-control": "private, max-age=3600" }); return res.end(fs.readFileSync(f)); }
+  const html = await renderOps(ctx, url);
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }); res.end(html);
+}
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   if (req.method === "OPTIONS") return json(res, 204, {});
@@ -65,7 +78,37 @@ const server = http.createServer(async (req, res) => {
       }
       fs.writeFileSync(path.join(FEEDBACK_DIR, `${id}.json`), JSON.stringify(rec, null, 2));
       console.log("feedback", id, rec.note.slice(0, 80), rec.image ?? "(no image)");
+      notify("📱 新回饋", `${rec.note.slice(0, 200) || "(no note)"}${rec.image ? " 📎" : ""} · app ${rec.diagnostics?.app ?? "?"}`, "feedback", 10);
       return json(res, 200, { ok: true, id });
+    }
+    // Public: raise a dispute on a proposed result. The wallet signs a canonical message so a dispute
+    // is attributable; the server stores it and pages the operator. Resolution happens on-chain (re-propose / void).
+    if (url.pathname === "/dispute" && req.method === "POST") {
+      rollDay(); const ip = clientIp(req);
+      const k = "dispute|" + ip; seenFb.set(k, (seenFb.get(k) ?? 0) + 1); if (seenFb.get(k) > 20) return json(res, 429, { error: "too many disputes from this network today" });
+      let b; try { b = JSON.parse(await readBody(req, 64 * 1024)); } catch { return json(res, 400, { error: "bad body" }); }
+      const market = String(b.market ?? ""), wallet = String(b.wallet ?? ""), reason = String(b.reason ?? "").slice(0, 2000), claimed = b.claimedValue == null ? null : String(b.claimedValue).slice(0, 40);
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(market) || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet) || reason.length < 5) return json(res, 400, { error: "market, wallet and a reason (≥5 chars) are required" });
+      const msg = `kubrai-dispute v1
+market=${market}
+wallet=${wallet}
+claimed=${claimed ?? ""}
+reason=${reason}`;
+      let ok = false; try { ok = nacl.sign.detached.verify(new TextEncoder().encode(msg), bs58.decode(String(b.signature ?? "")), bs58.decode(wallet)); } catch {}
+      if (!ok) return json(res, 401, { error: "signature does not match the wallet" });
+      const rec = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: new Date().toISOString(), market, wallet, reason, claimedValue: claimed, status: "open" };
+      fs.appendFileSync(DISPUTES, JSON.stringify(rec) + "\n");
+      notify("⚠️ 有人對結算提出異議", `market ${market.slice(0, 8)}… · ${wallet.slice(0, 6)}…\n${reason.slice(0, 300)}\n→ 後台看:${process.env.OPS_URL ?? "/ops"}`, "dispute:" + market, 5);
+      return json(res, 200, { ok: true, id: rec.id });
+    }
+    if (url.pathname === "/disputes") {
+      const m = url.searchParams.get("market");
+      const rows = fs.existsSync(DISPUTES) ? fs.readFileSync(DISPUTES, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
+      return json(res, 200, { disputes: rows.filter((d) => !m || d.market === m).map(({ id, at, market, wallet, reason, claimedValue, status, resolution }) => ({ id, at, market, wallet: wallet.slice(0, 4) + "…" + wallet.slice(-4), reason, claimedValue, status, resolution })) });
+    }
+    // Operator console (Caddy enforces basic auth on /ops*; the API itself never listens off localhost).
+    if (url.pathname === "/ops" || url.pathname.startsWith("/ops/")) {
+      return handleOps(req, res, url);
     }
     if (url.pathname === "/snapshots") {
       const days = fs.readdirSync(SNAP).filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f)).map((f) => f.slice(0, 10)).sort();
