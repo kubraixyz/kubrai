@@ -12,7 +12,7 @@ async function render(owner: PublicKey | null) {
   openEl.innerHTML = `<div class="note">Loading…</div>`;
   const [markets, positions, cfg] = await Promise.all([fetchMarkets(), fetchPositionsByOwner(owner), fetchConfig()]);
   const byKey = new Map(markets.map((m) => [m.pubkey.toBase58(), m]));
-  const rows = positions.map((p) => ({ p, m: byKey.get(p.market.toBase58()) })).filter((x) => x.m) as { p: any; m: MarketView }[];
+  const rows = positions.map((p: any) => ({ p, m: byKey.get(p.market.toBase58()) })).filter((x: any) => x.m) as { p: any; m: MarketView }[];
   if (!rows.length) openEl.innerHTML = `<div class="note">No open bets. <a href="/">Pick a market</a>.</div>`;
   else openEl.innerHTML = `<div class="scroll"><table class="tbl"><thead><tr><th>Market</th><th>Your bets</th><th>Status</th><th class="r">Now worth</th></tr></thead><tbody>${rows.map(({ p, m }) => {
     const feeBps = p.amounts.map((a: number, i: number) => (a ? Number(BigInt(p.feeW[i].toString()) / BigInt(a)) : 0));
