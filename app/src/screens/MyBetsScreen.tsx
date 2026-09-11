@@ -23,7 +23,7 @@ export function MyBetsScreen() {
     <ScrollView contentContainerStyle={styles.screen}>
       <Text variant="headlineSmall" style={{ marginBottom: 8 }}>My bets</Text>
       {positions.isLoading ? <ActivityIndicator /> : rows.length === 0 ? <Text style={styles.dim}>No open bets yet.</Text> : rows.map(({ p, m }) => {
-        const feeBps = p.amounts.map((a: number, i: number) => (a ? Number(BigInt(p.feeW[i].toString()) / BigInt(a)) : 0));
+        const feeBps = p.amounts.map((a: number, i: number) => (a ? Number(BigInt(p.feeW[i]) / BigInt(a)) : 0));
         const w = m.status === 2 ? m.outcome : m.status === 1 ? m.proposedOutcome : NO_OUTCOME;
         let value: string;
         if (m.status === 3) value = `refund ${fmtAmt(p.amounts.reduce((x: number, y: number) => x + y, 0))}`;
