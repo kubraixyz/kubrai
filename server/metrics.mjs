@@ -21,12 +21,24 @@ async function getJson(url, timeoutMs = 30000) {
 const STORE_GQL = "https://dappstore.solanamobile.com/graphql";
 // SystemContext is what the store app sends: locale, platform SDK level, screen density, device model.
 const SYSTEM_CONTEXT = { locale: "en-US", platformSdk: 36, pixelDensity: 440, model: "Seeker" };
-async function storeGql(query, variables = {}, timeoutMs = 60000) {
-  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), timeoutMs);
-  try {
-    const r = await fetch(STORE_GQL, { method: "POST", headers: { "content-type": "application/json", "user-agent": UA }, body: JSON.stringify({ query, variables: { systemContext: SYSTEM_CONTEXT, ...variables } }), signal: ac.signal });
-    const j = await r.json(); if (j.errors?.length && !j.data) throw new Error("store graphql: " + JSON.stringify(j.errors).slice(0, 200)); return j.data;
-  } finally { clearTimeout(t); }
+// Be a polite client: one request at a time, ≥250 ms apart, back off when the edge answers with HTML (WAF / rate limit).
+let storeChain = Promise.resolve(); let lastStoreCall = 0;
+const STORE_GAP_MS = Number(process.env.STORE_GAP_MS ?? 250);
+function storeGql(query, variables = {}, timeoutMs = 60000) {
+  const run = async () => {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const wait = lastStoreCall + STORE_GAP_MS - Date.now(); if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      lastStoreCall = Date.now();
+      const ac = new AbortController(); const t = setTimeout(() => ac.abort(), timeoutMs);
+      try {
+        const r = await fetch(STORE_GQL, { method: "POST", headers: { "content-type": "application/json", "user-agent": UA }, body: JSON.stringify({ query, variables: { systemContext: SYSTEM_CONTEXT, ...variables } }), signal: ac.signal });
+        const text = await r.text();
+        if (!/^\s*\{/.test(text)) { if (attempt < 3) { await new Promise((res) => setTimeout(res, 15000 * (attempt + 1))); continue; } throw new Error(`store edge returned non-JSON (HTTP ${r.status}) after retries`); }
+        const j = JSON.parse(text); if (j.errors?.length && !j.data) throw new Error("store graphql: " + JSON.stringify(j.errors).slice(0, 200)); return j.data;
+      } finally { clearTimeout(t); }
+    }
+  };
+  const p = storeChain.then(run, run); storeChain = p.catch(() => {}); return p;
 }
 const SUMMARY = `fragment S on DApp { androidPackage auxStatus { __typename } rating { rating reviewsByRating } lastRelease(systemContext: $systemContext) { displayName updatedOn androidDetails { versionCode } } }`;
 /** Every listed app, deduplicated across categories (an app can sit in several). */
@@ -45,12 +57,23 @@ export async function storeCatalog() {
   }
   return { categories: cats.length, perCategory, apps };
 }
+import fs from "node:fs"; import path from "node:path";
+/** Per-app lifetime review totals from the most recent snapshot file before today (null if none). */
+function previousCatalogTotals() {
+  try {
+    const dir = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots"); const today = new Date().toISOString().slice(0, 10);
+    const days = fs.readdirSync(dir).filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f) && f.slice(0, 10) < today).sort();
+    for (let i = days.length - 1; i >= 0; i--) { const t = JSON.parse(fs.readFileSync(path.join(dir, days[i]), "utf8")).metrics?.dapp_store_active_apps?.raw?.reviewTotals; if (t) return t; }
+  } catch {}
+  return null;
+}
 let catalogCache = null;
 const catalog = async () => (catalogCache ??= await storeCatalog());
 export async function dappStoreActiveApps() {
   const c = await catalog();
   const active = [...c.apps.values()].filter((a) => !a.aux || !/Uninstall/.test(a.aux)).length;
-  return { value: active, raw: { activeCount: active, uniqueListed: c.apps.size, categories: c.categories, perCategory: c.perCategory }, source: "dappstore.solanamobile.com/graphql (dAppsCategory, all categories, deduplicated by package)" };
+  const reviewTotals = Object.fromEntries([...c.apps.entries()].filter(([, a]) => a.reviews > 0).map(([p, a]) => [p, a.reviews]));
+  return { value: active, raw: { activeCount: active, uniqueListed: c.apps.size, categories: c.categories, perCategory: c.perCategory, reviewTotals }, source: "dappstore.solanamobile.com/graphql (dAppsCategory, all categories, deduplicated by package)" };
 }
 export const APP_SLUGS = { jupiter: "ag.jup.jupiter.android", tokenrun: "com.tokenrun.app", mattle: "fun.mattle.twa", cherry: "fun.cherry", seedvault: "com.solanamobile.wallet", lootgo: "com.lootgo.app", jito: "network.jito.www.twa", sleepagotchi: "com.sleepagotchi.soft.app", moonwalk: "fit.moonwalk.mobile.app", ore: "supply.ore.app" };
 /** Total reviews per watched app, straight from the store (sum of the 1–5★ histogram). */
@@ -66,7 +89,9 @@ export async function dappReviews() {
  *  device per app), so each extra reviewer is a phone. Pages each app's reviews newest-first until older than 8 days. */
 export async function storeReviewers7d() {
   const c = await catalog(); const since = Date.now() - 7 * 864e5, hardStop = Date.now() - 8 * 864e5;
-  const pkgs = [...c.apps.entries()].filter(([, a]) => a.reviews > 0).map(([p]) => p);
+  // Only apps whose lifetime review total moved since the last snapshot can have new reviews; the rest are skipped.
+  const prev = previousCatalogTotals();
+  const pkgs = [...c.apps.entries()].filter(([p, a]) => a.reviews > 0 && (prev == null || (prev[p] ?? 0) !== a.reviews)).map(([p]) => p);
   const wallets = new Set(), domains = new Set(); let reviews = 0, appsWithNew = 0, requests = 0, failures = 0;
   const worker = async (pkg) => {
     let after = null, newHere = 0;
@@ -78,8 +103,8 @@ export async function storeReviewers7d() {
     }
     if (newHere) appsWithNew++;
   };
-  const queue = [...pkgs]; await Promise.all(Array.from({ length: 6 }, async () => { while (queue.length) await worker(queue.shift()); }));
-  return { value: wallets.size, raw: { reviewers7d: wallets.size, reviews7d: reviews, domains7d: domains.size, appsWithNewReviews: appsWithNew, appsScanned: pkgs.length, requests, failures }, source: "dappstore.solanamobile.com/graphql (dAppReviews per app, trailing 7 days, distinct walletAddress)" };
+  for (const pkg of pkgs) await worker(pkg);   // storeGql already serializes; keep it simple
+  return { value: wallets.size, raw: { reviewers7d: wallets.size, reviews7d: reviews, domains7d: domains.size, appsWithNewReviews: appsWithNew, appsScanned: pkgs.length, appsTotal: c.apps.size, usedDiff: prev != null, requests, failures }, source: "dappstore.solanamobile.com/graphql (dAppReviews per app, trailing 7 days, distinct walletAddress)" };
 }
 
 // --- Seeker Genesis Token: one per activated device; the Token-2022 group on the mint holds the count ---
