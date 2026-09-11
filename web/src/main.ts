@@ -1,6 +1,6 @@
 import { fetchMarkets, totalPool, type MarketView } from "./kubrai";
 import { fmtValue, metricInfo, metricLabel } from "./metrics";
-import { fmtAmt, mountNetBadge, mountWallet, poolsHtml, statusPill, timeLeft } from "./ui";
+import { esc, fmtAmt, mountNetBadge, mountWallet, poolsHtml, statusPill, timeLeft } from "./ui";
 import { TOKEN_SYMBOL } from "./config";
 
 mountNetBadge(); mountWallet();
@@ -22,7 +22,7 @@ function card(m: MarketView) {
     // any past market stays reachable by URL.
     const live = ms.filter((m) => m.status === 0 || m.status === 1);
     root.innerHTML = live.length ? live.map(card).join("") : `<div class="note">No open markets right now.</div>`;
-  } catch (e: any) { root.innerHTML = `<div class="msg err">Could not load markets: ${e.message ?? e}</div>`; }
+  } catch (e: any) { root.innerHTML = `<div class="msg err">Could not load markets: ${esc(e.message ?? e)}</div>`; }
 })();
 
 // Android build link (served from /apk/, written by app/scripts/build-apk.sh)

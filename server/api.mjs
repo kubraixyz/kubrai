@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token";
+import { getOrCreateAssociatedTokenAccount, getAssociatedTokenAddressSync, createTransferInstruction, createAssociatedTokenAccountIdempotentInstruction } from "@solana/spl-token";
 
 const PORT = Number(process.env.API_PORT ?? 8787);
 const CLUSTER = process.env.CLUSTER ?? "devnet";
@@ -15,21 +15,29 @@ const FAUCET_ENABLED = CLUSTER !== "mainnet" && process.env.FAUCET_DISABLED !== 
 const FAUCET_TOKENS = 1000n * 1_000_000n; // 1000 tSKR
 const FAUCET_SOL = 0.05;
 const state = JSON.parse(fs.readFileSync(path.join(SECRETS, "devnet.json"), "utf8"));
-const admin = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(process.env.ADMIN_KEYPAIR ?? path.join(os.homedir(), ".config/solana/id.json"), "utf8"))));
+// The faucet pays from a dedicated low-balance key (pre-funded with test tokens + a little SOL).
+// The admin / mint authority never lives in this process.
+const faucetKeyFile = process.env.FAUCET_KEYPAIR ?? path.join(SECRETS, "faucet.json");
+const faucet = FAUCET_ENABLED && fs.existsSync(faucetKeyFile) ? Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(faucetKeyFile, "utf8")))) : null;
 const conn = new Connection(RPC, "confirmed");
 const mint = new PublicKey(state.mint);
+const FAUCET_DAILY_GLOBAL = Number(process.env.FAUCET_DAILY_GLOBAL ?? 300);
+const DIAG_MAX = 32 * 1024;
 
-// naive rate limits: one faucet call per address per 24h, 20 per IP per day
-const seenAddr = new Map(), seenIp = new Map();
+// rate limits: one faucet call per address per day, 20 per IP per day, a global daily cap; maps pruned daily
+const seenAddr = new Map(), seenIp = new Map(); let seenDay = "", faucetToday = 0;
 const dayKey = () => new Date().toISOString().slice(0, 10);
+function rollDay() { const d = dayKey(); if (d !== seenDay) { seenDay = d; seenAddr.clear(); seenIp.clear(); seenFb.clear(); faucetToday = 0; } }
+// Only Caddy talks to this socket; Caddy replaces X-Forwarded-For for untrusted clients, so its first hop is the real client.
+const clientIp = (req) => String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "?").split(",")[0].trim();
 
 const json = (res, code, body, extra = {}) => { res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "content-type", "access-control-allow-methods": "GET,POST,OPTIONS", ...extra }); res.end(JSON.stringify(body)); };
-const readBody = (req, max = 4096) => new Promise((ok, err) => { let b = ""; req.on("data", (c) => { b += c; if (b.length > max) req.destroy(); }); req.on("end", () => ok(b)); req.on("error", err); });
+const readBody = (req, max = 4096) => new Promise((ok, err) => { let b = ""; req.on("data", (c) => { b += c; if (b.length > max) { err(Object.assign(new Error("body too large"), { status: 413 })); req.destroy(); } }); req.on("end", () => ok(b)); req.on("error", err); });
 const FEEDBACK_DIR = process.env.FEEDBACK_DIR ?? path.join(os.homedir(), "apps", "kubrai", "feedback");
 fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
 const seenFb = new Map();
 
-http.createServer(async (req, res) => {
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   if (req.method === "OPTIONS") return json(res, 204, {});
   try {
@@ -42,11 +50,14 @@ http.createServer(async (req, res) => {
     }
     // In-app feedback: { note, diagnostics, image (base64 jpeg/png, ≤ 6 MB) } → one .json (+ .jpg/.png) per report
     if (url.pathname === "/feedback" && req.method === "POST") {
-      const ip = req.headers["cf-connecting-ip"] ?? req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "?";
-      const ipk = ip + "|" + dayKey(); seenFb.set(ipk, (seenFb.get(ipk) ?? 0) + 1); if (seenFb.get(ipk) > 40) return json(res, 429, { error: "too many reports today" });
-      let body; try { body = JSON.parse(await readBody(req, 9 * 1024 * 1024)); } catch { return json(res, 400, { error: "body must be JSON {note, diagnostics, image?, imageType?}" }); }
+      rollDay();
+      const ip = clientIp(req);
+      const ipk = ip; seenFb.set(ipk, (seenFb.get(ipk) ?? 0) + 1); if (seenFb.get(ipk) > 40) return json(res, 429, { error: "too many reports today" });
+      let body; try { body = JSON.parse(await readBody(req, 9 * 1024 * 1024)); } catch (e) { return json(res, e?.status ?? 400, { error: e?.status === 413 ? "report too large" : "body must be JSON {note, diagnostics, image?, imageType?}" }); }
       const id = new Date().toISOString().replace(/[:.]/g, "-") + "-" + Math.random().toString(36).slice(2, 7);
-      const rec = { id, at: new Date().toISOString(), note: String(body.note ?? "").slice(0, 4000), diagnostics: body.diagnostics ?? null, wallet: body.wallet ?? null, ua: req.headers["user-agent"] ?? null };
+      let diagnostics = null; try { const dj = JSON.stringify(body.diagnostics ?? null); diagnostics = dj.length > DIAG_MAX ? { truncated: true, head: dj.slice(0, DIAG_MAX) } : body.diagnostics ?? null; } catch { diagnostics = null; }
+      const wallet = typeof body.wallet === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(body.wallet) ? body.wallet : null;
+      const rec = { id, at: new Date().toISOString(), note: String(body.note ?? "").slice(0, 4000), diagnostics, wallet, ua: String(req.headers["user-agent"] ?? "").slice(0, 300) };
       if (body.image) {
         const b64 = String(body.image).replace(/^data:[^;]+;base64,/, ""); const buf = Buffer.from(b64, "base64");
         if (buf.length > 6 * 1024 * 1024) return json(res, 413, { error: "image too large (6 MB max)" });
@@ -69,21 +80,29 @@ http.createServer(async (req, res) => {
       return json(res, 200, { day: m[1], sha256, memo, bundle }, { "cache-control": "public, max-age=300" });
     }
     if (url.pathname === "/faucet" && req.method === "POST") {
-      if (!FAUCET_ENABLED) return json(res, 403, { error: "faucet is disabled on this network" });
-      const ip = req.headers["cf-connecting-ip"] ?? req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "?";
+      if (!FAUCET_ENABLED || !faucet) return json(res, 403, { error: "faucet is disabled on this network" });
+      rollDay();
+      const ip = clientIp(req);
       let address; try { address = new PublicKey(JSON.parse(await readBody(req)).address); } catch { return json(res, 400, { error: "body must be {\"address\": \"<pubkey>\"}" }); }
-      const k = address.toBase58() + "|" + dayKey();
+      const k = address.toBase58();
+      // Reserve the slot BEFORE any await so concurrent requests for one address cannot all pass the check.
       if (seenAddr.has(k)) return json(res, 429, { error: "this address already received test tokens today" });
-      const ipk = ip + "|" + dayKey(); seenIp.set(ipk, (seenIp.get(ipk) ?? 0) + 1); if (seenIp.get(ipk) > 20) return json(res, 429, { error: "too many faucet requests from this network today" });
-      const sigs = {};
-      if ((await conn.getBalance(address)) < FAUCET_SOL * LAMPORTS_PER_SOL) {
-        sigs.sol = await sendAndConfirmTransaction(conn, new Transaction().add(SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: address, lamports: Math.round(FAUCET_SOL * LAMPORTS_PER_SOL) })), [admin]);
-      }
-      const ata = await getOrCreateAssociatedTokenAccount(conn, admin, mint, address);
-      sigs.tokens = await mintTo(conn, admin, mint, ata.address, admin, FAUCET_TOKENS);
-      seenAddr.set(k, true);
-      return json(res, 200, { ok: true, address: address.toBase58(), tokens: "1000 tSKR", sol: sigs.sol ? FAUCET_SOL + " SOL" : "already funded", signatures: sigs });
+      if ((seenIp.get(ip) ?? 0) >= 20) return json(res, 429, { error: "too many faucet requests from this network today" });
+      if (faucetToday >= FAUCET_DAILY_GLOBAL) return json(res, 429, { error: "faucet is empty for today, try tomorrow" });
+      seenAddr.set(k, true); seenIp.set(ip, (seenIp.get(ip) ?? 0) + 1); faucetToday++;
+      try {
+        const ata = getAssociatedTokenAddressSync(mint, address), from = getAssociatedTokenAddressSync(mint, faucet.publicKey);
+        const tx = new Transaction();
+        const solNow = await conn.getBalance(address); const giveSol = solNow < FAUCET_SOL * LAMPORTS_PER_SOL;
+        if (giveSol) tx.add(SystemProgram.transfer({ fromPubkey: faucet.publicKey, toPubkey: address, lamports: Math.round(FAUCET_SOL * LAMPORTS_PER_SOL) }));
+        tx.add(createAssociatedTokenAccountIdempotentInstruction(faucet.publicKey, ata, address, mint));
+        tx.add(createTransferInstruction(from, ata, faucet.publicKey, FAUCET_TOKENS));
+        const sig = await sendAndConfirmTransaction(conn, tx, [faucet]);
+        return json(res, 200, { ok: true, address: address.toBase58(), tokens: "1000 tSKR", sol: giveSol ? FAUCET_SOL + " SOL" : "already funded", signatures: { tokens: sig, ...(giveSol ? { sol: sig } : {}) } });
+      } catch (e) { seenAddr.delete(k); faucetToday--; console.error("faucet failed", e?.message); return json(res, 503, { error: "faucet transaction failed, try again in a minute" }); }
     }
     json(res, 404, { error: "not found" });
-  } catch (e) { console.error(e); json(res, 500, { error: String(e?.message ?? e) }); }
-}).listen(PORT, "127.0.0.1", () => console.log(`kubrai api on 127.0.0.1:${PORT} cluster=${CLUSTER} faucet=${FAUCET_ENABLED} rpc=${RPC.replace(/api-key=.*/, "api-key=…")}`));
+  } catch (e) { console.error(e); json(res, 500, { error: "internal error" }); }
+});
+server.headersTimeout = 15_000; server.requestTimeout = 60_000; server.keepAliveTimeout = 10_000;
+server.listen(PORT, "127.0.0.1", () => console.log(`kubrai api on 127.0.0.1:${PORT} cluster=${CLUSTER} faucet=${FAUCET_ENABLED && !!faucet} rpc=${RPC.replace(/api-key=[^&\s]*/, "api-key=…")}`));

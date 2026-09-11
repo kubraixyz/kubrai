@@ -11,10 +11,11 @@ export const METRIC_COPY: Record<string, { title: string; unit: string; how: str
   skr_price_close: { title: "SKR price at close", unit: "USD", scale: 100_000_000, source: "thirdparty", how: "Jupiter price v3 at the closing snapshot." },
 };
 export function metricInfo(id: string) {
-  if (id.startsWith("rev_week:")) { const slug = id.slice(9); const app = APP_NAMES[slug] ?? slug; return { title: `New ${app} reviews this week`, unit: "reviews", cumulative: true, source: "store" as SourceKind, how: `Increase in ${app}'s total dApp Store reviews between the opening baseline and the closing catalog snapshot. Only verified Seeker devices can review, one review per device per app, so each extra review costs a $500 phone.` }; }
+  if (id.startsWith("rev_week:")) { const slug = id.slice(9); if (!APP_NAMES[slug]) return undefined; const app = APP_NAMES[slug]; return { title: `New ${app} reviews this week`, unit: "reviews", cumulative: true, source: "store" as SourceKind, how: `Increase in ${app}'s total dApp Store reviews between the opening baseline and the closing catalog snapshot. Only verified Seeker devices can review, one review per device per app, so each extra review costs a $500 phone.` }; }
   return METRIC_COPY[id];
 }
-export const metricLabel = (id: string) => metricInfo(id)?.title ?? id;
+/** Unknown metric ids are never echoed: they come from chain data and would otherwise reach innerHTML. */
+export const metricLabel = (id: string) => metricInfo(id)?.title ?? "Unknown market";
 export const fmtValue = (id: string, v: number) => {
   const c = metricInfo(id); const x = c?.scale ? v / c.scale : v;
   return x.toLocaleString("en-US", { maximumFractionDigits: c?.scale && c.scale > 1_000_000 ? 4 : 0 }) + (c?.unit ? " " + c.unit : "");

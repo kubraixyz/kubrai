@@ -9,8 +9,10 @@ import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction, se
 import { METRICS } from "./metrics.mjs";
 
 const OUT = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots");
-const SECRETS = process.env.KUBRAI_SECRETS ?? path.join(os.homedir(), "secrets");
-const MEMO_RPC = process.env.MEMO_RPC ?? "https://api.devnet.solana.com";
+const CLUSTER = process.env.CLUSTER ?? "devnet";
+const SECRETS = process.env.KUBRAI_SECRETS ?? path.join(os.homedir(), "secrets", CLUSTER);
+const MEMO_RPC = process.env.MEMO_RPC;
+if (!MEMO_RPC && process.env.MEMO_DISABLED !== "1") { console.error("MEMO_RPC is required (or MEMO_DISABLED=1 for a dry run): refusing to record an unanchored snapshot"); process.exit(2); }
 const MEMO_PROGRAM = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const day = process.env.SNAPSHOT_DAY ?? new Date().toISOString().slice(0, 10);
 
@@ -29,7 +31,8 @@ console.log("wrote", file, "sha256", hash);
 
 // memo (optional)
 const keyFile = path.join(SECRETS, "proposer.json");
-if (fs.existsSync(keyFile) && process.env.MEMO_DISABLED !== "1") {
+if (process.env.MEMO_DISABLED !== "1") {
+  if (!fs.existsSync(keyFile)) { console.error("memo key missing at " + keyFile); process.exit(2); }
   try {
     const kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(keyFile, "utf8"))));
     const conn = new Connection(MEMO_RPC, "confirmed");
@@ -39,5 +42,5 @@ if (fs.existsSync(keyFile) && process.env.MEMO_DISABLED !== "1") {
     const sig = await sendAndConfirmTransaction(conn, new Transaction().add(ix), [kp], { commitment: "confirmed" });
     fs.writeFileSync(file + ".memo", JSON.stringify({ cluster: /devnet/.test(MEMO_RPC) ? "devnet" : "mainnet", signature: sig, memo }) + "\n"); // never persist the RPC URL (it can carry an API key)
     console.log("memo tx", sig);
-  } catch (e) { console.error("memo skipped:", e?.message ?? e); }
+  } catch (e) { console.error("memo FAILED:", e?.message ?? e); process.exit(3); }
 }

@@ -1,7 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
 import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel } from "./metrics";
-import { balances, bucketColor, bucketLabel, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill, timeLeft } from "./ui";
+import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill, timeLeft } from "./ui";
 import { TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 
 mountNetBadge(); mountWallet();
@@ -67,11 +67,11 @@ function renderBet(open: boolean, fee: number) {
     try {
       const tx = await buildPlaceBetTx(sess.publicKey, m, bucket, a, new PublicKey(cfg.mint));
       const sig = await sess.signAndSend(tx);
-      msg.innerHTML = `<div class="msg">Sent. Waiting for confirmation… <span class="hash">${sig}</span></div>`;
+      msg.innerHTML = `<div class="msg">Sent. Waiting for confirmation… <span class="hash">${esc(sig)}</span></div>`;
       await confirmBySig(sig);
       msg.innerHTML = `<div class="msg ok">Bet placed: ${fmtAmt(a)} ${TOKEN_SYMBOL} on “${bucketLabel(m, bucket)}”.</div>`;
       await refreshBalances(); await load(); await showPosition();
-    } catch (e: any) { msg.innerHTML = `<div class="msg err">${e?.message ?? e}</div>`; go.disabled = false; }
+    } catch (e: any) { msg.innerHTML = `<div class="msg err">${esc(e?.message ?? e)}</div>`; go.disabled = false; }
   };
 }
 async function showPosition() {
@@ -83,4 +83,4 @@ async function showPosition() {
   document.getElementById("bet")!.appendChild(el);
 }
 onSession(() => { if (m) { render(); showPosition(); } });
-load().catch((e) => (root.innerHTML = `<div class="msg err">Could not load market #${id}: ${e.message ?? e}</div>`));
+load().catch((e) => (root.innerHTML = `<div class="msg err">Could not load market #${esc(id)}: ${esc(e.message ?? e)}</div>`));

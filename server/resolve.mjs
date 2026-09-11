@@ -27,7 +27,9 @@ const DRY = process.env.DRY_RUN === "1";
 const ONLY = (process.env.STEPS ?? "propose,finalize,settle").split(",");
 const loadKp = (f) => Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(f, "utf8"))));
 const proposer = loadKp(path.join(SECRETS, "proposer.json"));
-const admin = fs.existsSync(process.env.ADMIN_KEYPAIR ?? path.join(os.homedir(), ".config/solana/id.json")) ? loadKp(process.env.ADMIN_KEYPAIR ?? path.join(os.homedir(), ".config/solana/id.json")) : null;
+// The admin key is only loaded for local/devnet test runs that explicitly ask for early finalization.
+const adminFile = process.env.ADMIN_KEYPAIR ?? path.join(os.homedir(), ".config/solana/id.json");
+const admin = process.env.ADMIN_FINALIZE === "1" && fs.existsSync(adminFile) ? loadKp(adminFile) : null;
 const conn = new Connection(RPC, "confirmed");
 const provider = new AnchorProvider(conn, new Wallet(proposer), { commitment: "confirmed" });
 const program = new Program(idlJson, provider);
@@ -39,8 +41,26 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 // ---------- metric evaluation from snapshot bundles ----------
 // metric tag → snapshot field. skr_ids prefers the on-chain count and falls back to the aggregator.
-const SOURCE = { skr_ids_week: ["skr_ids_onchain", "skr_ids_total"], dapps_week: ["dapp_store_active_apps"], skr_staked_med7: ["skr_staked"], das_med7: ["das"], skr_price_close: ["skr_price_usd_e8"] };
+// One source per metric — never fall back between counting bases inside a _week market.
+const SOURCE = { skr_ids_week: ["skr_ids_onchain"], dapps_week: ["dapp_store_active_apps"], skr_staked_med7: ["skr_staked"], das_med7: ["das"], skr_price_close: ["skr_price_usd_e8"] };
 const dayOf = (ts) => new Date(ts * 1000).toISOString().slice(0, 10);
+// A day's bundle is only trusted if its bytes hash to the sidecar AND to the hash published on-chain.
+const memoOk = new Map();
+async function verifyDay(day) {
+  const f = path.join(SNAP, day + ".json"); if (!fs.existsSync(f)) return { ok: false, reason: `no snapshot ${day}` };
+  const raw = fs.readFileSync(f); const sha = createHash("sha256").update(raw).digest("hex");
+  const side = fs.existsSync(f + ".sha256") ? fs.readFileSync(f + ".sha256", "utf8").trim() : null;
+  if (side !== sha) return { ok: false, reason: `snapshot ${day} was modified after it was recorded (sha256 mismatch)` };
+  if (!fs.existsSync(f + ".memo")) return { ok: false, reason: `snapshot ${day} has no on-chain memo` };
+  if (!memoOk.has(day)) {
+    const memo = JSON.parse(fs.readFileSync(f + ".memo", "utf8"));
+    const tx = await conn.getTransaction(memo.signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+    const logs = (tx?.meta?.logMessages ?? []).join("\n");
+    memoOk.set(day, !!tx && logs.includes(`sha256=${sha}`));
+  }
+  if (!memoOk.get(day)) return { ok: false, reason: `on-chain memo for ${day} does not match the file` };
+  return { ok: true, sha };
+}
 const readDay = (day) => { const f = path.join(SNAP, day + ".json"); return fs.existsSync(f) ? { file: f, bundle: JSON.parse(fs.readFileSync(f, "utf8")), sha: fs.existsSync(f + ".sha256") ? fs.readFileSync(f + ".sha256", "utf8").trim() : null } : null; };
 const valueOn = (day, src) => {
   const d = readDay(day); if (!d) return null;
@@ -73,7 +93,8 @@ function evaluate(metric, openTs, closeTs, baseline) {
   const v = valueOn(dClose, src); if (v == null) return { ok: false, reason: `missing snapshot ${dClose}` };
   used.push(dClose); return { ok: true, value: v, used, detail: {} };
 }
-const evidenceHash = (used) => createHash("sha256").update(used.map((d) => `${d}:${readDay(d)?.sha ?? ""}`).join("\n")).digest();
+// Evidence hash = sha256 over the (verified) per-day bundle hashes, in the order used.
+const evidenceHash = (used, shas) => createHash("sha256").update(used.map((d) => `${d}:${shas[d]}`).join("\n")).digest();
 
 // Off-chain replica of compute_payout (same integer math) so we can record what each settlement paid.
 function payoutFor(m, p) {
@@ -92,18 +113,25 @@ const SETTLEMENTS = path.join(SNAP, "settlements.jsonl");
 // ---------- on-chain steps ----------
 async function propose(markets, now) {
   for (const { publicKey, account: m } of markets) {
+   try {
     if (m.status !== 0 || now < m.resolveAfterTs.toNumber()) continue;
     const metric = tag(m.metric);
     const ev = evaluate(metric, m.openTs.toNumber(), m.closeTs.toNumber(), m.baseline.toNumber());
     if (!ev.ok) { log(`market #${m.id} (${metric}): cannot resolve yet — ${ev.reason}`); continue; }
+    if (!Number.isInteger(ev.value)) { log(`market #${m.id}: observed value ${ev.value} is not an integer — refusing to propose`); continue; }
+    const shas = {}; let bad = null;
+    for (const d of ev.used) { const v = await verifyDay(d); if (!v.ok) { bad = v.reason; break; } shas[d] = v.sha; }
+    if (bad) { log(`market #${m.id}: NOT proposing — ${bad}`); continue; }
     const n = m.nBuckets, thr = m.thresholds.slice(0, n - 1).map((t) => t.toNumber());
     const bucket = thr.filter((t) => ev.value >= t).length; // same rule as on-chain Market::bucket_of
     log(`market #${m.id} (${metric}): observed ${ev.value}; thresholds ${thr.join("/")} → bucket ${bucket} of ${n}`, JSON.stringify(ev.detail), "days", ev.used.join(","));
     if (DRY) continue;
-    const sig = await program.methods.proposeResolution(new BN(ev.value), Array.from(evidenceHash(ev.used)))
+    const eh = evidenceHash(ev.used, shas);
+    const sig = await program.methods.proposeResolution(new BN(ev.value), Array.from(eh))
       .accounts({ config: configPda, market: publicKey, proposer: proposer.publicKey }).rpc();
-    fs.writeFileSync(path.join(SNAP, `resolution-${m.id}.json`), JSON.stringify({ market: publicKey.toBase58(), id: m.id.toNumber(), metric, thresholds: thr, nBuckets: n, observed: ev.value, bucket, days: ev.used, detail: ev.detail, evidenceHash: evidenceHash(ev.used).toString("hex"), signature: sig, at: new Date().toISOString() }, null, 2));
+    fs.writeFileSync(path.join(SNAP, `resolution-${m.id}.json`), JSON.stringify({ market: publicKey.toBase58(), id: m.id.toNumber(), metric, thresholds: thr, nBuckets: n, observed: ev.value, bucket, days: ev.used, daySha256: shas, detail: ev.detail, evidenceHash: eh.toString("hex"), signature: sig, at: new Date().toISOString() }, null, 2));
     log(`  proposed ${sig}`);
+   } catch (e) { log(`market #${m.id}: propose failed: ${e?.message?.split("\n")[0]}`); }
   }
 }
 async function finalize(markets, now, cfg) {

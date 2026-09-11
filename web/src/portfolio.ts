@@ -1,7 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { NO_OUTCOME, fetchConfig, fetchMarkets, fetchPositionsByOwner, payoutIfBucket, type MarketView } from "./kubrai";
 import { metricLabel } from "./metrics";
-import { bucketLabel, fmtAmt, fmtTs, mountNetBadge, mountWallet, onSession, statusPill } from "./ui";
+import { bucketLabel, esc, fmtAmt, fmtTs, isBase58, mountNetBadge, mountWallet, onSession, statusPill } from "./ui";
 import { API_BASE, TOKEN_SYMBOL } from "./config";
 
 mountNetBadge(); mountWallet();
@@ -36,9 +36,10 @@ async function render(owner: PublicKey | null) {
     settledEl.innerHTML = `<div class="scroll"><table class="tbl"><thead><tr><th>Market</th><th>Your bets</th><th>Outcome</th><th class="r">Paid</th><th>Tx</th></tr></thead><tbody>${j.settled.map((s: any) => {
       const m = byKey.get(s.market);
       const bets = s.amounts.map((a: string, i: number) => (Number(a) ? `${m ? bucketLabel(m, i) : "bucket " + i}: <span class="mono">${fmtAmt(Number(a))}</span>` : "")).filter(Boolean).join("<br>");
-      const outcome = s.status === 3 ? "Voided" : m ? `${bucketLabel(m, s.outcome)} (observed ${Number(s.observed).toLocaleString("en-US")})` : `bucket ${s.outcome}`;
+      const outcome = s.status === 3 ? "Voided" : m ? `${bucketLabel(m, Number(s.outcome))} (observed ${Number(s.observed).toLocaleString("en-US")})` : `bucket ${esc(s.outcome)}`;
       const cls = s.kind === "won" ? "ok" : s.kind === "lost" ? "err" : "";
-      return `<tr><td>${m ? `<a href="/market.html?id=${m.id}">${metricLabel(m.metric)}</a>` : s.metric}<div class="note">#${s.id} · ${fmtTs(Date.parse(s.at) / 1000)}</div></td><td>${bets}</td><td>${outcome}</td><td class="r mono"><span class="msg ${cls}" style="padding:2px 8px">${s.kind === "lost" ? "0" : fmtAmt(Number(s.payout))} ${TOKEN_SYMBOL}</span></td><td class="hash"><a href="https://explorer.solana.com/tx/${s.signature}?cluster=devnet" target="_blank" rel="noopener">${s.signature.slice(0, 8)}…</a></td></tr>`;
+      const sig = isBase58(s.signature) ? s.signature : null;
+      return `<tr><td>${m ? `<a href="/market.html?id=${m.id}">${metricLabel(m.metric)}</a>` : esc(metricLabel(String(s.metric)))}<div class="note">#${esc(s.id)} · ${fmtTs(Date.parse(s.at) / 1000)}</div></td><td>${bets}</td><td>${esc(outcome)}</td><td class="r mono"><span class="msg ${cls}" style="padding:2px 8px">${s.kind === "lost" ? "0" : fmtAmt(Number(s.payout))} ${TOKEN_SYMBOL}</span></td><td class="hash">${sig ? `<a href="https://explorer.solana.com/tx/${sig}?cluster=devnet" target="_blank" rel="noopener">${sig.slice(0, 8)}…</a>` : "—"}</td></tr>`;
     }).join("")}</tbody></table></div>`;
   } catch { settledEl.innerHTML = `<div class="note">Settlement history unavailable right now.</div>`; }
 }
