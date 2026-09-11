@@ -1,7 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { bs58 } from "./wallet";
 import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, earlyBirdUntil, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
-import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel } from "./metrics";
+import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel, openingValue } from "./metrics";
 import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill, timeLeft } from "./ui";
 import { API_BASE, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 
@@ -20,7 +20,7 @@ function render() {
     <div class="meta" style="display:flex;gap:10px;color:var(--dim);font-size:13px">${statusPill(m)}<span>Market #${m.id}</span><span>${m.status === 0 ? timeLeft(m.closeTs) : ""}</span></div>
     <h1>${m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥&nbsp;<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>?` : `${metricLabel(m.metric)}: which range?`}</h1>
     <p class="lead">${copy?.how ?? ""}</p>
-    <div class="kv" style="margin-bottom:16px">${copy?.cumulative ? `<b>Baseline at open</b><span class="mono">${fmtValue(m.metric, m.baseline)}</span>` : `<b>Value at open</b><span class="mono">${fmtValue(m.metric, m.baseline)}</span>`}<b>Data source</b><span>${SOURCE_LABEL[copy?.source ?? "thirdparty"]}</span></div>
+    <div class="kv" style="margin-bottom:16px">${copy?.cumulative ? `<b>Baseline at open</b><span class="mono" id="baseline">${m.baseline ? fmtValue(m.metric, m.baseline) : "00:05 UTC snapshot of the opening day"}</span>` : ``}<b>Data source</b><span>${SOURCE_LABEL[copy?.source ?? "thirdparty"]}</span></div>
     ${poolsHtml(m, m.status >= 1 && m.proposedOutcome !== NO_OUTCOME ? m.proposedOutcome : -1)}
     <h2>Bet</h2>
     <div id="bet"></div>
@@ -38,6 +38,7 @@ function render() {
     </div>`;
   renderBet(open, fee);
   mountDispute();
+  if (copy?.cumulative && !m.baseline) openingValue(API_BASE, m.metric, m.openTs, m.baseline).then((v) => { const el = document.getElementById("baseline"); if (el && v != null) el.textContent = fmtValue(m.metric, v) + " (00:05 UTC snapshot)"; });
 }
 async function mountDispute() {
   const box = document.getElementById("dispute"); if (!box) return;

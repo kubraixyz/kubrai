@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { ActivityIndicator, Button, Chip, Divider, Text, TextInput, useTheme } from "react-native-paper";
 import { useRoute } from "@react-navigation/native";
 import { PublicKey } from "@solana/web3.js";
 import { useBalances, useConfig, useInvalidateAll, useMarket, usePositions } from "../hooks/useKubrai";
-import { metricInfo, metricLabel, fmtValue, SOURCE_LABEL } from "../chain/metrics";
+import { metricInfo, metricLabel, fmtValue, SOURCE_LABEL, openingValue } from "../chain/metrics";
 import { PoolBar } from "../components/PoolBar";
 import { bucketColor, bucketLabel, fmtAmt, fmtTs, statusLabel, timeLeft } from "../chain/format";
 import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, impliedPayout, earlyBirdUntil } from "../chain/kubrai";
@@ -23,6 +23,8 @@ export function MarketScreen() {
   const { data: m, isLoading } = useMarket(id); const { data: cfg } = useConfig(); const bal = useBalances(); const positions = usePositions(); const invalidate = useInvalidateAll();
   const [bucket, setBucket] = useState(0); const [amt, setAmt] = useState(""); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<{ kind: "ok" | "err" | "info"; text: string } | null>(null);
   const info = m ? metricInfo(m.metric) : undefined;
+  const [opening, setOpening] = useState<number | null>(null);
+  useEffect(() => { if (m && info?.cumulative) openingValue(APP.apiBase, m.metric, m.openTs, m.baseline).then(setOpening); }, [m?.pubkey?.toBase58?.(), info?.cumulative]);
   const fee = m && cfg ? currentFeeBps(cfg, m) : 0;
   const open = !!m && m.status === 0 && Date.now() / 1000 >= m.openTs && Date.now() / 1000 < m.closeTs;
   const a = Math.round((Number(amt) || 0) * 10 ** TOKEN_DECIMALS);
@@ -79,7 +81,7 @@ export function MarketScreen() {
       <View style={styles.row}><Chip compact mode="outlined">{statusLabel(m)}</Chip><Text variant="labelSmall" style={styles.dim}>Market #{m.id} · {m.status === 0 ? timeLeft(m.closeTs) : ""}</Text></View>
       <Text variant="headlineSmall" style={{ marginVertical: 8 }}>{m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥ ${fmtValue(m.metric, m.thresholds[0])}?` : `${metricLabel(m.metric)}: which range?`}</Text>
       <Text variant="bodyMedium" style={[styles.dim, { marginBottom: 10 }]}>{info?.how}</Text>
-      <KV k={info?.cumulative ? "Baseline at open" : "Value at open"} v={fmtValue(m.metric, m.baseline)} />
+      {info?.cumulative ? <KV k="Baseline at open" v={opening != null ? `${fmtValue(m.metric, opening)}${m.baseline ? "" : " (00:05 UTC snapshot)"}` : "00:05 UTC snapshot of the opening day"} /> : null}
       <KV k="Data source" v={SOURCE_LABEL[info?.source ?? "thirdparty"]} />
       <View style={{ marginVertical: 12 }}><PoolBar m={m} highlight={highlight} /></View>
 

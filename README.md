@@ -47,7 +47,7 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
    *third-party*.
 5. **Metrics are chosen to be expensive to manipulate.** A new `.skr` ID needs a Seeker
    Genesis Token, i.e. a $500 device; dApp Store reviews can only be written from verified
-   devices, one per device per app. Level metrics resolve on the median of every hourly snapshot inside the market window (24 for a daily market, 168 for a weekly one; at least 75 % must exist), so a last-minute deposit or withdrawal cannot move the result. Cumulative metrics resolve on the increase from the baseline fixed on-chain at open to the closing snapshot.
+   devices, one per device per app. Level metrics resolve on the median of every hourly snapshot inside the market window (24 for a daily market, 168 for a weekly one; at least 75 % must exist), so a last-minute deposit or withdrawal cannot move the result. Cumulative metrics resolve on the increase between the opening hour's snapshot and the closing hour's snapshot (markets open and close exactly on the hour; snapshots are taken at :05, so consecutive markets share one reading and nothing is counted twice).
 6. **Settlement is permissionless.** A crank pays every winner and closes every position,
    returning the rent deposit to whoever paid it. Nobody has to remember to claim.
 
@@ -90,7 +90,7 @@ ANCHOR_PROVIDER_URL=http://127.0.0.1:8899 ANCHOR_WALLET=~/.config/solana/id.json
 # bootstrap a cluster (mock SKR mint, treasury, proposer key, config) and open a market
 ANCHOR_PROVIDER_URL=... ANCHOR_WALLET=... npx ts-node scripts/devnet-setup.ts
 CLOSE_AT=2026-09-19T00:00:00Z npx ts-node scripts/create-market.ts skr_ids_week 77,93,113 "How many new .skr IDs this week?" 0 0 500   # manual one-off
-node server/open-markets.mjs            # scheduled: daily markets every day, weekly ones on Mondays (cron 00:12 UTC, after the 00:05 snapshot)
+node server/open-markets.mjs            # scheduled: daily markets every day, weekly ones on Mondays (cron 00:00 UTC; markets open/close exactly on the hour)
 node scripts/update-config.mjs disputeWindowSecs=21600
 
 # server

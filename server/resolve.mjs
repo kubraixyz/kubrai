@@ -6,7 +6,9 @@
 //                (winners paid, losers' rent refunded), then sweep the vault.
 // Snapshots are hourly slots "YYYY-MM-DDTHH" (taken at :05); the older daily files "YYYY-MM-DD" count as that
 // day's T00 slot. Metric tags:
-//   <base>_day | <base>_week | rev_week:<app> | rev_day:<app>  -> value(close slot) - baseline   (cumulative counters)
+//   <base>_day | <base>_week | rev_week:<app> | rev_day:<app>  -> value(close slot) - value(open slot)   (cumulative counters;
+//        markets open exactly on the hour, so the open slot's :05 snapshot is the baseline; a non-zero on-chain baseline
+//        — manual markets created before 2026-09-12 — is used instead)
 //   <base>_dmed | <base>_wmed  -> median of every hourly slot in (open, close], needs ≥75 % coverage   (levels)
 //   legacy: *_med7 -> median of the 7 daily T00 slots ending at close (≥4);  skr_price_close -> value at close
 import fs from "node:fs";
@@ -83,10 +85,11 @@ function evaluate(metric, openTs, closeTs, baseline) {
   const spec = parseMetric(metric); if (!spec) return { ok: false, reason: `unknown metric ${metric}` };
   const { kind, src } = spec; const sClose = slotOf(closeTs), sOpen = slotOf(openTs); const used = [];
   if (kind === "cum") {
-    // Baseline is fixed on-chain at creation; the close value comes from the closing slot's snapshot (taken after close).
     const b = valueAt(sClose, src); if (b == null) return { ok: false, reason: `missing snapshot ${sClose}` };
+    let base = baseline, baseSlot = null;
+    if (baseline === 0) { base = valueAt(sOpen, src); baseSlot = sOpen; if (base == null) return { ok: false, reason: `missing opening snapshot ${sOpen}` }; used.push(sOpen); }
     used.push(sClose);
-    return { ok: true, value: b - baseline, used, detail: { baseline, close: b, closeSlot: sClose } };
+    return { ok: true, value: b - base, used, detail: { baseline: base, baselineSlot: baseSlot ?? "on-chain", close: b, closeSlot: sClose } };
   }
   if (kind === "med") {
     const expected = Math.max(1, Math.round((closeTs - openTs) / 3600)); const vals = [];
