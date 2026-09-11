@@ -35,7 +35,7 @@ import {
 type RootStackParamList = {
   Home: undefined;
   Settings: undefined;
-  // 🔥 Your screens go here
+  Market: { id: number };
 };
 
 declare global {
@@ -49,14 +49,14 @@ const Stack = createNativeStackNavigator();
 
 const AppStack = () => {
   return (
-    <Stack.Navigator initialRouteName={"Home"}>
+    <Stack.Navigator initialRouteName={"HomeStack"}>
       <Stack.Screen
         name="HomeStack"
         component={HomeNavigator}
         options={{ headerShown: false }}
       />
       <Stack.Screen name="Settings" component={Screens.SettingsScreen} />
-      {/** 🔥 Your screens go here */}
+      <Stack.Screen name="Market" component={Screens.MarketScreen} options={{ title: "Market" }} />
     </Stack.Navigator>
   );
 };

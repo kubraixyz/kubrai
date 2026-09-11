@@ -1,2 +1,4 @@
-export * from "./HomeScreen";
+export * from "./MarketsScreen";
+export * from "./MarketScreen";
+export * from "./MyBetsScreen";
 export * from "./SettingsScreen";

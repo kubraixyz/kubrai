@@ -30,17 +30,13 @@ export function toWalletAdapterNetwork(
   }
 }
 
+import { APP } from "../../config";
+// The build decides the network (app.json → extra.cluster); no in-app switching, so a devnet
+// build can never talk to mainnet money by accident.
 export const defaultClusters: Readonly<Cluster[]> = [
-  {
-    name: "devnet",
-    endpoint: clusterApiUrl("devnet"),
-    network: ClusterNetwork.Devnet,
-  },
-  {
-    name: "testnet",
-    endpoint: clusterApiUrl("testnet"),
-    network: ClusterNetwork.Testnet,
-  },
+  APP.cluster === "mainnet"
+    ? { name: "mainnet", endpoint: APP.rpcUrl, network: ClusterNetwork.Mainnet }
+    : { name: "devnet", endpoint: APP.rpcUrl, network: ClusterNetwork.Devnet },
 ];
 
 export interface ClusterProviderContext {

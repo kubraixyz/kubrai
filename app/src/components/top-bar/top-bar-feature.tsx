@@ -9,6 +9,7 @@ export function TopBar() {
 
   return (
     <Appbar.Header mode="small" style={styles.topBar}>
+      <Appbar.Content title="Kubrai" titleStyle={{ fontWeight: "700", letterSpacing: 0.5 }} />
       <TopBarWalletMenu />
 
       <Appbar.Action
@@ -24,7 +25,7 @@ export function TopBar() {
 
 const styles = StyleSheet.create({
   topBar: {
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
     alignItems: "center",
   },
 });

@@ -15,7 +15,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
 const CHAIN = "solana";
-const CLUSTER = "devnet";
+import Constants from "expo-constants";
+const CLUSTER = (Constants.expoConfig?.extra?.cluster as string) === "mainnet" ? "mainnet" : "devnet";
 const CHAIN_IDENTIFIER = `${CHAIN}:${CLUSTER}`;
 
 export type Account = Readonly<{
@@ -97,8 +98,9 @@ async function persistAuthorization(
 }
 
 export const APP_IDENTITY = {
-  name: "Solana Mobile Expo Template",
-  uri: "https://fakedomain.com",
+  name: "Kubrai",
+  uri: "https://kubrai.xyz",
+  icon: "favicon.ico",
 };
 
 export function useAuthorization() {

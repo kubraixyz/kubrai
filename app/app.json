@@ -1,32 +1,41 @@
 {
   "expo": {
-    "name": "app",
-    "slug": "app",
-    "version": "1.0.0",
+    "name": "Kubrai",
+    "slug": "kubrai",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#15171b"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.solana.mobile.expo.template"
+      "bundleIdentifier": "xyz.kubrai.app"
     },
     "android": {
+      "package": "xyz.kubrai.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#15171b"
       },
-      "package": "com.solana.mobile.expo.template"
+      "permissions": [
+        "android.permission.INTERNET"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "scheme": "kubrai",
+    "extra": {
+      "cluster": "devnet",
+      "apiBase": "https://api-devnet.kubrai.xyz",
+      "rpcUrl": "https://api.devnet.solana.com",
+      "programId": "F9qowxW3hmwrzDeKQXpL4rVmFcPvWe7e43oGnWU3AvQb"
     }
   }
 }
