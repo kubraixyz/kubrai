@@ -1196,6 +1196,13 @@ export type Kubrai = {
             "type": "i64"
           },
           {
+            "name": "baseline",
+            "docs": [
+              "Metric value at open (see MarketArgs::baseline)."
+            ],
+            "type": "i64"
+          },
+          {
             "name": "poolYes",
             "type": "u64"
           },
@@ -1308,6 +1315,14 @@ export type Kubrai = {
           },
           {
             "name": "resolveAfterTs",
+            "type": "i64"
+          },
+          {
+            "name": "baseline",
+            "docs": [
+              "Value of the metric at market open (from the opening snapshot). For weekly-increase",
+              "markets the observed value is close − baseline; for level markets it is informational."
+            ],
             "type": "i64"
           }
         ]

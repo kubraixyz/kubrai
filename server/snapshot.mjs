@@ -37,7 +37,7 @@ if (fs.existsSync(keyFile) && process.env.MEMO_DISABLED !== "1") {
     const memo = `kubrai-snapshot v1 ${day} sha256=${hash}`;
     const ix = new TransactionInstruction({ keys: [{ pubkey: kp.publicKey, isSigner: true, isWritable: false }], programId: MEMO_PROGRAM, data: Buffer.from(memo, "utf8") });
     const sig = await sendAndConfirmTransaction(conn, new Transaction().add(ix), [kp], { commitment: "confirmed" });
-    fs.writeFileSync(file + ".memo", JSON.stringify({ rpc: MEMO_RPC, signature: sig, memo }) + "\n");
+    fs.writeFileSync(file + ".memo", JSON.stringify({ cluster: /devnet/.test(MEMO_RPC) ? "devnet" : "mainnet", signature: sig, memo }) + "\n"); // never persist the RPC URL (it can carry an API key)
     console.log("memo tx", sig);
   } catch (e) { console.error("memo skipped:", e?.message ?? e); }
 }

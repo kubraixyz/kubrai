@@ -37,7 +37,10 @@ async function main() {
   const [market] = PublicKey.findProgramAddressSync([Buffer.from("market"), id.toArrayLike(Buffer, "le", 8)], program.programId);
   const [vault] = PublicKey.findProgramAddressSync([Buffer.from("vault"), market.toBuffer()], program.programId);
   const now = Math.floor(Date.now() / 1000);
-  const openTs = now + Math.round(Number(opensInH) * 3600), closeTs = openTs + Math.round(Number(durH) * 3600);
+  const openTs = now + Math.round(Number(opensInH) * 3600);
+  // CLOSE_AT (ISO) pins the close; it must be at or before 00:05 UTC of its day so the closing snapshot is taken after betting ends.
+  const closeTs = process.env.CLOSE_AT ? Math.floor(Date.parse(process.env.CLOSE_AT) / 1000) : openTs + Math.round(Number(durH) * 3600);
+  const closeDay = new Date(closeTs * 1000); if (closeDay.getUTCHours() * 60 + closeDay.getUTCMinutes() > 5 && process.env.ALLOW_LATE_CLOSE !== "1") throw new Error("close must be ≤ 00:05 UTC of its day (the snapshot must come after betting closes); set CLOSE_AT=YYYY-MM-DDT00:00:00Z");
   if (Buffer.byteLength(metric) > 32) throw new Error("metric tag must be ≤ 32 bytes");
   const base = process.env.NO_BASELINE === "1" ? { value: 0, day: "none" } : baselineFor(metric);
   const metricBytes = Array.from(Buffer.from(metric.padEnd(32, "\0").slice(0, 32)));
