@@ -8,10 +8,12 @@ import { PoolBar } from "../components/PoolBar";
 import { fmtAmt, statusLabel, timeLeft } from "../chain/format";
 import { totalPool, type MarketView } from "../chain/kubrai";
 import { IS_TEST, TOKEN_SYMBOL } from "../config";
+import { recordError } from "../utils/errorLog";
 
 export function MarketsScreen() {
   const nav = useNavigation<any>(); const theme = useTheme();
   const { data, isLoading, refetch, isRefetching, error } = useMarkets();
+  React.useEffect(() => { if (error) recordError(error, "markets"); }, [error]);
   const live = (data ?? []).filter((m) => m.status === 0 || m.status === 1);
   const card = ({ item: m }: { item: MarketView }) => {
     const info = metricInfo(m.metric);

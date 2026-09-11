@@ -24,7 +24,10 @@ const seenAddr = new Map(), seenIp = new Map();
 const dayKey = () => new Date().toISOString().slice(0, 10);
 
 const json = (res, code, body, extra = {}) => { res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "content-type", "access-control-allow-methods": "GET,POST,OPTIONS", ...extra }); res.end(JSON.stringify(body)); };
-const readBody = (req) => new Promise((ok, err) => { let b = ""; req.on("data", (c) => { b += c; if (b.length > 4096) req.destroy(); }); req.on("end", () => ok(b)); req.on("error", err); });
+const readBody = (req, max = 4096) => new Promise((ok, err) => { let b = ""; req.on("data", (c) => { b += c; if (b.length > max) req.destroy(); }); req.on("end", () => ok(b)); req.on("error", err); });
+const FEEDBACK_DIR = process.env.FEEDBACK_DIR ?? path.join(os.homedir(), "apps", "kubrai", "feedback");
+fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
+const seenFb = new Map();
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
@@ -36,6 +39,22 @@ http.createServer(async (req, res) => {
       const f = path.join(SNAP, "settlements.jsonl");
       const rows = fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.owner === po[1]) : [];
       return json(res, 200, { owner: po[1], settled: rows.reverse() }, { "cache-control": "no-store" });
+    }
+    // In-app feedback: { note, diagnostics, image (base64 jpeg/png, ≤ 6 MB) } → one .json (+ .jpg/.png) per report
+    if (url.pathname === "/feedback" && req.method === "POST") {
+      const ip = req.headers["cf-connecting-ip"] ?? req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "?";
+      const ipk = ip + "|" + dayKey(); seenFb.set(ipk, (seenFb.get(ipk) ?? 0) + 1); if (seenFb.get(ipk) > 40) return json(res, 429, { error: "too many reports today" });
+      let body; try { body = JSON.parse(await readBody(req, 9 * 1024 * 1024)); } catch { return json(res, 400, { error: "body must be JSON {note, diagnostics, image?, imageType?}" }); }
+      const id = new Date().toISOString().replace(/[:.]/g, "-") + "-" + Math.random().toString(36).slice(2, 7);
+      const rec = { id, at: new Date().toISOString(), note: String(body.note ?? "").slice(0, 4000), diagnostics: body.diagnostics ?? null, wallet: body.wallet ?? null, ua: req.headers["user-agent"] ?? null };
+      if (body.image) {
+        const b64 = String(body.image).replace(/^data:[^;]+;base64,/, ""); const buf = Buffer.from(b64, "base64");
+        if (buf.length > 6 * 1024 * 1024) return json(res, 413, { error: "image too large (6 MB max)" });
+        const ext = /png/i.test(body.imageType ?? "") ? "png" : "jpg"; fs.writeFileSync(path.join(FEEDBACK_DIR, `${id}.${ext}`), buf); rec.image = `${id}.${ext}`; rec.imageBytes = buf.length;
+      }
+      fs.writeFileSync(path.join(FEEDBACK_DIR, `${id}.json`), JSON.stringify(rec, null, 2));
+      console.log("feedback", id, rec.note.slice(0, 80), rec.image ?? "(no image)");
+      return json(res, 200, { ok: true, id });
     }
     if (url.pathname === "/snapshots") {
       const days = fs.readdirSync(SNAP).filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f)).map((f) => f.slice(0, 10)).sort();

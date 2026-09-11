@@ -36,6 +36,7 @@ type RootStackParamList = {
   Home: undefined;
   Settings: undefined;
   Market: { id: number };
+  Feedback: undefined;
 };
 
 declare global {
@@ -57,6 +58,7 @@ const AppStack = () => {
       />
       <Stack.Screen name="Settings" component={Screens.SettingsScreen} />
       <Stack.Screen name="Market" component={Screens.MarketScreen} options={{ title: "Market" }} />
+      <Stack.Screen name="Feedback" component={Screens.FeedbackScreen} options={{ title: "Send feedback" }} />
     </Stack.Navigator>
   );
 };

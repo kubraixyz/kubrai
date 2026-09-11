@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import { Button, Divider, Text } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Constants from "expo-constants";
+import { useNavigation } from "@react-navigation/native";
 import { useAuthorization } from "../utils/useAuthorization";
 import { useMobileWallet } from "../utils/useMobileWallet";
 import { useBalances, useInvalidateAll } from "../hooks/useKubrai";
@@ -13,7 +14,7 @@ import { APP, IS_TEST, TOKEN_SYMBOL } from "../config";
 export function SettingsScreen() {
   const { selectedAccount } = useAuthorization(); const { connect, disconnect } = useMobileWallet(); const bal = useBalances(); const invalidate = useInvalidateAll();
   const [msg, setMsg] = useState(""); const [busy, setBusy] = useState(false);
-  const insets = useSafeAreaInsets();
+  const insets = useSafeAreaInsets(); const nav = useNavigation<any>();
   async function faucet() {
     if (!selectedAccount) return; setBusy(true); setMsg("Requesting…");
     try { const j = await requestFaucet(selectedAccount.publicKey.toBase58()); setMsg(`Received ${j.tokens}${j.sol !== "already funded" ? ` and ${j.sol}` : ""}.`); invalidate(); }
@@ -31,6 +32,9 @@ export function SettingsScreen() {
         </View>
         {!!msg && <Text style={styles.dim}>{msg}</Text>}
       </>) : <Button mode="contained" onPress={() => connect()}>Connect wallet</Button>}
+      <Divider style={{ marginVertical: 16 }} />
+      <Text variant="titleMedium">Feedback</Text>
+      <Button mode="contained-tonal" icon="message-alert-outline" onPress={() => nav.navigate("Feedback")} style={{ alignSelf: "flex-start" }}>Send feedback with a screenshot</Button>
       <Divider style={{ marginVertical: 16 }} />
       <Text variant="titleMedium">Network</Text>
       <Text>{APP.cluster}{IS_TEST ? " · test network, tokens have no value" : ""}</Text>

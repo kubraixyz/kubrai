@@ -37,3 +37,6 @@ if (typeof g.TextEncoder === "undefined" || typeof g.TextDecoder === "undefined"
 class Crypto { getRandomValues = expoCryptoGetRandomValues; }
 const webCrypto = typeof crypto !== "undefined" ? crypto : new Crypto();
 (() => { if (typeof crypto === "undefined") Object.defineProperty(g, "crypto", { configurable: true, enumerable: true, get: () => webCrypto }); })();
+
+// Keep the last few runtime errors for feedback reports.
+try { require("./utils/errorLog").installGlobalErrorLog(); } catch {}
