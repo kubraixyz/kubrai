@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Button, Divider, Text } from "react-native-paper";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Constants from "expo-constants";
 import { useAuthorization } from "../utils/useAuthorization";
 import { useMobileWallet } from "../utils/useMobileWallet";
 import { useBalances, useInvalidateAll } from "../hooks/useKubrai";
@@ -11,6 +13,7 @@ import { APP, IS_TEST, TOKEN_SYMBOL } from "../config";
 export function SettingsScreen() {
   const { selectedAccount } = useAuthorization(); const { connect, disconnect } = useMobileWallet(); const bal = useBalances(); const invalidate = useInvalidateAll();
   const [msg, setMsg] = useState(""); const [busy, setBusy] = useState(false);
+  const insets = useSafeAreaInsets();
   async function faucet() {
     if (!selectedAccount) return; setBusy(true); setMsg("Requesting…");
     try { const j = await requestFaucet(selectedAccount.publicKey.toBase58()); setMsg(`Received ${j.tokens}${j.sol !== "already funded" ? ` and ${j.sol}` : ""}.`); invalidate(); }
@@ -37,6 +40,9 @@ export function SettingsScreen() {
       <Text variant="titleMedium">About</Text>
       <Text>Kubrai runs parimutuel pools on Seeker-ecosystem numbers. Every market settles from a daily snapshot whose hash is on-chain, the winning range is derived on-chain from the observed value, and payouts are pushed to your wallet automatically after a 24 h dispute window.</Text>
       <Text style={styles.dim}>kubrai.xyz</Text>
+      <Divider style={{ marginVertical: 16 }} />
+      <Text variant="titleMedium">Diagnostics</Text>
+      <Text style={styles.dim}>app {Constants.expoConfig?.version} · insets t{insets.top} b{insets.bottom} · structuredClone {typeof (globalThis as any).structuredClone} · TextDecoder {typeof (globalThis as any).TextDecoder} · hermes {typeof (globalThis as any).HermesInternal === "object" ? "yes" : "no"}</Text>
     </ScrollView>
   );
 }

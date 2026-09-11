@@ -30,7 +30,7 @@ export function MarketsScreen() {
       {IS_TEST && <View style={styles.testnet}><Text variant="labelSmall" style={{ color: "#6b5200" }}>TEST NETWORK · devnet · tokens have no value</Text></View>}
       <Text variant="headlineSmall" style={{ marginBottom: 4 }}>This week's markets</Text>
       <Text variant="bodySmall" style={[styles.dim, { marginBottom: 12 }]}>Parimutuel pools on the numbers that describe the Seeker ecosystem. Winners split the losing pools; the fee is 3% of winnings only.</Text>
-      {isLoading ? <ActivityIndicator /> : error ? <Text>Could not load markets: {String((error as any)?.message ?? error)}</Text> :
+      {isLoading ? <ActivityIndicator /> : error ? <View><Text>Could not load markets: {String((error as any)?.message ?? error)}</Text><Text variant="labelSmall" style={[styles.dim, { fontFamily: "monospace", marginTop: 6 }]} selectable>{String((error as any)?.stack ?? "").split("\n").slice(0, 6).join("\n")}</Text></View> :
         <FlatList data={live} keyExtractor={(m) => String(m.id)} renderItem={card} refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />} ListEmptyComponent={<Text style={styles.dim}>No open markets right now.</Text>} contentContainerStyle={{ gap: 12, paddingBottom: 24 }} />}
     </View>
   );
