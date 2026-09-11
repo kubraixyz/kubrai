@@ -62,6 +62,36 @@ export async function dappReviews() {
   return { value: Object.values(watched).filter(Boolean).length, raw: watched, source: "dappstore.solanamobile.com/graphql (dAppsByAndroidPackages; reviews are device-gated)" };
 }
 
+/** Distinct reviewers and review count over the trailing 7 days, store-wide. Reviews are device-gated (one per
+ *  device per app), so each extra reviewer is a phone. Pages each app's reviews newest-first until older than 8 days. */
+export async function storeReviewers7d() {
+  const c = await catalog(); const since = Date.now() - 7 * 864e5, hardStop = Date.now() - 8 * 864e5;
+  const pkgs = [...c.apps.entries()].filter(([, a]) => a.reviews > 0).map(([p]) => p);
+  const wallets = new Set(), domains = new Set(); let reviews = 0, appsWithNew = 0, requests = 0, failures = 0;
+  const worker = async (pkg) => {
+    let after = null, newHere = 0;
+    for (let page = 0; page < 30; page++) {
+      let d; try { requests++; d = await storeGql(`query R($systemContext: SystemContext!, $p: String!, $after: String) { dAppReviews(systemContext: $systemContext, androidPackage: $p, first: 20, after: $after) { edges { node { id createdAt rating walletAddress domain } } pageInfo { hasNextPage endCursor } } }`, { p: pkg, after }); } catch { failures++; return; }
+      const conn = d.dAppReviews; let oldest = Infinity;
+      for (const { node: r } of conn.edges) { const t = Date.parse(r.createdAt); oldest = Math.min(oldest, t); if (t >= since) { reviews++; newHere++; if (r.walletAddress) wallets.add(r.walletAddress); if (r.domain) domains.add(r.domain); } }
+      if (!conn.pageInfo.hasNextPage || oldest < hardStop) break; after = conn.pageInfo.endCursor;
+    }
+    if (newHere) appsWithNew++;
+  };
+  const queue = [...pkgs]; await Promise.all(Array.from({ length: 6 }, async () => { while (queue.length) await worker(queue.shift()); }));
+  return { value: wallets.size, raw: { reviewers7d: wallets.size, reviews7d: reviews, domains7d: domains.size, appsWithNewReviews: appsWithNew, appsScanned: pkgs.length, requests, failures }, source: "dappstore.solanamobile.com/graphql (dAppReviews per app, trailing 7 days, distinct walletAddress)" };
+}
+
+// --- Seeker Genesis Token: one per activated device; the Token-2022 group on the mint holds the count ---
+const SGT_GROUP_MINT = new PublicKey("GT22s89nU4iWFkNXj1Bw6uYhJJWDRPpShHt4Bk8f99Te");
+export async function seekerGenesisTokens(conn = new Connection(MAINNET)) {
+  const info = await conn.getParsedAccountInfo(SGT_GROUP_MINT);
+  const ext = info.value?.data?.parsed?.info?.extensions ?? [];
+  const grp = ext.find((e) => e.extension === "tokenGroup")?.state;
+  if (!grp || typeof grp.size !== "number") throw new Error("tokenGroup extension not found on the Genesis Token mint");
+  return { value: grp.size, raw: { groupMint: SGT_GROUP_MINT.toBase58(), size: grp.size, maxSize: grp.maxSize, updateAuthority: grp.updateAuthority }, source: "rpc getParsedAccountInfo(Genesis Token mint).tokenGroup.size" };
+}
+
 // --- SeekerTracker (third-party aggregator; kept only for metrics we cannot derive ourselves) ---
 export async function skrIdsTotal() {
   const j = await getJson("https://seekertracker.com/api/activations");
@@ -106,6 +136,8 @@ export const METRICS = {
   skr_ids_onchain: skrIdsOnchain,
   skr_ids_total: skrIdsTotal,
   dapp_reviews: dappReviews,
+  sgt_total: seekerGenesisTokens,
+  reviewers_7d: storeReviewers7d,
   das: dailyActiveSeekers,
   dapp_store_active_apps: dappStoreActiveApps,
   skr_supply: skrSupply,
