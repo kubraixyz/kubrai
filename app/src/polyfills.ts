@@ -33,6 +33,12 @@ if (typeof g.TextEncoder === "undefined" || typeof g.TextDecoder === "undefined"
   try { const te = require("text-encoding"); g.TextEncoder ??= te.TextEncoder; g.TextDecoder ??= te.TextDecoder; } catch {}
 }
 
+
+// --- AbortSignal.timeout (used by Anchor's provider); Hermes has AbortController but not the static helper.
+if (typeof g.AbortSignal !== "undefined" && typeof g.AbortSignal.timeout !== "function") {
+  g.AbortSignal.timeout = (ms: number) => { const c = new AbortController(); setTimeout(() => c.abort(new Error("timeout")), ms); return c.signal; };
+}
+
 // --- crypto.getRandomValues
 class Crypto { getRandomValues = expoCryptoGetRandomValues; }
 const webCrypto = typeof crypto !== "undefined" ? crypto : new Crypto();
