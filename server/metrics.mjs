@@ -23,7 +23,7 @@ const STORE_GQL = "https://dappstore.solanamobile.com/graphql";
 const SYSTEM_CONTEXT = { locale: "en-US", platformSdk: 36, pixelDensity: 440, model: "Seeker" };
 // Be a polite client: one request at a time, ≥250 ms apart, back off when the edge answers with HTML (WAF / rate limit).
 let storeChain = Promise.resolve(); let lastStoreCall = 0;
-const STORE_GAP_MS = Number(process.env.STORE_GAP_MS ?? 600);   // ≤100 req/min: a full first scan takes ~13 min, later days only touch apps whose totals moved
+const STORE_GAP_MS = Number(process.env.STORE_GAP_MS ?? 1000);  // ≤60 req/min. Even 100/min got the VPS IP a ~1 h CloudFront 403 after ~1,400 requests, so the daily run must stay in the low hundreds (diff mode below).
 function storeGql(query, variables = {}, timeoutMs = 60000) {
   const run = async () => {
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -58,21 +58,26 @@ export async function storeCatalog() {
   return { categories: cats.length, perCategory, apps };
 }
 import fs from "node:fs"; import path from "node:path";
-/** Per-app lifetime review totals from the most recent snapshot file before today (null if none). */
+const snapshotDir = () => process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots");
+const TOTALS_SIDECAR = "store-review-totals.json";   // unhashed side file so the diff mode works even when the last snapshot predates reviewTotals
+/** Per-app lifetime review totals from the most recent snapshot before today, else the side file (null if neither). */
 function previousCatalogTotals() {
   try {
-    const dir = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots"); const today = new Date().toISOString().slice(0, 10);
+    const dir = snapshotDir(); const today = new Date().toISOString().slice(0, 10);
     const days = fs.readdirSync(dir).filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f) && f.slice(0, 10) < today).sort();
     for (let i = days.length - 1; i >= 0; i--) { const t = JSON.parse(fs.readFileSync(path.join(dir, days[i]), "utf8")).metrics?.dapp_store_active_apps?.raw?.reviewTotals; if (t) return t; }
+    const side = JSON.parse(fs.readFileSync(path.join(dir, TOTALS_SIDECAR), "utf8")); if (side?.totals && side.date < today) return side.totals;
   } catch {}
   return null;
 }
+function saveTotalsSidecar(totals) { try { fs.writeFileSync(path.join(snapshotDir(), TOTALS_SIDECAR), JSON.stringify({ date: new Date().toISOString().slice(0, 10), totals })); } catch {} }
 let catalogCache = null;
 const catalog = async () => (catalogCache ??= await storeCatalog());
 export async function dappStoreActiveApps() {
   const c = await catalog();
   const active = [...c.apps.values()].filter((a) => !a.aux || !/Uninstall/.test(a.aux)).length;
   const reviewTotals = Object.fromEntries([...c.apps.entries()].filter(([, a]) => a.reviews > 0).map(([p, a]) => [p, a.reviews]));
+  saveTotalsSidecar(reviewTotals);
   return { value: active, raw: { activeCount: active, uniqueListed: c.apps.size, categories: c.categories, perCategory: c.perCategory, reviewTotals }, source: "dappstore.solanamobile.com/graphql (dAppsCategory, all categories, deduplicated by package)" };
 }
 export const APP_SLUGS = { jupiter: "ag.jup.jupiter.android", tokenrun: "com.tokenrun.app", mattle: "fun.mattle.twa", cherry: "fun.cherry", seedvault: "com.solanamobile.wallet", lootgo: "com.lootgo.app", jito: "network.jito.www.twa", sleepagotchi: "com.sleepagotchi.soft.app", moonwalk: "fit.moonwalk.mobile.app", ore: "supply.ore.app" };
@@ -104,6 +109,7 @@ export async function storeReviewers7d() {
     if (newHere) appsWithNew++;
   };
   for (const pkg of pkgs) await worker(pkg);   // storeGql already serializes; keep it simple
+  if (failures > 0) throw new Error(`reviewers_7d: ${failures}/${pkgs.length} apps failed to scan; refusing to report a partial count`);
   return { value: wallets.size, raw: { reviewers7d: wallets.size, reviews7d: reviews, domains7d: domains.size, appsWithNewReviews: appsWithNew, appsScanned: pkgs.length, appsTotal: c.apps.size, usedDiff: prev != null, requests, failures }, source: "dappstore.solanamobile.com/graphql (dAppReviews per app, trailing 7 days, distinct walletAddress)" };
 }
 
