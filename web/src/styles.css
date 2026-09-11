@@ -50,3 +50,7 @@ header.top{gap:10px}header.top .sp{display:none}header.top .brand{flex:1 1 100%}
 #netbadge{flex:1 1 100%}.testnet{display:block;text-align:center;white-space:normal}
 #wallet{flex:1 1 100%;justify-content:space-between}#wallet .note{flex:1 1 100%}
 h1{font-size:22px}}
+
+.navlink{font-size:14px;color:var(--fg);padding:6px 10px;border:1px solid var(--line);border-radius:6px}.navlink:hover{text-decoration:none;border-color:var(--accent);color:var(--accent)}
+.tbl{border-collapse:collapse;width:100%;font-size:14px;min-width:640px}.tbl th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);padding:8px 10px;border-bottom:1px solid var(--line)}.tbl td{padding:10px;border-top:1px solid var(--line);vertical-align:top}.tbl .r{text-align:right}
+.scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}

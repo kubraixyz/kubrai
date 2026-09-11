@@ -75,6 +75,20 @@ function evaluate(metric, openTs, closeTs, baseline) {
 }
 const evidenceHash = (used) => createHash("sha256").update(used.map((d) => `${d}:${readDay(d)?.sha ?? ""}`).join("\n")).digest();
 
+// Off-chain replica of compute_payout (same integer math) so we can record what each settlement paid.
+function payoutFor(m, p) {
+  const amounts = p.amounts.map((x) => BigInt(x.toString())), feeW = p.feeW.map((x) => BigInt(x.toString()));
+  const total = amounts.reduce((a, b) => a + b, 0n);
+  if (m.status === 3) return { payout: total, fee: 0n, kind: "refund" };
+  const w = m.outcome; const pools = m.pools.map((x) => BigInt(x.toString()));
+  const winPool = pools[w], losePool = pools.reduce((a, b) => a + b, 0n) - winPool, stake = amounts[w];
+  if (winPool === 0n) return { payout: total, fee: 0n, kind: "refund" };
+  if (stake === 0n) return { payout: 0n, fee: 0n, kind: "lost" };
+  const gross = (losePool * stake) / winPool, fee = (gross * feeW[w]) / (stake * 10000n), seed = (BigInt(m.seedAmount.toString()) * stake) / winPool;
+  return { payout: stake + gross - fee + seed, fee, kind: "won" };
+}
+const SETTLEMENTS = path.join(SNAP, "settlements.jsonl");
+
 // ---------- on-chain steps ----------
 async function propose(markets, now) {
   for (const { publicKey, account: m } of markets) {
@@ -116,8 +130,11 @@ async function settle(markets, cfg) {
         if (DRY) continue;
         try {
           const ownerToken = (await getOrCreateAssociatedTokenAccount(conn, proposer, mint, p.owner)).address; // creates ATA if the owner closed it (rent paid by cranker)
+          const fresh = await program.account.market.fetch(publicKey);
+          const { payout, fee, kind } = payoutFor(fresh, p);
           const sig = await program.methods.settlePosition().accounts({ market: publicKey, position: ppk, payer: p.payer, vault: vaultPda(publicKey), ownerToken, cranker: proposer.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).rpc();
-          log(`  settled ${p.owner.toBase58()} ${sig}`);
+          fs.appendFileSync(SETTLEMENTS, JSON.stringify({ at: new Date().toISOString(), market: publicKey.toBase58(), id: m.id.toNumber(), metric: tag(m.metric), owner: p.owner.toBase58(), amounts: p.amounts.slice(0, fresh.nBuckets).map((x) => x.toString()), status: fresh.status, outcome: fresh.outcome, observed: fresh.proposedValue.toString(), kind, payout: payout.toString(), fee: fee.toString(), signature: sig }) + "\n");
+          log(`  settled ${p.owner.toBase58()} ${kind} payout=${payout} ${sig}`);
         } catch (e) { log(`  FAILED ${p.owner.toBase58()}: ${e.message?.split("\n")[0]}`); }
       }
     }

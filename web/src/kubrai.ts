@@ -52,6 +52,21 @@ export async function fetchMarkets(): Promise<MarketView[]> {
 export async function fetchMarket(id: number): Promise<MarketView> {
   const pk = marketPda(id); return toView(pk, await (program.account as any).market.fetch(pk));
 }
+/** All open positions of a wallet (owner sits at offset 8 + 32 in Position). */
+export async function fetchPositionsByOwner(u: PublicKey) {
+  const all = await (program.account as any).position.all([{ dataSize: (program.account as any).position.size }, { memcmp: { offset: 40, bytes: u.toBase58() } }]);
+  return all.map((x: any) => ({ pubkey: x.publicKey as PublicKey, market: x.account.market as PublicKey, amounts: (x.account.amounts as any[]).map((a) => a.toNumber()) as number[], feeW: x.account.feeW as any[] }));
+}
+/** Off-chain replica of the on-chain payout for a position, given the market's final (or hypothetical) outcome bucket. */
+export function payoutIfBucket(m: MarketView, amounts: number[], feeBpsByBucket: number[], w: number) {
+  const total = amounts.reduce((a, b) => a + b, 0);
+  if (m.status === 3) return { payout: total, kind: "refund" as const };
+  const winPool = m.pools[w], losePool = totalPool(m) - winPool, stake = amounts[w] ?? 0;
+  if (winPool === 0) return { payout: total, kind: "refund" as const };
+  if (stake === 0) return { payout: 0, kind: "lost" as const };
+  const gross = (losePool * stake) / winPool, fee = (gross * (feeBpsByBucket[w] ?? 0)) / 10000, seed = (m.seed * stake) / winPool;
+  return { payout: stake + gross - fee + seed, kind: "won" as const };
+}
 export async function fetchPosition(m: PublicKey, u: PublicKey) {
   try { return await (program.account as any).position.fetch(positionPda(m, u)); } catch { return null; }
 }

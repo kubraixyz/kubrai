@@ -31,6 +31,12 @@ http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") return json(res, 204, {});
   try {
     if (url.pathname === "/health") return json(res, 200, { ok: true, cluster: CLUSTER, programId: state.programId, mint: state.mint, faucet: FAUCET_ENABLED });
+    const po = url.pathname.match(/^\/positions\/([1-9A-HJ-NP-Za-km-z]{32,44})$/);
+    if (po) {
+      const f = path.join(SNAP, "settlements.jsonl");
+      const rows = fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.owner === po[1]) : [];
+      return json(res, 200, { owner: po[1], settled: rows.reverse() }, { "cache-control": "no-store" });
+    }
     if (url.pathname === "/snapshots") {
       const days = fs.readdirSync(SNAP).filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f)).map((f) => f.slice(0, 10)).sort();
       return json(res, 200, { days, latest: days.at(-1) ?? null });
