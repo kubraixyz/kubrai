@@ -23,7 +23,7 @@ const STORE_GQL = "https://dappstore.solanamobile.com/graphql";
 const SYSTEM_CONTEXT = { locale: "en-US", platformSdk: 36, pixelDensity: 440, model: "Seeker" };
 // Be a polite client: one request at a time, ≥250 ms apart, back off when the edge answers with HTML (WAF / rate limit).
 let storeChain = Promise.resolve(); let lastStoreCall = 0;
-const STORE_GAP_MS = Number(process.env.STORE_GAP_MS ?? 250);
+const STORE_GAP_MS = Number(process.env.STORE_GAP_MS ?? 600);   // ≤100 req/min: a full first scan takes ~13 min, later days only touch apps whose totals moved
 function storeGql(query, variables = {}, timeoutMs = 60000) {
   const run = async () => {
     for (let attempt = 0; attempt < 4; attempt++) {
