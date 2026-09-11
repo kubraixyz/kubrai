@@ -6,7 +6,7 @@ import { Keypair, PublicKey, Transaction, VersionedTransaction } from "@solana/w
 import { connection } from "./kubrai";
 import { CLUSTER } from "./config";
 
-export type Session = { label: string; publicKey: PublicKey; signAndSend: (tx: Transaction) => Promise<string>; disconnect: () => Promise<void> };
+export type Session = { label: string; publicKey: PublicKey; signAndSend: (tx: Transaction) => Promise<string>; signMessage: (msg: Uint8Array) => Promise<Uint8Array>; disconnect: () => Promise<void> };
 const chain = CLUSTER === "mainnet" ? "solana:mainnet" : CLUSTER === "devnet" ? "solana:devnet" : "solana:localnet";
 
 export function listWallets(): Wallet[] {
@@ -29,7 +29,8 @@ export async function connectWallet(w: Wallet): Promise<Session> {
     return connection.sendRawTransaction(signedTransaction, { skipPreflight: false });
   };
   const disconnect = async () => { try { await (w.features as any)["standard:disconnect"]?.disconnect(); } catch {} };
-  return { label: w.name, publicKey, signAndSend, disconnect };
+  const signMessage = async (message: Uint8Array) => { const f = (w.features as any)["solana:signMessage"]; if (!f) throw new Error("This wallet cannot sign messages"); const [{ signature }] = await f.signMessage({ account: acc, message }); return signature as Uint8Array; };
+  return { label: w.name, publicKey, signAndSend, signMessage, disconnect };
 }
 
 /** Test-only burner wallet kept in localStorage (never offered on mainnet). */
@@ -44,11 +45,12 @@ export function devWallet(): Session | null {
   return {
     label: "Test wallet (browser)", publicKey: kp.publicKey,
     signAndSend: async (tx: Transaction) => { tx.sign(kp); return connection.sendRawTransaction(tx.serialize()); },
+    signMessage: async (message: Uint8Array) => (await import("tweetnacl")).default.sign.detached(message, kp.secretKey),
     disconnect: async () => {},
   };
 }
 
-function bs58(bytes: Uint8Array) {
+export function bs58(bytes: Uint8Array) {
   const A = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   let x = BigInt(0); for (const b of bytes) x = x * 256n + BigInt(b);
   let s = ""; while (x > 0n) { s = A[Number(x % 58n)] + s; x /= 58n; }

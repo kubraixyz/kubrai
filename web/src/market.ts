@@ -1,8 +1,9 @@
 import { PublicKey } from "@solana/web3.js";
+import { bs58 } from "./wallet";
 import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
 import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel } from "./metrics";
 import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill, timeLeft } from "./ui";
-import { TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
+import { API_BASE, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 
 mountNetBadge(); mountWallet();
 const root = document.getElementById("market")!;
@@ -32,9 +33,29 @@ function render() {
       ${m.nBuckets > 2 ? `<b>How ranges are set</b><span>Cut at the quantiles of the last 12 weekly values, so every range started out roughly equally likely. Odds then move with the pools.</span>` : ""}
       <b>Dispute window</b><span>${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize</span>
       <b>Snapshot hash</b><span class="hash">${m.proposedAt ? m.snapshotHash : "—"}</span>
+      ${m.status === 1 ? `<b>Disagree?</b><span><div id="dispute"><button id="dbtn">Dispute this result</button> <span class="note">Open until ${fmtTs(m.proposedAt + cfg.disputeWindowSecs.toNumber())}. You sign a message with your wallet; the operator is paged and must re-propose or void before the window ends.</span></div><div id="dlist" class="note"></div></span>` : ""}
       <b>Market account</b><span class="hash">${m.pubkey.toBase58()}</span>
     </div>`;
   renderBet(open, fee);
+  mountDispute();
+}
+async function mountDispute() {
+  const box = document.getElementById("dispute"); if (!box) return;
+  try { const r = await fetch(`${API_BASE}/disputes?market=${m.pubkey.toBase58()}`); const j = await r.json(); const open = (j.disputes ?? []).filter((d: any) => d.status === "open"); if (open.length) document.getElementById("dlist")!.textContent = `${open.length} open dispute${open.length > 1 ? "s" : ""} already filed.`; } catch {}
+  const btn = document.getElementById("dbtn") as HTMLButtonElement;
+  btn.onclick = async () => {
+    const s = getSession(); if (!s) { alert("Connect a wallet first."); return; }
+    const reason = prompt("Why is the proposed result wrong? (what you observed, where)"); if (!reason || reason.trim().length < 5) return;
+    const claimed = prompt("What should the observed value be? (leave empty if unsure)") ?? "";
+    btn.disabled = true;
+    try {
+      const msg = `kubrai-dispute v1\nmarket=${m.pubkey.toBase58()}\nwallet=${s.publicKey.toBase58()}\nclaimed=${claimed.trim()}\nreason=${reason.trim().slice(0, 2000)}`;
+      const sig = await s.signMessage(new TextEncoder().encode(msg));
+      const r = await fetch(`${API_BASE}/dispute`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ market: m.pubkey.toBase58(), wallet: s.publicKey.toBase58(), reason: reason.trim().slice(0, 2000), claimedValue: claimed.trim() || null, signature: bs58(sig) }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.error ?? "failed");
+      document.getElementById("dlist")!.textContent = "Dispute filed. The operator has been notified.";
+    } catch (e: any) { alert(e?.message ?? e); btn.disabled = false; }
+  };
 }
 function renderBet(open: boolean, fee: number) {
   const box = document.getElementById("bet")!;
