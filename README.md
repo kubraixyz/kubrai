@@ -25,7 +25,7 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
 * The treasury may **seed** a market with a fee-free prize; it is split pro-rata among
   winners. If nobody wins the seed returns to the treasury.
 * If a market is **voided** every bettor is refunded in full.
-* Bucket thresholds are cut at the **quantiles of the last 12 weekly values**, so every
+* Bucket thresholds are cut at the **quantiles of the metric's own recent history** (windows of the same length), so every
   range starts out roughly equally likely (`server/buckets.mjs`).
 
 ## Why you can trust the settlement
@@ -39,16 +39,15 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
    finalize early or void. A compromised server can delay a market by a day and lie about a
    number that everyone can check; it cannot steal a pool.
 3. **The baseline is fixed on-chain at market creation** from the opening snapshot, and
-   **betting closes before the closing snapshot is taken** (00:05 UTC), so nobody bets on a
+   **betting closes before the closing snapshot is taken** (snapshots run at :05, markets close on the hour), so nobody bets on a
    number they have already seen.
-4. **Daily snapshots are hashed on-chain** (memo tx) and published with their evidence
+4. **Hourly snapshots are hashed on-chain** (memo tx) and published with their evidence
    (`/snapshots/:day`). Sources are labelled on every market: *on-chain* (recomputable by
    anyone: `.skr` name records, the SKR staking vault), *store data* (dApp Store catalog),
    *third-party*.
 5. **Metrics are chosen to be expensive to manipulate.** A new `.skr` ID needs a Seeker
    Genesis Token, i.e. a $500 device; dApp Store reviews can only be written from verified
-   devices, one per device per app. Level metrics resolve on the 7-day median of daily
-   snapshots, so a one-day spike moves nothing.
+   devices, one per device per app. Level metrics resolve on the median of every hourly snapshot inside the market window (24 for a daily market, 168 for a weekly one; at least 75 % must exist), so a last-minute deposit or withdrawal cannot move the result. Cumulative metrics resolve on the increase from the baseline fixed on-chain at open to the closing snapshot.
 6. **Settlement is permissionless.** A crank pays every winner and closes every position,
    returning the rent deposit to whoever paid it. Nobody has to remember to claim.
 
@@ -57,7 +56,7 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
 ```
 programs/kubrai   Anchor program (Rust) — N-bucket parimutuel, on-chain bucket derivation
 tests/            7 end-to-end tests against a local validator (fees, void, no-winner, multi-bucket)
-server/           snapshot recorder (daily, memo hash), resolver + settlement crank, public API + devnet faucet, bucket designer
+server/           hourly snapshot recorder (memo hash), resolver + settlement crank, scheduled market opener (market-templates.json), public API + devnet faucet, bucket designer
 web/              market pages + wallet betting (Wallet Standard), "My bets", APK download
 app/              Seeker app: Expo / React Native + Mobile Wallet Adapter (Seed Vault), in-app feedback
 brand/            icon sources (SVG)
@@ -90,7 +89,9 @@ ANCHOR_PROVIDER_URL=http://127.0.0.1:8899 ANCHOR_WALLET=~/.config/solana/id.json
 
 # bootstrap a cluster (mock SKR mint, treasury, proposer key, config) and open a market
 ANCHOR_PROVIDER_URL=... ANCHOR_WALLET=... npx ts-node scripts/devnet-setup.ts
-CLOSE_AT=2026-09-19T00:00:00Z npx ts-node scripts/create-market.ts skr_ids_week 77,93,113 "How many new .skr IDs this week?" 0 0 500
+CLOSE_AT=2026-09-19T00:00:00Z npx ts-node scripts/create-market.ts skr_ids_week 77,93,113 "How many new .skr IDs this week?" 0 0 500   # manual one-off
+node server/open-markets.mjs            # scheduled: daily markets every day, weekly ones on Mondays (cron 00:12 UTC, after the 00:05 snapshot)
+node scripts/update-config.mjs disputeWindowSecs=21600
 
 # server
 cd server && npm i && node snapshot.mjs && node resolve.mjs && node api.mjs
@@ -109,7 +110,7 @@ build can never talk to mainnet money.
 
 ## Status
 
-devnet: live, five weekly markets, Seed Vault Wallet betting verified on a Seeker.
+devnet: live. Markets open on a fixed schedule — daily ones at 00:00 UTC (Seekers activated, SKR staked 24 h median, store reviews written) and weekly ones on Mondays (the same plus listings and per-app reviews). Early-bird fee applies for the first quarter of each market (6 h daily / 24 h weekly). Seed Vault Wallet betting verified on a Seeker.
 mainnet: after the hackathon — upgrade authority and treasury move to a Squads multisig
 first, weekly seeding runs on a spending limit, cold-start seed budget is fixed for four
 weeks from launch and then funded from fees.

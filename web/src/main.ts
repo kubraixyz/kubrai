@@ -23,7 +23,7 @@ function card(m: MarketView) {
     const live = ms.filter((m) => m.status === 0 || m.status === 1).sort((a, b) => a.closeTs - b.closeTs || a.id - b.id);
     const groups: { key: Cadence; title: string; blurb: string }[] = [
       { key: "day", title: "Daily markets", blurb: "Open every day at 00:00 UTC, close 24 h later, settle on the 00:05 UTC snapshot." },
-      { key: "week", title: "Weekly markets", blurb: "Open Mondays at 00:00 UTC, close the next Monday." },
+      { key: "week", title: "Weekly markets", blurb: "Run for a week; new ones open every Monday at 00:00 UTC." },
       { key: "other", title: "Other markets", blurb: "" },
     ];
     const html = groups.map((g) => { const items = live.filter((m) => metricCadence(m.metric) === g.key); return items.length ? `<h2 class="group">${g.title}</h2>${g.blurb ? `<p class="note">${g.blurb}</p>` : ""}<div class="grid">${items.map(card).join("")}</div>` : ""; }).join("");
