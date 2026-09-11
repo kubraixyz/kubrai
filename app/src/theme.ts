@@ -1,5 +1,5 @@
-import { MD3DarkTheme, MD3LightTheme } from "react-native-paper";
-import { DarkTheme as NavDark, DefaultTheme as NavLight, adaptNavigationTheme } from "@react-navigation/native";
+import { MD3DarkTheme, MD3LightTheme, adaptNavigationTheme } from "react-native-paper";
+import { DarkTheme as NavDark, DefaultTheme as NavLight } from "@react-navigation/native";
 // Same palette as the web app, stated explicitly so nothing depends on platform defaults.
 const light = { primary: "#0f8f7c", onPrimary: "#ffffff", primaryContainer: "#dcf1ec", onPrimaryContainer: "#0b3f38", secondary: "#6b6f78", secondaryContainer: "#ebe9e3", onSecondaryContainer: "#1d1f24", background: "#f4f3ef", onBackground: "#1d1f24", surface: "#ffffff", onSurface: "#1d1f24", onSurfaceVariant: "#6b6f78", outline: "#b9b5ac", outlineVariant: "#d8d5cc", error: "#c4553f", elevation: { level0: "transparent", level1: "#ffffff", level2: "#f3f1ec", level3: "#ebe9e3", level4: "#e6e3dc", level5: "#e0ddd5" } };
 const dark = { primary: "#4fc3b2", onPrimary: "#08302b", primaryContainer: "#1a2f2c", onPrimaryContainer: "#bfeee5", secondary: "#8c919c", secondaryContainer: "#262a31", onSecondaryContainer: "#d9dce3", background: "#15171b", onBackground: "#d9dce3", surface: "#1d2026", onSurface: "#d9dce3", onSurfaceVariant: "#9aa0ab", outline: "#4a5060", outlineVariant: "#30353e", error: "#d9826b", elevation: { level0: "transparent", level1: "#1d2026", level2: "#22262d", level3: "#262a31", level4: "#2a2e36", level5: "#2e333b" } };
