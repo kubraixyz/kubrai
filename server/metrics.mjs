@@ -17,7 +17,52 @@ async function getJson(url, timeoutMs = 30000) {
   } finally { clearTimeout(t); }
 }
 
-// --- SeekerTracker (off-chain aggregator; evidence = raw response) ---
+// --- Solana dApp Store (first-party GraphQL used by the store app itself; recovered from the app's operation documents) ---
+const STORE_GQL = "https://dappstore.solanamobile.com/graphql";
+// SystemContext is what the store app sends: locale, platform SDK level, screen density, device model.
+const SYSTEM_CONTEXT = { locale: "en-US", platformSdk: 36, pixelDensity: 440, model: "Seeker" };
+async function storeGql(query, variables = {}, timeoutMs = 60000) {
+  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const r = await fetch(STORE_GQL, { method: "POST", headers: { "content-type": "application/json", "user-agent": UA }, body: JSON.stringify({ query, variables: { systemContext: SYSTEM_CONTEXT, ...variables } }), signal: ac.signal });
+    const j = await r.json(); if (j.errors?.length && !j.data) throw new Error("store graphql: " + JSON.stringify(j.errors).slice(0, 200)); return j.data;
+  } finally { clearTimeout(t); }
+}
+const SUMMARY = `fragment S on DApp { androidPackage auxStatus { __typename } rating { rating reviewsByRating } lastRelease(systemContext: $systemContext) { displayName updatedOn androidDetails { versionCode } } }`;
+/** Every listed app, deduplicated across categories (an app can sit in several). */
+export async function storeCatalog() {
+  const cats = (await storeGql(`query C($systemContext: SystemContext!) { topCategories(systemContext: $systemContext, first: 50) { edges { node { id name } } } }`)).topCategories.edges.map((e) => e.node);
+  const apps = new Map(); const perCategory = {};
+  for (const c of cats) {
+    let after = null, n = 0;
+    for (let page = 0; page < 60; page++) {
+      const d = await storeGql(`query P($systemContext: SystemContext!, $id: ID!, $after: String) { dAppsCategory { dApps(systemContext: $systemContext, categoryId: $id, first: 100, after: $after) { edges { node { ...S } } pageInfo { hasNextPage endCursor } } } } ${SUMMARY}`, { id: c.id, after });
+      const conn = d.dAppsCategory.dApps;
+      for (const e of conn.edges) { n++; const a = e.node; if (!apps.has(a.androidPackage)) apps.set(a.androidPackage, { name: a.lastRelease?.displayName, reviews: (a.rating?.reviewsByRating ?? []).reduce((x, y) => x + y, 0), rating: a.rating?.rating ?? null, updatedOn: a.lastRelease?.updatedOn, aux: a.auxStatus?.__typename ?? null }); }
+      if (!conn.pageInfo.hasNextPage) break; after = conn.pageInfo.endCursor;
+    }
+    perCategory[c.name] = n;
+  }
+  return { categories: cats.length, perCategory, apps };
+}
+let catalogCache = null;
+const catalog = async () => (catalogCache ??= await storeCatalog());
+export async function dappStoreActiveApps() {
+  const c = await catalog();
+  const active = [...c.apps.values()].filter((a) => !a.aux || !/Uninstall/.test(a.aux)).length;
+  return { value: active, raw: { activeCount: active, uniqueListed: c.apps.size, categories: c.categories, perCategory: c.perCategory }, source: "dappstore.solanamobile.com/graphql (dAppsCategory, all categories, deduplicated by package)" };
+}
+export const APP_SLUGS = { jupiter: "ag.jup.jupiter.android", tokenrun: "com.tokenrun.app", mattle: "fun.mattle.twa", cherry: "fun.cherry", seedvault: "com.solanamobile.wallet", lootgo: "com.lootgo.app", jito: "network.jito.www.twa", sleepagotchi: "com.sleepagotchi.soft.app", moonwalk: "fit.moonwalk.mobile.app", ore: "supply.ore.app" };
+/** Total reviews per watched app, straight from the store (sum of the 1–5★ histogram). */
+export async function dappReviews() {
+  const pkgs = Object.values(APP_SLUGS);
+  const d = await storeGql(`query R($systemContext: SystemContext!, $pkgs: [String!]!) { dAppsByAndroidPackages(systemContext: $systemContext, androidPackages: $pkgs) { ...S } } ${SUMMARY}`, { pkgs });
+  const byPkg = Object.fromEntries((d.dAppsByAndroidPackages ?? []).filter(Boolean).map((a) => [a.androidPackage, { reviews: (a.rating?.reviewsByRating ?? []).reduce((x, y) => x + y, 0), rating: a.rating?.rating ?? null, name: a.lastRelease?.displayName, histogram: a.rating?.reviewsByRating ?? null }]));
+  const watched = Object.fromEntries(Object.entries(APP_SLUGS).map(([slug, pkg]) => [slug, byPkg[pkg] ?? null]));
+  return { value: Object.values(watched).filter(Boolean).length, raw: watched, source: "dappstore.solanamobile.com/graphql (dAppsByAndroidPackages; reviews are device-gated)" };
+}
+
+// --- SeekerTracker (third-party aggregator; kept only for metrics we cannot derive ourselves) ---
 export async function skrIdsTotal() {
   const j = await getJson("https://seekertracker.com/api/activations");
   return { value: j.totalDomains, raw: { totalDomains: j.totalDomains, todayCount: j.todayCount, thisWeekCount: j.thisWeekCount, thisMonthCount: j.thisMonthCount, last: j.data?.slice(-7) }, source: "seekertracker.com/api/activations" };
@@ -26,29 +71,6 @@ export async function dailyActiveSeekers() {
   const j = await getJson("https://seekertracker.com/api/das");
   return { value: j.das, raw: { das: j.das, was: j.was, mas: j.mas, totalIndexed: j.totalIndexed, updatedAt: j.updatedAt }, source: "seekertracker.com/api/das" };
 }
-// Apps we open per-app markets on. Slug (≤16 chars, used inside the 32-byte metric tag) → android package.
-export const APP_SLUGS = { jupiter: "ag.jup.jupiter.android", tokenrun: "com.tokenrun.app", mattle: "fun.mattle.twa", cherry: "fun.cherry", seedvault: "com.solanamobile.wallet", lootgo: "com.lootgo.app", jito: "network.jito.www.twa", sleepagotchi: "com.sleepagotchi.soft.app", moonwalk: "fit.moonwalk.mobile.app", ore: "supply.ore.app" };
-let dappstoreCache = null;
-async function dappstoreJson() { return (dappstoreCache ??= await getJson("https://seekertracker.com/api/dappstore", 120000)); }
-export async function dappStoreActiveApps() {
-  const j = await dappstoreJson();
-  const cats = (j.data?.explore?.units?.edges ?? []).map((u) => ({ cat: u.node.category.name, n: u.node.dApps.edges.length }));
-  return { value: j.activeCount, raw: { activeCount: j.activeCount, removedCount: j.removedCount, totalApps: j.totalApps, lastSyncAt: j.lastSyncAt, byCategory: cats }, source: "seekertracker.com/api/dappstore" };
-}
-
-/** Total dApp Store reviews per watched app (sum of the 1–5★ histogram). Reviews come from
- *  verified devices only, so each extra review costs a Seeker. Source is the store catalog (off-chain). */
-export async function dappReviews() {
-  const j = await dappstoreJson();
-  const byPkg = {};
-  for (const u of j.data?.explore?.units?.edges ?? []) for (const e of u.node.dApps.edges) {
-    const n = e.node; if (!n.rating?.reviewsByRating) continue;
-    byPkg[n.androidPackage] = { reviews: n.rating.reviewsByRating.reduce((a, b) => a + b, 0), rating: n.rating.rating, name: n.lastRelease?.displayName };
-  }
-  const watched = Object.fromEntries(Object.entries(APP_SLUGS).map(([slug, pkg]) => [slug, byPkg[pkg] ?? null]));
-  return { value: Object.values(watched).filter(Boolean).length, raw: watched, source: "dApp Store catalog via seekertracker.com/api/dappstore (reviews are device-gated)" };
-}
-
 // --- On-chain (anyone can recompute against any RPC) ---
 const SKR_TLD_PARENT = new PublicKey("F3A8kuikEiu6k2399oSJ1PWfcJYDHqpwoQ2e8psSDNuF"); // AllDomains parent account of the .skr TLD
 /** Number of .skr name records on-chain (getProgramAccounts on the AllDomains name program, ~20 s). */
