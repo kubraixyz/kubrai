@@ -171,6 +171,32 @@ describe("kubrai parimutuel", () => {
     await sweep(m, v, dave);
   });
 
+  it("negative paths: re-propose restarts the window, boundary value, bad buckets, double finalize, void after resolve, settle after sweep, foreign owner_token", async () => {
+    await expectErr(createMarket(-1, 60, proposer, [300, 200]), "BadBuckets");          // unsorted
+    await expectErr(createMarket(-1, 60, proposer, [1, 2, 3, 4, 5, 6, 7, 8]), "BadBuckets"); // 9 buckets
+    const { m, v } = await createMarket(-1, 4, proposer, [100, 250]);                  // <100 | 100–249 | ≥250
+    await bet(m, v, alice, 1, 40 * T); await bet(m, v, bob, 2, 60 * T);
+    await sleep(5500);
+    await expectErr(program.methods.seedMarket(new BN(T)).accounts({ market: m, vault: v, funderToken: ata.admin, funder: admin.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).rpc(), "BettingClosed");
+    // first proposal says 99 (bucket 0), corrected to exactly 250 (boundary → bucket 2) while still disputable
+    await program.methods.proposeResolution(new BN(99), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc();
+    let mk = await program.account.market.fetch(m); assert.equal(mk.proposedOutcome, 0); const firstAt = mk.proposedAt.toNumber();
+    await sleep(1500);
+    await program.methods.proposeResolution(new BN(250), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc();
+    mk = await program.account.market.fetch(m); assert.equal(mk.proposedOutcome, 2, "250 is the lower edge of bucket 2"); assert.isAbove(mk.proposedAt.toNumber(), firstAt, "window restarted");
+    await program.methods.finalizeResolution().accounts({ config: configPda, market: m, signer: admin.publicKey }).rpc();
+    await expectErr(program.methods.finalizeResolution().accounts({ config: configPda, market: m, signer: admin.publicKey }).rpc(), "NotProposed");
+    await expectErr(program.methods.proposeResolution(new BN(1), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc(), "MarketNotOpen");
+    await expectErr(program.methods.voidMarket().accounts({ config: configPda, market: m, admin: admin.publicKey }).rpc(), "AlreadyFinal");
+    // settle: owner_token must belong to the position owner
+    await expectErr(program.methods.settlePosition().accounts({ market: m, position: posPda(m, alice.publicKey), payer: alice.publicKey, vault: v, ownerToken: ata.bob, cranker: dave.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).signers([dave]).rpc(), "ConstraintTokenOwner");
+    const b0 = await bal(ata.bob);
+    await settle(m, v, alice, dave); await settle(m, v, bob, dave);
+    assert.equal((await bal(ata.bob)) - b0, 60 * T + 40 * T - 40 * T * 0.02); // 60 back + 40 from alice − 2% early-bird fee = 99.2
+    await sweep(m, v, dave);
+    await expectErr(settle(m, v, alice, dave), "AccountNotInitialized");
+  });
+
   it("paused config blocks bets", async () => {
     const { m, v } = await createMarket(-1, 60);
     await program.methods.updateConfig(cfgArgs, null, true).accounts({ config: configPda, admin: admin.publicKey }).rpc();

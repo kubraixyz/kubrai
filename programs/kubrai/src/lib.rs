@@ -99,7 +99,8 @@ pub mod kubrai {
         Ok(())
     }
 
-    /// Anyone (normally the treasury) adds a fee-free prize to the pot.
+    /// Anyone (normally the treasury) adds a fee-free prize to the pot. Note: on void or
+    /// no-winner the seed is swept to the treasury, not returned to a third-party funder.
     pub fn seed_market(ctx: Context<SeedMarket>, amount: u64) -> Result<()> {
         require!(amount > 0, KubraiError::ZeroAmount);
         {
@@ -162,7 +163,8 @@ pub mod kubrai {
     pub fn propose_resolution(ctx: Context<Propose>, observed_value: i64, snapshot_hash: [u8; 32]) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
         let m = &mut ctx.accounts.market;
-        require!(m.status == MarketStatus::Open as u8, KubraiError::MarketNotOpen);
+        // A proposal may be corrected while it is still disputable; every re-proposal restarts the window.
+        require!(m.status == MarketStatus::Open as u8 || m.status == MarketStatus::Proposed as u8, KubraiError::MarketNotOpen);
         require!(now >= m.resolve_after_ts, KubraiError::TooEarlyToResolve);
         let bucket = m.bucket_of(observed_value);
         m.status = MarketStatus::Proposed as u8;
@@ -264,12 +266,15 @@ pub fn compute_payout(m: &Market, p: &Position) -> Result<(u64, u64)> {
         return Ok((0, 0));
     }
     let stake128 = stake as u128;
-    let gross_share = (lose_pool as u128).checked_mul(stake128).unwrap() / win_pool as u128;
-    // fee = gross_share * (fee_w / stake) / BPS, computed without intermediate truncation
-    let fee = gross_share.checked_mul(fee_w).unwrap() / (stake128.checked_mul(BPS).unwrap());
-    let seed_share = (m.seed_amount as u128).checked_mul(stake128).unwrap() / win_pool as u128;
-    let payout = stake128 + gross_share - fee + seed_share;
-    Ok((u64::try_from(payout).unwrap(), u64::try_from(fee).unwrap()))
+    let win128 = win_pool as u128;
+    let gross_share = (lose_pool as u128).checked_mul(stake128).ok_or(KubraiError::MathOverflow)? / win128;
+    // Stake-weighted fee rate for this position: fee_w = Σ amount_i × bps_i, so fee_w / stake ≤ MAX_FEE_BPS.
+    // Reducing to bps first keeps every product far below u128::MAX for any conceivable mint supply.
+    let weighted_bps = (fee_w / stake128).min(MAX_FEE_BPS as u128);
+    let fee = gross_share.checked_mul(weighted_bps).ok_or(KubraiError::MathOverflow)? / BPS;
+    let seed_share = (m.seed_amount as u128).checked_mul(stake128).ok_or(KubraiError::MathOverflow)? / win128;
+    let payout = stake128.checked_add(gross_share).and_then(|v| v.checked_sub(fee)).and_then(|v| v.checked_add(seed_share)).ok_or(KubraiError::MathOverflow)?;
+    Ok((u64::try_from(payout).map_err(|_| KubraiError::MathOverflow)?, u64::try_from(fee).map_err(|_| KubraiError::MathOverflow)?))
 }
 
 // ---------- state ----------
@@ -603,4 +608,5 @@ pub enum KubraiError {
     #[msg("market not resolved")] NotResolved,
     #[msg("positions still outstanding")] PositionsOutstanding,
     #[msg("bad bucket definition or index")] BadBuckets,
+    #[msg("arithmetic overflow")] MathOverflow,
 }
