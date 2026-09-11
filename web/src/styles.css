@@ -41,6 +41,8 @@ input[type=number]{font:inherit;font-family:var(--mono);padding:10px 12px;border
 .note{color:var(--dim);font-size:12.5px}
 .msg{padding:10px 12px;border-radius:6px;font-size:14px}.msg.ok{background:var(--accent-bg)}.msg.err{background:var(--no-bg)}
 .walletbox{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bal{font-size:13px;color:var(--dim)}.bal b{color:var(--fg);font-weight:600}.warn{color:var(--no)}
+.amtrow{display:flex;gap:8px}.amtrow input{flex:1}.amtrow button{white-space:nowrap}
 .hash{font-family:var(--mono);font-size:12px;word-break:break-all;color:var(--dim)}
 footer{margin-top:40px;color:var(--dim);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px}
 @media(max-width:600px){.wrap{padding:12px 12px 48px}

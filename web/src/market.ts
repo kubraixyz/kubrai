@@ -1,7 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
 import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel } from "./metrics";
-import { bucketColor, bucketLabel, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, statusPill, timeLeft } from "./ui";
+import { balances, bucketColor, bucketLabel, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill, timeLeft } from "./ui";
 import { TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 
 mountNetBadge(); mountWallet();
@@ -42,7 +42,8 @@ function renderBet(open: boolean, fee: number) {
   if (!open) { box.innerHTML = `<div class="note">${m.status === 0 && Date.now() / 1000 < m.openTs ? "Betting has not opened yet." : "Betting is closed for this market."}</div>`; return; }
   box.innerHTML = `<div class="betbox">
     <div class="sides">${m.pools.map((_, i) => `<button class="${bucket === i ? "on" : ""}" style="--c:${bucketColor(m, i)}" data-b="${i}">${bucketLabel(m, i)}</button>`).join("")}</div>
-    <input id="amt" type="number" min="${cfg.minBet.toNumber() / 10 ** TOKEN_DECIMALS}" step="1" placeholder="Amount in ${TOKEN_SYMBOL}">
+    <div class="amtrow"><input id="amt" type="number" min="${cfg.minBet.toNumber() / 10 ** TOKEN_DECIMALS}" step="1" placeholder="Amount in ${TOKEN_SYMBOL}">${s ? `<button id="max" type="button" title="Bet your whole ${TOKEN_SYMBOL} balance">Max</button>` : ""}</div>
+    ${s && balances.loaded ? `<div class="note">Available: <span class="mono">${fmtAmt(balances.token)} ${TOKEN_SYMBOL}</span>${balances.sol < 0.002 ? ` · <span class="warn">you need a little SOL for the network fee</span>` : ""}</div>` : ""}
     <div class="quote" id="quote"></div>
     ${s ? `<button class="primary" id="go" style="background:${bucketColor(m, bucket)};border-color:${bucketColor(m, bucket)}">Place bet on “${bucketLabel(m, bucket)}”</button>` : `<div class="note">Connect a wallet above to bet.</div>`}
     <div id="msg"></div>
@@ -56,6 +57,7 @@ function renderBet(open: boolean, fee: number) {
     quote.innerHTML = `<span>If <b>${bucketLabel(m, bucket)}</b> wins you receive</span><span class="big">${fmtAmt(q.total)} ${TOKEN_SYMBOL}</span><span class="note">= your ${fmtAmt(a)} back + ${fmtAmt(q.fromLosers)} from the losing pools − ${fmtAmt(q.fee)} fee${q.fromSeed ? ` + ${fmtAmt(q.fromSeed)} house prize (fee-free)` : ""}. Any other outcome loses ${fmtAmt(a)}.</span>`;
   };
   amtEl.oninput = upd; upd();
+  const mx = box.querySelector<HTMLButtonElement>("#max"); if (mx) mx.onclick = () => { amtEl.value = String(Math.floor(balances.token / 10 ** TOKEN_DECIMALS)); upd(); };
   box.querySelectorAll<HTMLButtonElement>(".sides button").forEach((b) => (b.onclick = () => { bucket = Number(b.dataset.b); renderBet(open, fee); }));
   const go = box.querySelector<HTMLButtonElement>("#go"), msg = box.querySelector("#msg")!;
   if (go) go.onclick = async () => {
@@ -68,7 +70,7 @@ function renderBet(open: boolean, fee: number) {
       msg.innerHTML = `<div class="msg">Sent. Waiting for confirmation… <span class="hash">${sig}</span></div>`;
       await confirmBySig(sig);
       msg.innerHTML = `<div class="msg ok">Bet placed: ${fmtAmt(a)} ${TOKEN_SYMBOL} on “${bucketLabel(m, bucket)}”.</div>`;
-      await load(); await showPosition();
+      await refreshBalances(); await load(); await showPosition();
     } catch (e: any) { msg.innerHTML = `<div class="msg err">${e?.message ?? e}</div>`; go.disabled = false; }
   };
 }

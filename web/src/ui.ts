@@ -1,6 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { API_BASE, CLUSTER, IS_TEST, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
-import { STATUS, totalPool, type MarketView } from "./kubrai";
+import { STATUS, connection, fetchConfig, totalPool, type MarketView } from "./kubrai";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { fmtValue } from "./metrics";
 import { connectWallet, devWallet, listWallets, type Session } from "./wallet";
 
@@ -42,10 +43,25 @@ export function mountNetBadge() {
 }
 
 let session: Session | null = null;
+export const balances = { token: 0, sol: 0, loaded: false };
+let mintCache: PublicKey | null = null;
+/** Token + SOL balance of the connected wallet; safe when the token account does not exist yet. */
+export async function refreshBalances() {
+  if (!session) { balances.loaded = false; renderWallet(); return; }
+  try {
+    mintCache ??= new PublicKey((await fetchConfig()).mint);
+    const [sol, tok] = await Promise.all([
+      connection.getBalance(session.publicKey),
+      connection.getTokenAccountBalance(getAssociatedTokenAddressSync(mintCache, session.publicKey)).then((r) => Number(r.value.amount)).catch(() => 0),
+    ]);
+    balances.sol = sol / 1e9; balances.token = tok; balances.loaded = true;
+  } catch { balances.loaded = false; }
+  renderWallet();
+}
 const listeners: ((s: Session | null) => void)[] = [];
 export const onSession = (fn: (s: Session | null) => void) => { listeners.push(fn); fn(session); };
 export const getSession = () => session;
-function setSession(s: Session | null) { session = s; try { s ? localStorage.setItem("kubrai.wallet", s.label) : localStorage.removeItem("kubrai.wallet"); } catch {} listeners.forEach((f) => f(s)); renderWallet(); }
+function setSession(s: Session | null) { session = s; try { s ? localStorage.setItem("kubrai.wallet", s.label) : localStorage.removeItem("kubrai.wallet"); } catch {} balances.loaded = false; listeners.forEach((f) => f(s)); renderWallet(); refreshBalances(); }
 
 export function mountWallet() {
   renderWallet();
@@ -59,14 +75,17 @@ export function mountWallet() {
 function renderWallet() {
   const el = document.getElementById("wallet"); if (!el) return;
   if (session) {
-    el.innerHTML = `<span class="mono note">${session.label} · ${short(session.publicKey)}</span>${IS_TEST && API_BASE ? `<button id="wfaucet" title="1000 ${TOKEN_SYMBOL} + a little SOL for fees, once per day">Get test tokens</button>` : ""}<button id="wdis">Disconnect</button>`;
+    const lowSol = balances.loaded && balances.sol < 0.002;
+    const bal = balances.loaded ? `<span class="bal mono"><b>${fmtAmt(balances.token)} ${TOKEN_SYMBOL}</b> · ${balances.sol.toFixed(3)} SOL${lowSol ? ` <span class="warn">(not enough SOL for fees)</span>` : ""}</span>` : `<span class="bal note">loading balance…</span>`;
+    el.innerHTML = `<span class="mono note">${session.label} · ${short(session.publicKey)}</span>${bal}${IS_TEST && API_BASE ? `<button id="wfaucet" title="1000 ${TOKEN_SYMBOL} + a little SOL for fees, once per day">Get test tokens</button>` : ""}<button id="wdis">Disconnect</button>`;
     el.querySelector<HTMLButtonElement>("#wdis")!.onclick = async () => { await session?.disconnect(); setSession(null); };
     const f = el.querySelector<HTMLButtonElement>("#wfaucet");
     if (f) f.onclick = async () => {
       f.disabled = true; f.textContent = "Sending…";
       try { const r = await fetch(API_BASE + "/faucet", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: session!.publicKey.toBase58() }) }); const j = await r.json(); f.textContent = r.ok ? `Got ${j.tokens}` : (j.error ?? "Failed"); }
       catch (e: any) { f.textContent = "Faucet unreachable"; }
-      setTimeout(() => { f.disabled = false; f.textContent = "Get test tokens"; }, 4000);
+      await refreshBalances();
+      const f2 = el.querySelector<HTMLButtonElement>("#wfaucet"); if (f2) { f2.disabled = true; f2.textContent = "Got 1000 " + TOKEN_SYMBOL; setTimeout(() => { f2.disabled = false; f2.textContent = "Get test tokens"; }, 4000); }
       listeners.forEach((fn) => fn(session));
     };
     return;
