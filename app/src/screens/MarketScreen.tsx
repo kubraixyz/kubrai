@@ -12,11 +12,12 @@ import { useConnection } from "../utils/ConnectionProvider";
 import { useAuthorization } from "../utils/useAuthorization";
 import { useMobileWallet } from "../utils/useMobileWallet";
 import { TOKEN_DECIMALS, TOKEN_SYMBOL } from "../config";
+import { recordError } from "../utils/errorLog";
 
 export function MarketScreen() {
   const { params } = useRoute<any>(); const id = Number(params?.id);
   const theme = useTheme(); const { connection } = useConnection();
-  const { selectedAccount } = useAuthorization(); const { connect, signAndSendTransaction } = useMobileWallet();
+  const { selectedAccount } = useAuthorization(); const { connect, signAndSendTransaction, signTransaction } = useMobileWallet();
   const { data: m, isLoading } = useMarket(id); const { data: cfg } = useConfig(); const bal = useBalances(); const positions = usePositions(); const invalidate = useInvalidateAll();
   const [bucket, setBucket] = useState(0); const [amt, setAmt] = useState(""); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<{ kind: "ok" | "err" | "info"; text: string } | null>(null);
   const info = m ? metricInfo(m.metric) : undefined;
@@ -33,11 +34,26 @@ export function MarketScreen() {
     try {
       const account = selectedAccount ?? (await connect());
       const { tx, minContextSlot } = await buildPlaceBetTx(connection, account.publicKey, m, bucket, a, new PublicKey(cfg.mint));
-      const sig = await signAndSendTransaction(tx, minContextSlot);
+      let sig: string;
+      try {
+        sig = await signAndSendTransaction(tx, minContextSlot);
+      } catch (e1: any) {
+        // Some wallets cancel the session instead of reporting why. Retry with sign-only and broadcast
+        // ourselves so a program/simulation error reaches the screen.
+        recordError(e1, "bet:signAndSend");
+        setMsg({ kind: "info", text: "Wallet did not send it. Asking for a signature only…" });
+        const signed = await signTransaction(tx);
+        sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: "confirmed" });
+      }
       setMsg({ kind: "info", text: "Sent. Waiting for confirmation…" });
       await confirmBySig(connection, sig);
       setMsg({ kind: "ok", text: `Bet placed: ${fmtAmt(a)} ${TOKEN_SYMBOL} on “${bucketLabel(m, bucket)}”.` }); setAmt(""); invalidate();
-    } catch (e: any) { setMsg({ kind: "err", text: e?.message ?? String(e) }); } finally { setBusy(false); }
+    } catch (e: any) {
+      recordError(e, "bet");
+      const raw = String(e?.message ?? e);
+      const friendly = /Cancellation/i.test(raw) ? "The wallet cancelled the request before signing. If you saw no wallet screen at all, the wallet may not accept devnet — try Phantom or Solflare with Testnet mode on." : /User declined|rejected/i.test(raw) ? "You declined the request in the wallet." : raw;
+      setMsg({ kind: "err", text: friendly + (friendly !== raw ? `\n(${raw})` : "") });
+    } finally { setBusy(false); }
   }
 
   if (isLoading || !m) return <View style={styles.center}><ActivityIndicator /></View>;

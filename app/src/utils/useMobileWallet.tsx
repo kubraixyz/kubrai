@@ -64,14 +64,27 @@ export function useMobileWallet() {
     [authorizeSession]
   );
 
+  /** Wallet signs only; the app broadcasts. Surfaces simulation errors that wallets otherwise swallow. */
+  const signTransaction = useCallback(
+    async (transaction: Transaction): Promise<Transaction> => {
+      return await transact(async (wallet) => {
+        await authorizeSession(wallet);
+        const signed = await wallet.signTransactions({ transactions: [transaction] });
+        return signed[0] as Transaction;
+      });
+    },
+    [authorizeSession]
+  );
+
   return useMemo(
     () => ({
       connect,
       signIn,
       disconnect,
       signAndSendTransaction,
+      signTransaction,
       signMessage,
     }),
-    [signAndSendTransaction, signMessage]
+    [signAndSendTransaction, signTransaction, signMessage]
   );
 }
