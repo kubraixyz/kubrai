@@ -42,8 +42,23 @@ const FEEDBACK_DIR = process.env.FEEDBACK_DIR ?? path.join(os.homedir(), "apps",
 fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
 const seenFb = new Map();
 
+const UPLOAD_DIR = process.env.UPLOAD_DIR ?? path.join(os.homedir(), "apps", "kubrai", "uploads");
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 async function handleOps(req, res, url) {
   const ctx = { conn, state, SNAP, FEEDBACK_DIR, DISPUTES, CLUSTER, mint, faucet, SECRETS, readBody };
+  // Operator file drop (behind Caddy basic auth): raw body → uploads/<safe name>. Used to hand me APKs/logs from the phone.
+  if (url.pathname === "/ops/upload") {
+    if (req.method === "GET") { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); return res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kubrai ops · upload</title><body style="background:#15171b;color:#d9dce3;font:16px system-ui;padding:24px"><h1 style="font-size:20px">Upload a file to the operator box</h1><p>Any file up to 200 MB (APK, log, screenshot). It lands in the private uploads folder.</p><input id="f" type="file" style="display:block;margin:16px 0"><button id="b" style="font:inherit;padding:10px 16px">Upload</button><p id="m"></p><script>b.onclick=async()=>{const file=f.files[0];if(!file){m.textContent="Pick a file first";return}m.textContent="Uploading "+file.name+" ("+(file.size/1048576).toFixed(1)+" MB)…";const r=await fetch("/ops/upload?name="+encodeURIComponent(file.name),{method:"POST",body:file});m.textContent=await r.text()}</script>`); }
+    if (req.method === "POST") {
+      const name = String(url.searchParams.get("name") ?? "upload.bin").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
+      const dest = path.join(UPLOAD_DIR, `${Date.now()}-${name}`); const out = fs.createWriteStream(dest); let size = 0;
+      return new Promise((resolve) => {
+        req.on("data", (c) => { size += c.length; if (size > 200 * 1024 * 1024) { req.destroy(); out.destroy(); fs.rmSync(dest, { force: true }); res.writeHead(413); res.end("too large"); resolve(); } });
+        req.pipe(out); out.on("finish", () => { res.writeHead(200, { "content-type": "text/plain" }); res.end(`saved ${path.basename(dest)} (${(size / 1048576).toFixed(1)} MB)`); console.log("upload", dest, size); resolve(); });
+        req.on("error", () => { fs.rmSync(dest, { force: true }); res.writeHead(500); res.end("upload failed"); resolve(); });
+      });
+    }
+  }
   if (req.method === "POST" && url.pathname === "/ops/action") { const out = await handleOpsAction(ctx, JSON.parse(await readBody(req, 64 * 1024))); return json(res, out.status ?? 200, out); }
   const m = url.pathname.match(/^\/ops\/feedback\/([A-Za-z0-9._-]+\.(png|jpg))$/);
   if (m) { const f = path.join(FEEDBACK_DIR, m[1]); if (!fs.existsSync(f)) return json(res, 404, { error: "no such file" }); res.writeHead(200, { "content-type": m[2] === "png" ? "image/png" : "image/jpeg", "cache-control": "private, max-age=3600" }); return res.end(fs.readFileSync(f)); }
