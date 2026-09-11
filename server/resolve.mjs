@@ -4,10 +4,10 @@
 //   2. finalize: for each Proposed market whose dispute window elapsed, finalize.
 //   3. settle  : for each Resolved/Voided market, settle every outstanding position
 //                (winners paid, losers' rent refunded), then sweep the vault.
-// Snapshots are hourly slots "YYYY-MM-DDTHH" (taken at :05); the older daily files "YYYY-MM-DD" count as that
+// Snapshots are hourly slots "YYYY-MM-DDTHH" (taken right after the hour); the older daily files "YYYY-MM-DD" count as that
 // day's T00 slot. Metric tags:
 //   <base>_day | <base>_week | rev_week:<app> | rev_day:<app>  -> value(close slot) - value(open slot)   (cumulative counters;
-//        markets open exactly on the hour, so the open slot's :05 snapshot is the baseline; a non-zero on-chain baseline
+//        markets open exactly on the hour, so the open slot's snapshot is the baseline; a non-zero on-chain baseline
 //        — manual markets created before 2026-09-12 — is used instead)
 //   <base>_dmed | <base>_wmed  -> median of every hourly slot in (open, close], needs ≥75 % coverage   (levels)
 //   legacy: *_med7 -> median of the 7 daily T00 slots ending at close (≥4);  skr_price_close -> value at close
@@ -93,10 +93,11 @@ function evaluate(metric, openTs, closeTs, baseline) {
   }
   if (kind === "med") {
     const expected = Math.max(1, Math.round((closeTs - openTs) / 3600)); const vals = [];
-    for (let i = 1; i <= expected; i++) { const sl = addHours(sOpen, i); if (sl > sClose) break; const v = valueAt(sl, src); if (v != null) { vals.push(v); used.push(sl); } }
+    const series = [];
+    for (let i = 1; i <= expected; i++) { const sl = addHours(sOpen, i); if (sl > sClose) break; const v = valueAt(sl, src); if (v != null) { vals.push(v); used.push(sl); series.push({ slot: sl, value: v }); } }
     const need = Math.ceil(expected * 0.75);
     if (vals.length < need) return { ok: false, reason: `only ${vals.length}/${expected} hourly snapshots (need ${need}) for the median` };
-    return { ok: true, value: median(vals), used, detail: { samples: vals.length, expected, min: Math.min(...vals), max: Math.max(...vals) } };
+    return { ok: true, value: median(vals), used, detail: { samples: vals.length, expected, min: Math.min(...vals), max: Math.max(...vals), series } };
   }
   if (kind === "med7") {
     const vals = []; for (let i = 6; i >= 0; i--) { const sl = addHours(sClose, -24 * i); const v = valueAt(sl, src); if (v != null) { vals.push(v); used.push(sl); } }

@@ -1,5 +1,5 @@
 {
-  "_doc": "Markets opened automatically by open-markets.mjs after the 00:05 UTC snapshot. cadence day = every day (closes next 00:00 UTC); week = Mondays (closes next Monday 00:00 UTC). thresholds: 'auto' cuts N buckets at quantiles of the metric's own hourly history once >= minWindows windows exist, else 'seed' is used; a single seed value makes a yes/no market. seedSkr = fee-free prize added from the operator wallet.",
+  "_doc": "Markets opened automatically by open-markets.mjs at 00:00 UTC. cadence day = every day (closes next 00:00 UTC); week = Mondays (closes next Monday 00:00 UTC). thresholds: 'auto' cuts N buckets at quantiles of the metric's own hourly history once >= minWindows windows exist, else 'seed' is used; a single seed value makes a yes/no market. seedSkr = fee-free prize added from the operator wallet.",
   "templates": [
     { "metric": "sgt_day",         "cadence": "day",  "question": "How many Seekers get activated today?",            "buckets": 4, "seed": [13, 16, 19],   "seedSkr": 100 },
     { "metric": "skr_staked_dmed", "cadence": "day",  "question": "SKR staked, 24-hour median: at or above today's opening level?", "buckets": 2, "seed": "baseline", "seedSkr": 100 },

@@ -43,7 +43,7 @@ export const fmtValue = (id: string, v: number) => {
   return x.toLocaleString("en-US", { maximumFractionDigits: c?.scale && c.scale > 1_000_000 ? 4 : 0 }) + (c?.unit ? " " + c.unit : "");
 };
 /** Opening value of a cumulative market. Markets opened since 2026-09-12 carry baseline 0 on-chain: the value is the
- *  T00 snapshot of the opening day (taken 00:05 UTC), fetched from the public API. Returns null until that snapshot exists. */
+ *  T00 snapshot of the opening day (taken right after the hour), fetched from the public API. Returns null until that snapshot exists. */
 export async function openingValue(apiBase: string, id: string, openTs: number, onchainBaseline: number): Promise<number | null> {
   if (onchainBaseline !== 0) return onchainBaseline;
   const key = metricInfo(id)?.key; if (!key) return null;

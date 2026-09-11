@@ -10,7 +10,7 @@ function card(m: MarketView) {
   return `<a class="card" href="/market.html?id=${m.id}">
     <div class="meta">${statusPill(m)}<span>#${m.id}</span><span>${m.status === 0 ? timeLeft(m.closeTs) : ""}</span></div>
     <div class="title">${m.nBuckets === 2 ? `${q} ≥&nbsp;<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>?` : `${q}: which range?`}</div>
-    <div class="meta"><span class="pill">${{ onchain: "on-chain", store: "store data", thirdparty: "3rd-party data" }[metricInfo(m.metric)?.source ?? "thirdparty"]}</span>${metricInfo(m.metric)?.cumulative ? `<span>${m.baseline ? `from ${fmtValue(m.metric, m.baseline)} at open` : "counted from the 00:05 UTC snapshot at open"}</span>` : ""}</div>
+    <div class="meta"><span class="pill">${{ onchain: "on-chain", store: "store data", thirdparty: "3rd-party data" }[metricInfo(m.metric)?.source ?? "thirdparty"]}</span>${metricInfo(m.metric)?.cumulative ? `<span>${m.baseline ? `from ${fmtValue(m.metric, m.baseline)} at open` : "counted from the snapshot at open"}</span>` : ""}</div>
     ${poolsHtml(m)}
     <div class="meta"><span>${m.positions} bettors</span><span>${fmtAmt(totalPool(m) + m.seed, 0)} ${TOKEN_SYMBOL} in pot</span></div>
   </a>`;
@@ -22,7 +22,7 @@ function card(m: MarketView) {
     // any past market stays reachable by URL.
     const live = ms.filter((m) => m.status === 0 || m.status === 1).sort((a, b) => a.closeTs - b.closeTs || a.id - b.id);
     const groups: { key: Cadence; title: string; blurb: string }[] = [
-      { key: "day", title: "Daily markets", blurb: "Open every day at 00:00 UTC, close 24 h later, settle on the 00:05 UTC snapshot." },
+      { key: "day", title: "Daily markets", blurb: "Open every day at 00:00 UTC, close 24 h later, settle on the hourly snapshot taken right after close." },
       { key: "week", title: "Weekly markets", blurb: "Run for a week; new ones open every Monday at 00:00 UTC." },
       { key: "other", title: "Other markets", blurb: "" },
     ];

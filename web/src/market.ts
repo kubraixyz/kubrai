@@ -20,7 +20,7 @@ function render() {
     <div class="meta" style="display:flex;gap:10px;color:var(--dim);font-size:13px">${statusPill(m)}<span>Market #${m.id}</span><span>${m.status === 0 ? timeLeft(m.closeTs) : ""}</span></div>
     <h1>${m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥&nbsp;<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>?` : `${metricLabel(m.metric)}: which range?`}</h1>
     <p class="lead">${copy?.how ?? ""}</p>
-    <div class="kv" style="margin-bottom:16px">${copy?.cumulative ? `<b>Baseline at open</b><span class="mono" id="baseline">${m.baseline ? fmtValue(m.metric, m.baseline) : "00:05 UTC snapshot of the opening day"}</span>` : ``}<b>Data source</b><span>${SOURCE_LABEL[copy?.source ?? "thirdparty"]}</span></div>
+    <div class="kv" style="margin-bottom:16px">${copy?.cumulative ? `<b>Baseline at open</b><span class="mono" id="baseline">${m.baseline ? fmtValue(m.metric, m.baseline) : "the hourly snapshot at open"}</span>` : ``}<b>Data source</b><span>${SOURCE_LABEL[copy?.source ?? "thirdparty"]}</span></div>
     ${poolsHtml(m, m.status >= 1 && m.proposedOutcome !== NO_OUTCOME ? m.proposedOutcome : -1)}
     <h2>Bet</h2>
     <div id="bet"></div>
@@ -33,12 +33,14 @@ function render() {
       ${m.nBuckets > 2 ? `<b>How ranges are set</b><span>Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely. Odds then move with the pools.</span>` : ""}
       <b>Dispute window</b><span>${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize</span>
       <b>Snapshot hash</b><span class="hash">${m.proposedAt ? m.snapshotHash : "—"}</span>
+      <b>Snapshots</b><span id="evidence" class="note">loading…</span>
       ${m.status === 1 ? `<b>Disagree?</b><span><div id="dispute"><button id="dbtn">Dispute this result</button> <span class="note">Open until ${fmtTs(m.proposedAt + cfg.disputeWindowSecs.toNumber())}. You sign a message with your wallet; the operator is paged and must re-propose or void before the window ends.</span></div><div id="dlist" class="note"></div></span>` : ""}
       <b>Market account</b><span class="hash">${m.pubkey.toBase58()}</span>
     </div>`;
   renderBet(open, fee);
   mountDispute();
-  if (copy?.cumulative && !m.baseline) openingValue(API_BASE, m.metric, m.openTs, m.baseline).then((v) => { const el = document.getElementById("baseline"); if (el && v != null) el.textContent = fmtValue(m.metric, v) + " (00:05 UTC snapshot)"; });
+  loadEvidence();
+  if (copy?.cumulative && !m.baseline) openingValue(API_BASE, m.metric, m.openTs, m.baseline).then((v) => { const el = document.getElementById("baseline"); if (el && v != null) el.textContent = fmtValue(m.metric, v) + " (snapshot at open)"; });
 }
 async function mountDispute() {
   const box = document.getElementById("dispute"); if (!box) return;
@@ -106,3 +108,28 @@ async function showPosition() {
 }
 onSession(() => { if (m) { render(); showPosition(); } });
 load().catch((e) => (root.innerHTML = `<div class="msg err">Could not load market #${esc(id)}: ${esc(e.message ?? e)}</div>`));
+
+/** The hourly snapshots behind this market, with their values, so nobody has to dig through the API. */
+async function loadEvidence() {
+  const el = document.getElementById("evidence"); if (!el) return;
+  try {
+    const r = await fetch(`${API_BASE}/evidence?metric=${encodeURIComponent(m.metric)}&open=${m.openTs}&close=${m.closeTs}&baseline=${m.baseline}&id=${m.id}`);
+    if (!r.ok) { el.textContent = "no snapshot data yet"; return; }
+    const e = await r.json(); const fv = (v: number | null | undefined) => (v == null ? "—" : fmtValue(m.metric, v));
+    const link = (slot: string) => slot === "on-chain" ? "on-chain baseline" : `<a href="${API_BASE}/snapshots/${slot}" target="_blank" rel="noopener">${esc(slot.replace("T", " "))}:00 UTC</a>`;
+    const rows: string[] = [];
+    if (e.kind === "cum") {
+      rows.push(`Opening value: <span class="mono">${fv(e.opening?.value)}</span> (${e.opening ? link(e.opening.slot) : "snapshot not taken yet"})`);
+      if (e.resolution) rows.push(`Closing value: <span class="mono">${fv(e.closing?.value)}</span> (${link(e.closeSlot)}) → observed <b class="mono">${fv(e.resolution.observed)}</b>`);
+      else if (e.latest) rows.push(`Latest: <span class="mono">${fv(e.latest.value)}</span> (${link(e.latest.slot)}) → so far <b class="mono">${fv(e.soFar)}</b>`);
+    } else {
+      rows.push(`${e.samples} of ${e.expected} hourly snapshots so far${e.samples ? `, running median <b class="mono">${fv(e.soFar)}</b>` : ""}`);
+      if (e.resolution) rows.push(`Final median <b class="mono">${fv(e.resolution.observed)}</b> over ${e.resolution.detail?.samples ?? e.samples} snapshots`);
+      if (e.series?.length) rows.push(`<details><summary>hourly values</summary><div class="mono" style="font-size:12px;line-height:1.5">${e.series.map((x: any) => `${link(x.slot)} ${fv(x.value)}`).join("<br>")}</div></details>`);
+    }
+    const memoLink = (sig: string | null) => sig ? ` · <a href="https://explorer.solana.com/tx/${sig}?cluster=devnet" target="_blank" rel="noopener">memo tx</a>` : "";
+    const anchors = [e.opening, e.resolution ? e.closing : e.latest].filter((x: any) => x && x.sha256);
+    if (anchors.length) rows.push(anchors.map((x: any) => `${esc(x.slot.replace("T", " "))}: sha256 <span class="hash">${esc(x.sha256.slice(0, 16))}…</span>${memoLink(x.memo)}`).join("<br>"));
+    el.innerHTML = rows.join("<br>");
+  } catch { el.textContent = "no snapshot data yet"; }
+}

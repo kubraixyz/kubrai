@@ -1,4 +1,4 @@
-// Opens the scheduled markets (server/market-templates.json) right after the 00:05 UTC snapshot.
+// Opens the scheduled markets (server/market-templates.json) at 00:00 UTC.
 //   daily templates every day, weekly templates on Mondays; closes at the next 00:00 UTC / next Monday 00:00 UTC.
 // Thresholds = quantiles of the metric's own history when enough windows exist,
 // else the template's seed ("baseline" = yes/no at the opening value). Idempotent: skips a metric that already has
@@ -30,8 +30,8 @@ const t0 = Date.parse(today + "T00:00:00Z");
 const isMonday = new Date(t0).getUTCDay() === 1;
 const closeFor = (cadence) => Math.floor((cadence === "day" ? t0 + 864e5 : t0 + ((8 - new Date(t0).getUTCDay()) % 7 || 7) * 864e5) / 1000);
 // Cumulative markets carry baseline 0 on-chain: the resolver takes the opening value from the T00 snapshot of the
-// opening day (taken at 00:05, the same reading that closes the previous market). Level yes/no markets need a
-// threshold now, so they use the latest snapshot available (usually 23:05 the day before).
+// opening day (the same reading that closes the previous market). Level yes/no markets need a
+// threshold now, so they use the latest snapshot available (usually 23:00 the day before).
 const slots = loadSlots(SNAP); const latestSlot = [...slots.keys()].sort().at(-1);
 const latestValue = (src) => (latestSlot ? valueIn(slots.get(latestSlot), src) : null);
 

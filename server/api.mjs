@@ -9,6 +9,7 @@ import nacl from "tweetnacl";
 import bs58 from "bs58";
 import { notify } from "./notify.mjs";
 import { renderOps, handleOpsAction } from "./ops.mjs";
+import { parseMetric, loadSlots, valueIn, median } from "./history.mjs";
 
 const PORT = Number(process.env.API_PORT ?? 8787);
 const CLUSTER = process.env.CLUSTER ?? "devnet";
@@ -124,6 +125,24 @@ reason=${reason}`;
     // Operator console (Caddy enforces basic auth on /ops*; the API itself never listens off localhost).
     if (url.pathname === "/ops" || url.pathname.startsWith("/ops/")) {
       return handleOps(req, res, url);
+    }
+    // Settlement evidence for one market: which hourly snapshots feed it and what they say, so nobody has to dig.
+    //   GET /evidence?metric=<tag>&open=<unix>&close=<unix>&baseline=<onchain>&id=<market id>
+    if (url.pathname === "/evidence") {
+      const metric = url.searchParams.get("metric") ?? "", openTs = Number(url.searchParams.get("open")), closeTs = Number(url.searchParams.get("close"));
+      const baseline = Number(url.searchParams.get("baseline") ?? 0), id = url.searchParams.get("id");
+      const spec = parseMetric(metric); if (!spec || !openTs || !closeTs) return json(res, 400, { error: "unknown metric or missing open/close" });
+      const slots = loadSlots(SNAP); const slotOf = (ts) => new Date(ts * 1000).toISOString().slice(0, 13);
+      const sOpen = slotOf(openTs), sClose = slotOf(closeTs);
+      const side = (slot) => { const f = [path.join(SNAP, slot + ".json"), slot.endsWith("T00") ? path.join(SNAP, slot.slice(0, 10) + ".json") : null].find((x) => x && fs.existsSync(x)); if (!f) return null; return { slot, value: valueIn(slots.get(slot), spec.src), sha256: fs.existsSync(f + ".sha256") ? fs.readFileSync(f + ".sha256", "utf8").trim() : null, memo: fs.existsSync(f + ".memo") ? JSON.parse(fs.readFileSync(f + ".memo", "utf8")).signature : null }; };
+      const inWindow = [...slots.keys()].filter((sl) => sl > sOpen && sl <= sClose).sort();
+      const series = inWindow.map((sl) => ({ slot: sl, value: valueIn(slots.get(sl), spec.src) })).filter((x) => x.value != null);
+      const opening = spec.kind === "cum" ? (baseline ? { slot: "on-chain", value: baseline } : side(sOpen)) : null;
+      const latest = series.at(-1) ?? null;
+      const soFar = spec.kind === "cum" ? (opening?.value != null && latest ? latest.value - opening.value : null) : (series.length ? median(series.map((x) => x.value)) : null);
+      let resolution = null; const rf = id && /^\d+$/.test(id) ? path.join(SNAP, `resolution-${id}.json`) : null;
+      if (rf && fs.existsSync(rf)) { const r = JSON.parse(fs.readFileSync(rf, "utf8")); resolution = { observed: r.observed, bucket: r.bucket, slots: (r.slots ?? r.days ?? []).map((sl) => side(sl)), detail: r.detail, evidenceHash: r.evidenceHash, at: r.at }; }
+      return json(res, 200, { metric, kind: spec.kind, source: spec.src, openSlot: sOpen, closeSlot: sClose, opening, latest, soFar, samples: series.length, expected: Math.max(1, Math.round((closeTs - openTs) / 3600)), series: spec.kind === "med" ? series : series.slice(-24), closing: side(sClose), resolution }, { "cache-control": "public, max-age=60" });
     }
     if (url.pathname === "/snapshots") {
       // slots: "YYYY-MM-DDTHH" (hourly, since 2026-09-12) or "YYYY-MM-DD" (the earlier daily files)

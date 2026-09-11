@@ -39,7 +39,7 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
    finalize early or void. A compromised server can delay a market by a day and lie about a
    number that everyone can check; it cannot steal a pool.
 3. **The baseline is fixed on-chain at market creation** from the opening snapshot, and
-   **betting closes before the closing snapshot is taken** (snapshots run at :05, markets close on the hour), so nobody bets on a
+   **betting closes before the closing snapshot is taken** (snapshots run right after the hour, markets close on the hour), so nobody bets on a
    number they have already seen.
 4. **Hourly snapshots are hashed on-chain** (memo tx) and published with their evidence
    (`/snapshots/:day`). Sources are labelled on every market: *on-chain* (recomputable by
@@ -47,7 +47,7 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
    *third-party*.
 5. **Metrics are chosen to be expensive to manipulate.** A new `.skr` ID needs a Seeker
    Genesis Token, i.e. a $500 device; dApp Store reviews can only be written from verified
-   devices, one per device per app. Level metrics resolve on the median of every hourly snapshot inside the market window (24 for a daily market, 168 for a weekly one; at least 75 % must exist), so a last-minute deposit or withdrawal cannot move the result. Cumulative metrics resolve on the increase between the opening hour's snapshot and the closing hour's snapshot (markets open and close exactly on the hour; snapshots are taken at :05, so consecutive markets share one reading and nothing is counted twice).
+   devices, one per device per app. Level metrics resolve on the median of every hourly snapshot inside the market window (24 for a daily market, 168 for a weekly one; at least 75 % must exist), so a last-minute deposit or withdrawal cannot move the result. Cumulative metrics resolve on the increase between the opening hour's snapshot and the closing hour's snapshot (markets open and close exactly on the hour; snapshots are taken right after the hour, so consecutive markets share one reading and nothing is counted twice).
 6. **Settlement is permissionless.** A crank pays every winner and closes every position,
    returning the rent deposit to whoever paid it. Nobody has to remember to claim.
 

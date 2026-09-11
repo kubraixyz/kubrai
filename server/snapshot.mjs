@@ -1,5 +1,5 @@
-// Hourly snapshot (cron at :05 UTC): fetch the hourly metric tier, write snapshots/YYYY-MM-DDTHH.json and
-// publish sha256(bundle) as a memo tx so the bundle cannot be edited after the fact. The 00:05 run (or FULL=1)
+// Hourly snapshot (cron at :01 UTC, standing for the hour): fetch the hourly metric tier, write snapshots/YYYY-MM-DDTHH.json and
+// publish sha256(bundle) as a memo tx so the bundle cannot be edited after the fact. The 00:00 run (or FULL=1)
 // also fetches the expensive daily tier. Files named YYYY-MM-DD.json are the pre-2026-09-12 daily format and
 // are read by the resolver as the T00 slot of that day.
 import fs from "node:fs";
@@ -15,7 +15,7 @@ const SECRETS = process.env.KUBRAI_SECRETS ?? path.join(os.homedir(), "secrets",
 const MEMO_RPC = process.env.MEMO_RPC;
 if (!MEMO_RPC && process.env.MEMO_DISABLED !== "1") { console.error("MEMO_RPC is required (or MEMO_DISABLED=1 for a dry run): refusing to record an unanchored snapshot"); process.exit(2); }
 const MEMO_PROGRAM = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
-// Slot = the UTC hour this run stands for (cron fires at :05, so "now" rounds down to the intended hour).
+// Slot = the UTC hour this run stands for (cron fires just after the hour, so "now" rounds down to the intended hour).
 const slot = process.env.SNAPSHOT_SLOT ?? new Date().toISOString().slice(0, 13);
 const day = slot.slice(0, 10), hour = Number(slot.slice(11, 13));
 const full = process.env.FULL === "1" || hour === 0;

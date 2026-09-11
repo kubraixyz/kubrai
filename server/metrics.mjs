@@ -172,7 +172,7 @@ export async function skrPriceUsd() {
   return { value: Math.round(Number(p.usdPrice) * 1e8), raw: p, source: "jup.ag price v3 (scaled 1e8)" };
 }
 
-// Hourly tier: cheap reads (≈80 store requests + a handful of RPC calls). Daily tier (the 00:05 UTC run) adds the
+// Hourly tier: cheap reads (≈80 store requests + a handful of RPC calls). Daily tier (the 00:00 UTC run) adds the
 // expensive scans. Markets settle on whichever tier carries their source.
 export const HOURLY_METRICS = {
   sgt_total: seekerGenesisTokens,
