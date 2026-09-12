@@ -8,13 +8,18 @@ const SKR_MINT = new PublicKey("SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3");
 const SKR_STAKING_PROGRAM = new PublicKey("SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ");
 const MAINNET = process.env.MAINNET_RPC ?? "https://api.mainnet-beta.solana.com";
 
-async function getJson(url, timeoutMs = 30000) {
-  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), timeoutMs);
-  try {
-    const r = await fetch(url, { headers: { "user-agent": UA, accept: "application/json" }, signal: ac.signal });
-    if (!r.ok) throw new Error(`${url} -> HTTP ${r.status}`);
-    return await r.json();
-  } finally { clearTimeout(t); }
+async function getJson(url, timeoutMs = 30000, retries = 1) {
+  for (let attempt = 0; ; attempt++) {
+    const ac = new AbortController(); const t = setTimeout(() => ac.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, { headers: { "user-agent": UA, accept: "application/json" }, signal: ac.signal });
+      if (!r.ok) throw new Error(`${url} -> HTTP ${r.status}`);
+      return await r.json();
+    } catch (e) {
+      if (attempt >= retries) throw new Error(`${url}: ${e?.name === "AbortError" ? `timed out after ${timeoutMs} ms` : e?.message ?? e}`);
+      await new Promise((res) => setTimeout(res, 5000));
+    } finally { clearTimeout(t); }
+  }
 }
 
 // --- Solana dApp Store (first-party GraphQL used by the store app itself; recovered from the app's operation documents) ---

@@ -27,8 +27,11 @@ for (const [name, fn] of Object.entries(METRICS)) {
   try { bundle.metrics[name] = await fn(); console.log(`${name}: ${bundle.metrics[name].value}`); }
   catch (e) { bundle.errors[name] = String(e?.message ?? e); console.error(`${name}: FAILED ${bundle.errors[name]}`); }
 }
-if (Object.keys(bundle.errors).length && process.env.MEMO_DISABLED !== "1") {
-  try { const { notify } = await import("./notify.mjs"); await notify(`Snapshot ${slot}: ${Object.keys(bundle.errors).length} metric(s) failed`, Object.entries(bundle.errors).map(([k, v]) => `${k}: ${v}`).join("\n").slice(0, 1500), "snapshot-fail", 0); } catch (e) { console.error("notify failed:", e?.message ?? e); }
+// Third-party design-aid metrics (no market settles on them) fail quietly; anything a market can depend on pages the operator.
+const SOFT_METRICS = new Set(["das", "skr_ids_total"]);
+const hardErrors = Object.entries(bundle.errors).filter(([k]) => !SOFT_METRICS.has(k));
+if (hardErrors.length && process.env.MEMO_DISABLED !== "1") {
+  try { const { notify } = await import("./notify.mjs"); await notify(`Snapshot ${slot}: ${hardErrors.length} metric(s) failed`, hardErrors.map(([k, v]) => `${k}: ${v}`).join("\n").slice(0, 1500), "snapshot-fail", 0); } catch (e) { console.error("notify failed:", e?.message ?? e); }
 }
 const canonical = JSON.stringify(bundle);
 const hash = createHash("sha256").update(canonical).digest("hex");
