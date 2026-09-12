@@ -38,14 +38,17 @@ let chainCache = { at: 0, markets: null, config: null, pending: null };
 const CHAIN_TTL_MS = Number(process.env.CHAIN_CACHE_MS ?? 15000);
 function chainState() {
   if (chainCache.markets && Date.now() - chainCache.at < CHAIN_TTL_MS) return Promise.resolve(chainCache);
-  if (chainCache.pending) return chainCache.pending;
+  if (chainCache.pending) return chainCache.markets ? Promise.resolve(chainCache) : chainCache.pending;   // stale-while-revalidate
+  const stale = chainCache.markets ? chainCache : null;
   chainCache.pending = (async () => {
     const [all, cfg] = await Promise.all([roProgram.account.market.all([{ dataSize: roProgram.account.market.size }]), roProgram.account.config.fetch(roConfigPda)]);
     chainCache = { at: Date.now(), markets: all.map((x) => serializeMarket(x.publicKey, x.account)).sort((a, b) => b.id - a.id), config: serializeConfig(cfg), pending: null };
     return chainCache;
   })().catch((e) => { chainCache.pending = null; throw e; });
-  return chainCache.pending;
+  return stale ? Promise.resolve(stale) : chainCache.pending;
 }
+// Keep the cache warm so a page view never waits on a getProgramAccounts round-trip.
+setInterval(() => chainState().catch(() => {}), CHAIN_TTL_MS).unref(); chainState().catch(() => {});
 const mint = new PublicKey(state.mint);
 const FAUCET_DAILY_GLOBAL = Number(process.env.FAUCET_DAILY_GLOBAL ?? 300);
 const DISPUTES = path.join(SNAP, "disputes.jsonl");

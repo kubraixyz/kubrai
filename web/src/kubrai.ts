@@ -46,7 +46,7 @@ export function toView(pubkey: PublicKey, a: any): MarketView {
 }
 // Reads go through the API's 15 s cache first (one small JSON instead of a getProgramAccounts round-trip on every page
 // view) and fall back to the RPC. `fresh: true` forces the RPC, used right after the user's own transaction.
-const fromApi = async (p: string) => { if (!API_BASE) throw new Error("no api"); const r = await fetch(API_BASE + p, { cache: "no-store" }); if (!r.ok) throw new Error("api " + r.status); return r.json(); };
+const fromApi = async (p: string) => { if (!API_BASE) throw new Error("no api"); const r = await fetch(API_BASE + p); if (!r.ok) throw new Error("api " + r.status); return r.json(); };
 const viewFromJson = (j: any): MarketView => ({ ...j, pubkey: new PublicKey(j.pubkey) });
 const cfgFromJson = (c: any) => ({ ...c, admin: new PublicKey(c.admin), proposer: new PublicKey(c.proposer), treasury: new PublicKey(c.treasury), mint: new PublicKey(c.mint), earlyBirdSecs: new BN(c.earlyBirdSecs), disputeWindowSecs: new BN(c.disputeWindowSecs), minBet: new BN(c.minBet), marketCount: new BN(c.marketCount) });
 export async function fetchConfig(opts: { fresh?: boolean } = {}) {
