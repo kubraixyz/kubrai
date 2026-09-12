@@ -88,7 +88,7 @@ function renderWallet() {
       try { const r = await fetch(API_BASE + "/faucet", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: session!.publicKey.toBase58() }) }); const j = await r.json(); f.textContent = r.ok ? `Got ${j.tokens}` : (j.error ?? "Failed"); }
       catch (e: any) { f.textContent = "Faucet unreachable"; }
       await refreshBalances();
-      const f2 = el.querySelector<HTMLButtonElement>("#wfaucet"); if (f2) { f2.disabled = true; f2.textContent = "Got 1000 " + TOKEN_SYMBOL; setTimeout(() => { f2.disabled = false; f2.textContent = "Get test tokens"; }, 4000); }
+      const f2 = el.querySelector<HTMLButtonElement>("#wfaucet"); if (f2) { f2.disabled = true; f2.textContent = "Got 1000 " + TOKEN_SYMBOL + " + test Genesis Token"; setTimeout(() => { f2.disabled = false; f2.textContent = "Get test tokens"; }, 4000); }
       listeners.forEach((fn) => fn(session));
     };
     return;

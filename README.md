@@ -115,7 +115,7 @@ build can never talk to mainnet money.
 
 ## Status
 
-devnet: live. Markets open on a fixed schedule — daily ones at 00:00 UTC (Seekers activated, SKR staked 24 h median, store reviews written) and weekly ones on Mondays (the same plus listings and per-app reviews). Early-bird fee applies for the first quarter of each market (6 h daily / 24 h weekly). Seed Vault Wallet betting verified on a Seeker.
+devnet: live. **For judges/testers:** the devnet faucet (web “Test wallet” or the app’s Settings screen) gives every wallet 0.05 SOL, 1,000 tSKR and a stand-in Seeker Genesis Token, so anyone can see the holder discount without owning a Seeker; on mainnet only a real Genesis Token qualifies. Markets open on a fixed schedule — daily ones at 00:00 UTC (Seekers activated, SKR staked 24 h median, store reviews written) and weekly ones on Mondays (the same plus listings and per-app reviews). Early-bird fee applies for the first quarter of each market (6 h daily / 24 h weekly). Seed Vault Wallet betting verified on a Seeker.
 mainnet: after the hackathon — upgrade authority and treasury move to a Squads multisig
 first, weekly seeding runs on a spending limit, cold-start seed budget is fixed for four
 weeks from launch and then funded from fees.

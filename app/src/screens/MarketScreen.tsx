@@ -12,7 +12,7 @@ import { discountLabel, feeWithDiscounts, holderProof, type HolderProof } from "
 import { useConnection } from "../utils/ConnectionProvider";
 import { useAuthorization } from "../utils/useAuthorization";
 import { useMobileWallet } from "../utils/useMobileWallet";
-import { APP, TOKEN_DECIMALS, TOKEN_SYMBOL } from "../config";
+import { APP, TOKEN_DECIMALS, TOKEN_SYMBOL, IS_TEST } from "../config";
 import bs58 from "bs58";
 import { recordError } from "../utils/errorLog";
 
@@ -121,7 +121,7 @@ export function MarketScreen() {
       <KV k="Betting opens" v={fmtTs(m.openTs)} />
       <KV k="Betting closes" v={fmtTs(m.closeTs)} />
       {cfg && <KV k="Early-bird fee" v={`${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyBirdUntil(cfg, m))}, then ${cfg.feeBps / 100}%`} />}
-      {cfg?.feeTiers && <KV k="Holder discounts" v={`${[cfg.feeTiers.sgtDiscountBps ? `Seeker Genesis Token −${cfg.feeTiers.sgtDiscountBps / 100}%` : "", cfg.feeTiers.stakeDiscountBps ? `SKR staking −${cfg.feeTiers.stakeDiscountBps / 100}%` : ""].filter(Boolean).join(" · ")}${cfg.feeTiers.minFeeBps ? ` · never below ${cfg.feeTiers.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.`} />}
+      {cfg?.feeTiers && <KV k="Holder discounts" v={`${[cfg.feeTiers.sgtDiscountBps ? `Seeker Genesis Token −${cfg.feeTiers.sgtDiscountBps / 100}%` : "", cfg.feeTiers.stakeDiscountBps ? `SKR staking −${cfg.feeTiers.stakeDiscountBps / 100}%` : ""].filter(Boolean).join(" · ")}${cfg.feeTiers.minFeeBps ? ` · never below ${cfg.feeTiers.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.${IS_TEST ? " Devnet note: the test faucet gives every wallet a stand-in Genesis Token so anyone can try the discount; on mainnet only a real Seeker's token qualifies." : ""}`} />}
       <KV k="Result proposed" v={m.proposedAt ? `${fmtTs(m.proposedAt)} · observed ${fmtValue(m.metric, m.proposedValue)} → ${bucketLabel(m, m.proposedOutcome)}` : "after close"} />
       {m.nBuckets > 2 && <KV k="How ranges are set" v="Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely." />}
       {cfg && <KV k="Dispute window" v={`${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize`} />}
