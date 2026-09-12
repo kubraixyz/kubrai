@@ -6,7 +6,9 @@ import path from "node:path";
 import { APP_SLUGS } from "./metrics.mjs";
 
 export const BASE = { sgt: "sgt_total", skr_ids: "skr_ids_onchain", dapps: "dapp_store_active_apps", reviews: "store_reviews_total", reviewers: "reviewers_7d", skr_staked: "skr_staked", das: "das", skr_price: "skr_price_usd_e8" };
+const LEGACY = { skr_staked_med7: { kind: "med7", src: "skr_staked", hours: 168 }, das_med7: { kind: "med7", src: "das", hours: 168 }, skr_price_close: { kind: "close", src: "skr_price_usd_e8", hours: 0 } };
 export function parseMetric(metric) {
+  if (LEGACY[metric]) return LEGACY[metric];
   let m = metric.match(/^rev_(week|day):(.+)$/); if (m) return APP_SLUGS[m[2]] ? { kind: "cum", src: "rev:" + m[2], hours: m[1] === "day" ? 24 : 168 } : null;
   m = metric.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASE[m[1]]) return null;
   return { kind: m[2] === "day" || m[2] === "week" ? "cum" : "med", src: BASE[m[1]], hours: m[2] === "day" || m[2] === "dmed" ? 24 : 168 };

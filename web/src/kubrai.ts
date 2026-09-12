@@ -2,7 +2,7 @@ import { AnchorProvider, BN, Program, type Idl } from "@coral-xyz/anchor";
 import { Connection, PublicKey, SystemProgram, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import idl from "../../idl/kubrai.json";
-import { PROGRAM_ID, RPC_URL } from "./config";
+import { API_BASE, PROGRAM_ID, RPC_URL } from "./config";
 
 export const connection = new Connection(RPC_URL, { commitment: "confirmed", disableRetryOnRateLimit: false });
 
@@ -44,12 +44,22 @@ export function toView(pubkey: PublicKey, a: any): MarketView {
     positions: a.positions, positionsOpen: a.positionsOpen, feeCollected: a.feeCollected.toNumber(), snapshotHash: Buffer.from(a.snapshotHash).toString("hex"),
   };
 }
-export async function fetchConfig() { return (program.account as any).config.fetch(configPda); }
-export async function fetchMarkets(): Promise<MarketView[]> {
+// Reads go through the API's 15 s cache first (one small JSON instead of a getProgramAccounts round-trip on every page
+// view) and fall back to the RPC. `fresh: true` forces the RPC, used right after the user's own transaction.
+const fromApi = async (p: string) => { if (!API_BASE) throw new Error("no api"); const r = await fetch(API_BASE + p, { cache: "no-store" }); if (!r.ok) throw new Error("api " + r.status); return r.json(); };
+const viewFromJson = (j: any): MarketView => ({ ...j, pubkey: new PublicKey(j.pubkey) });
+const cfgFromJson = (c: any) => ({ ...c, admin: new PublicKey(c.admin), proposer: new PublicKey(c.proposer), treasury: new PublicKey(c.treasury), mint: new PublicKey(c.mint), earlyBirdSecs: new BN(c.earlyBirdSecs), disputeWindowSecs: new BN(c.disputeWindowSecs), minBet: new BN(c.minBet), marketCount: new BN(c.marketCount) });
+export async function fetchConfig(opts: { fresh?: boolean } = {}) {
+  if (!opts.fresh) { try { return cfgFromJson((await fromApi("/config")).config); } catch {} }
+  return (program.account as any).config.fetch(configPda);
+}
+export async function fetchMarkets(opts: { fresh?: boolean } = {}): Promise<MarketView[]> {
+  if (!opts.fresh) { try { return (await fromApi("/markets")).markets.map(viewFromJson); } catch {} }
   const all = await (program.account as any).market.all([{ dataSize: (program.account as any).market.size }]); // skip legacy-layout accounts
   return all.map((x: any) => toView(x.publicKey, x.account)).sort((a: MarketView, b: MarketView) => b.id - a.id);
 }
-export async function fetchMarket(id: number): Promise<MarketView> {
+export async function fetchMarket(id: number, opts: { fresh?: boolean } = {}): Promise<MarketView> {
+  if (!opts.fresh) { try { return viewFromJson((await fromApi("/markets/" + id)).market); } catch {} }
   const pk = marketPda(id); return toView(pk, await (program.account as any).market.fetch(pk));
 }
 /** All open positions of a wallet (owner sits at offset 8 + 32 in Position). */

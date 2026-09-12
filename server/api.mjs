@@ -10,6 +10,7 @@ import bs58 from "bs58";
 import { notify } from "./notify.mjs";
 import { renderOps, handleOpsAction } from "./ops.mjs";
 import { parseMetric, loadSlots, valueIn, median } from "./history.mjs";
+import anchor from "@coral-xyz/anchor";
 
 const PORT = Number(process.env.API_PORT ?? 8787);
 const CLUSTER = process.env.CLUSTER ?? "devnet";
@@ -25,6 +26,26 @@ const state = JSON.parse(fs.readFileSync(path.join(SECRETS, "devnet.json"), "utf
 const faucetKeyFile = process.env.FAUCET_KEYPAIR ?? path.join(SECRETS, "faucet.json");
 const faucet = FAUCET_ENABLED && fs.existsSync(faucetKeyFile) ? Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(faucetKeyFile, "utf8")))) : null;
 const conn = new Connection(RPC, "confirmed");
+// Read-only view of the program state, cached 15 s, so the web/app first paint does not depend on a getProgramAccounts round-trip.
+const IDL = JSON.parse(fs.readFileSync(new URL("../idl/kubrai.json", import.meta.url), "utf8"));
+const roProgram = new anchor.Program(IDL, new anchor.AnchorProvider(conn, new anchor.Wallet(Keypair.generate()), { commitment: "confirmed" }));
+const [roConfigPda] = PublicKey.findProgramAddressSync([Buffer.from("config")], roProgram.programId);
+const tagOf = (b) => Buffer.from(b).toString("utf8").replace(/\0+$/, "");
+const num = (x) => (x?.toNumber ? x.toNumber() : Number(x));
+const serializeMarket = (pubkey, a) => ({ pubkey: pubkey.toBase58(), id: num(a.id), metric: tagOf(a.metric), nBuckets: a.nBuckets, thresholds: a.thresholds.slice(0, a.nBuckets - 1).map(num), openTs: num(a.openTs), closeTs: num(a.closeTs), resolveAfterTs: num(a.resolveAfterTs), baseline: num(a.baseline), pools: a.pools.slice(0, a.nBuckets).map(num), seed: num(a.seedAmount), status: a.status, outcome: a.outcome, proposedOutcome: a.proposedOutcome, proposedValue: num(a.proposedValue), proposedAt: num(a.proposedAt), positions: a.positions, positionsOpen: a.positionsOpen, feeCollected: num(a.feeCollected), snapshotHash: Buffer.from(a.snapshotHash).toString("hex") });
+const serializeConfig = (c) => ({ admin: c.admin.toBase58(), proposer: c.proposer.toBase58(), treasury: c.treasury.toBase58(), mint: c.mint.toBase58(), feeBps: c.feeBps, earlyBirdDiscountBps: c.earlyBirdDiscountBps, earlyBirdSecs: num(c.earlyBirdSecs), disputeWindowSecs: num(c.disputeWindowSecs), minBet: num(c.minBet), marketCount: num(c.marketCount), paused: c.paused });
+let chainCache = { at: 0, markets: null, config: null, pending: null };
+const CHAIN_TTL_MS = Number(process.env.CHAIN_CACHE_MS ?? 15000);
+function chainState() {
+  if (chainCache.markets && Date.now() - chainCache.at < CHAIN_TTL_MS) return Promise.resolve(chainCache);
+  if (chainCache.pending) return chainCache.pending;
+  chainCache.pending = (async () => {
+    const [all, cfg] = await Promise.all([roProgram.account.market.all([{ dataSize: roProgram.account.market.size }]), roProgram.account.config.fetch(roConfigPda)]);
+    chainCache = { at: Date.now(), markets: all.map((x) => serializeMarket(x.publicKey, x.account)).sort((a, b) => b.id - a.id), config: serializeConfig(cfg), pending: null };
+    return chainCache;
+  })().catch((e) => { chainCache.pending = null; throw e; });
+  return chainCache.pending;
+}
 const mint = new PublicKey(state.mint);
 const FAUCET_DAILY_GLOBAL = Number(process.env.FAUCET_DAILY_GLOBAL ?? 300);
 const DISPUTES = path.join(SNAP, "disputes.jsonl");
@@ -128,6 +149,14 @@ reason=${reason}`;
     }
     // Settlement evidence for one market: which hourly snapshots feed it and what they say, so nobody has to dig.
     //   GET /evidence?metric=<tag>&open=<unix>&close=<unix>&baseline=<onchain>&id=<market id>
+    // Cached program state (15 s): the list the home page renders, one market, the config.
+    if (url.pathname === "/markets" || url.pathname === "/config" || /^\/markets\/\d+$/.test(url.pathname)) {
+      let st; try { st = await chainState(); } catch (e) { return json(res, 503, { error: "chain read failed: " + String(e?.message ?? e).slice(0, 120) }); }
+      const hdr = { "cache-control": "public, max-age=10" };
+      if (url.pathname === "/config") return json(res, 200, { at: st.at, config: st.config }, hdr);
+      if (url.pathname === "/markets") return json(res, 200, { at: st.at, markets: st.markets }, hdr);
+      const m = st.markets.find((x) => x.id === Number(url.pathname.slice(9))); return m ? json(res, 200, { at: st.at, market: m, config: st.config }, hdr) : json(res, 404, { error: "no such market" });
+    }
     if (url.pathname === "/evidence") {
       const metric = url.searchParams.get("metric") ?? "", openTs = Number(url.searchParams.get("open")), closeTs = Number(url.searchParams.get("close"));
       const baseline = Number(url.searchParams.get("baseline") ?? 0), id = url.searchParams.get("id");
@@ -135,14 +164,15 @@ reason=${reason}`;
       const slots = loadSlots(SNAP); const slotOf = (ts) => new Date(ts * 1000).toISOString().slice(0, 13);
       const sOpen = slotOf(openTs), sClose = slotOf(closeTs);
       const side = (slot) => { const f = [path.join(SNAP, slot + ".json"), slot.endsWith("T00") ? path.join(SNAP, slot.slice(0, 10) + ".json") : null].find((x) => x && fs.existsSync(x)); if (!f) return null; return { slot, value: valueIn(slots.get(slot), spec.src), sha256: fs.existsSync(f + ".sha256") ? fs.readFileSync(f + ".sha256", "utf8").trim() : null, memo: fs.existsSync(f + ".memo") ? JSON.parse(fs.readFileSync(f + ".memo", "utf8")).signature : null }; };
-      const inWindow = [...slots.keys()].filter((sl) => sl > sOpen && sl <= sClose).sort();
+      // legacy weekly medians use the seven daily T00 readings ending at close; everything else uses every hourly slot in the window
+      const inWindow = spec.kind === "med7" ? [...slots.keys()].filter((sl) => sl.endsWith("T00") && sl <= sClose && Date.parse(sl + ":00:00Z") > closeTs * 1000 - 7 * 864e5).sort() : [...slots.keys()].filter((sl) => sl > sOpen && sl <= sClose).sort();
       const series = inWindow.map((sl) => ({ slot: sl, value: valueIn(slots.get(sl), spec.src) })).filter((x) => x.value != null);
       const opening = spec.kind === "cum" ? (baseline ? { slot: "on-chain", value: baseline } : side(sOpen)) : null;
       const latest = series.at(-1) ?? null;
-      const soFar = spec.kind === "cum" ? (opening?.value != null && latest ? latest.value - opening.value : null) : (series.length ? median(series.map((x) => x.value)) : null);
+      const soFar = spec.kind === "cum" ? (opening?.value != null && latest ? latest.value - opening.value : null) : spec.kind === "close" ? latest?.value ?? null : (series.length ? median(series.map((x) => x.value)) : null);
       let resolution = null; const rf = id && /^\d+$/.test(id) ? path.join(SNAP, `resolution-${id}.json`) : null;
       if (rf && fs.existsSync(rf)) { const r = JSON.parse(fs.readFileSync(rf, "utf8")); resolution = { observed: r.observed, bucket: r.bucket, slots: (r.slots ?? r.days ?? []).map((sl) => side(sl)), detail: r.detail, evidenceHash: r.evidenceHash, at: r.at }; }
-      return json(res, 200, { metric, kind: spec.kind, source: spec.src, openSlot: sOpen, closeSlot: sClose, opening, latest, soFar, samples: series.length, expected: Math.max(1, Math.round((closeTs - openTs) / 3600)), series: spec.kind === "med" ? series : series.slice(-24), closing: side(sClose), resolution }, { "cache-control": "public, max-age=60" });
+      return json(res, 200, { metric, kind: spec.kind, source: spec.src, openSlot: sOpen, closeSlot: sClose, opening, latest, soFar, samples: series.length, expected: spec.kind === "med7" ? 7 : Math.max(1, Math.round((closeTs - openTs) / 3600)), series: spec.kind === "cum" ? series.slice(-24) : series, closing: side(sClose), resolution }, { "cache-control": "public, max-age=60" });
     }
     if (url.pathname === "/snapshots") {
       // slots: "YYYY-MM-DDTHH" (hourly, since 2026-09-12) or "YYYY-MM-DD" (the earlier daily files)

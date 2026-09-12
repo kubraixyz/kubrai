@@ -186,7 +186,7 @@ export const HOURLY_METRICS = {
   das: dailyActiveSeekers,
 };
 export const DAILY_METRICS = {
-  skr_ids_onchain: skrIdsOnchain,   // ~20 s getProgramAccounts; still needed by market #14 until 2026-09-19
   reviewers_7d: storeReviewers7d,   // per-app review scan, minutes
+  // skr_ids_onchain (skrIdsOnchain, ~20 s getProgramAccounts) is kept in the code but not recorded: no .skr markets since 2026-09-12.
 };
 export const METRICS = { ...HOURLY_METRICS, ...DAILY_METRICS };
