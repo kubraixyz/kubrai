@@ -36,7 +36,7 @@ function render() {
       <b>Betting opens</b><span>${fmtTs(m.openTs)}</span>
       <b>Betting closes</b><span>${fmtTs(m.closeTs)}</span>
       <b>Early-bird fee</b><span>${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyUntil)}, then ${cfg.feeBps / 100}%</span>
-      ${t ? `<b>Holder discounts</b><span>${[t.sgtDiscountBps ? `Seeker Genesis Token −${t.sgtDiscountBps / 100}%` : "", t.stakeDiscountBps ? `SKR staking (≥ ${(t.stakeMinAmount / 1e6).toLocaleString("en-US")} SKR) −${t.stakeDiscountBps / 100}%` : "SKR staking: coming"].filter(Boolean).join(" · ")}${t.minFeeBps ? ` · never below ${t.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.</span>` : ""}
+      ${t ? `<b>Holder discounts</b><span>${[t.sgtDiscountBps ? `Seeker Genesis Token −${t.sgtDiscountBps / 100}%` : "", t.stakeDiscountBps ? `SKR staking (≥ ${(t.stakeMinAmount / 1e6).toLocaleString("en-US")} SKR) −${t.stakeDiscountBps / 100}%` : ""].filter(Boolean).join(" · ")}${t.minFeeBps ? ` · never below ${t.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.</span>` : ""}
       <b>Result proposed</b><span>${m.proposedAt ? `${fmtTs(m.proposedAt)} · observed <span class="mono">${fmtValue(m.metric, m.proposedValue)}</span> → <b>${bucketLabel(m, m.proposedOutcome)}</b>` : "after close"}</span>
       ${m.nBuckets > 2 ? `<b>How ranges are set</b><span>Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely. Odds then move with the pools.</span>` : ""}
       <b>Dispute window</b><span>${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize</span>

@@ -24,7 +24,7 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
   * Seeker Genesis Token holders get −1%: the bet carries the wallet's token account and its mint, and the program
     checks on-chain that the mint is a member of the Genesis Token group (Token-2022 group extension). Nothing is
     taken on the client's word.
-  * SKR stakers will get −1% once the stake account layout is configured (the rule is admin-set, no redeploy).
+  * an SKR-staking discount exists in the program but is switched off for now (admin-set, no redeploy needed to enable it).
   * Discounts never take the fee below the configured floor (1%). All of this lives in an admin-set `FeeTiers` account.
   * SKR staking tier and Seeker Genesis Token holders (mainnet): further −1% / −2%.
 * The treasury may **seed** a market with a fee-free prize; it is split pro-rata among

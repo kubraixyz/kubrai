@@ -121,7 +121,7 @@ export function MarketScreen() {
       <KV k="Betting opens" v={fmtTs(m.openTs)} />
       <KV k="Betting closes" v={fmtTs(m.closeTs)} />
       {cfg && <KV k="Early-bird fee" v={`${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyBirdUntil(cfg, m))}, then ${cfg.feeBps / 100}%`} />}
-      {cfg?.feeTiers && <KV k="Holder discounts" v={`${[cfg.feeTiers.sgtDiscountBps ? `Seeker Genesis Token −${cfg.feeTiers.sgtDiscountBps / 100}%` : "", cfg.feeTiers.stakeDiscountBps ? `SKR staking −${cfg.feeTiers.stakeDiscountBps / 100}%` : "SKR staking: coming"].filter(Boolean).join(" · ")}${cfg.feeTiers.minFeeBps ? ` · never below ${cfg.feeTiers.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.`} />}
+      {cfg?.feeTiers && <KV k="Holder discounts" v={`${[cfg.feeTiers.sgtDiscountBps ? `Seeker Genesis Token −${cfg.feeTiers.sgtDiscountBps / 100}%` : "", cfg.feeTiers.stakeDiscountBps ? `SKR staking −${cfg.feeTiers.stakeDiscountBps / 100}%` : ""].filter(Boolean).join(" · ")}${cfg.feeTiers.minFeeBps ? ` · never below ${cfg.feeTiers.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.`} />}
       <KV k="Result proposed" v={m.proposedAt ? `${fmtTs(m.proposedAt)} · observed ${fmtValue(m.metric, m.proposedValue)} → ${bucketLabel(m, m.proposedOutcome)}` : "after close"} />
       {m.nBuckets > 2 && <KV k="How ranges are set" v="Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely." />}
       {cfg && <KV k="Dispute window" v={`${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize`} />}
