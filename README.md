@@ -20,7 +20,12 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
   receives.** Your own stake is never touched.
 * **Discounts** lower that fee and are locked into your position at the moment you bet,
   stake-weighted, so a late top-up cannot inherit an early discount:
-  * early-bird: bets placed in the first 24 h of a market get −1%.
+  * early-bird: bets placed in the first quarter of a market's window (6 h of a daily market, 24 h of a weekly one) get −1%.
+  * Seeker Genesis Token holders get −1%: the bet carries the wallet's token account and its mint, and the program
+    checks on-chain that the mint is a member of the Genesis Token group (Token-2022 group extension). Nothing is
+    taken on the client's word.
+  * SKR stakers will get −1% once the stake account layout is configured (the rule is admin-set, no redeploy).
+  * Discounts never take the fee below the configured floor (1%). All of this lives in an admin-set `FeeTiers` account.
   * SKR staking tier and Seeker Genesis Token holders (mainnet): further −1% / −2%.
 * The treasury may **seed** a market with a fee-free prize; it is split pro-rata among
   winners. If nobody wins the seed returns to the treasury.
@@ -55,7 +60,7 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
 
 ```
 programs/kubrai   Anchor program (Rust) — N-bucket parimutuel, on-chain bucket derivation
-tests/            7 end-to-end tests against a local validator (fees, void, no-winner, multi-bucket)
+tests/            9 end-to-end tests against a local validator (fees, discounts, void, no-winner, multi-bucket)
 server/           hourly snapshot recorder (memo hash), resolver + settlement crank, scheduled market opener (market-templates.json), public API + devnet faucet, bucket designer
 web/              market pages + wallet betting (Wallet Standard), "My bets", APK download
 app/              Seeker app: Expo / React Native + Mobile Wallet Adapter (Seed Vault), in-app feedback

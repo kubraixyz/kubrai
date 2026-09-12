@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { getOrCreateAssociatedTokenAccount, getAssociatedTokenAddressSync, createTransferInstruction, createAssociatedTokenAccountIdempotentInstruction } from "@solana/spl-token";
+import { getOrCreateAssociatedTokenAccount, getAssociatedTokenAddressSync, createTransferInstruction, createAssociatedTokenAccountIdempotentInstruction } from "@solana/spl-token", TOKEN_2022_PROGRAM_ID, ExtensionType, getMintLen, createInitializeMintInstruction, createInitializeGroupMemberPointerInstruction, createInitializeNonTransferableMintInstruction, createMintToInstruction, createSetAuthorityInstruction, AuthorityType, TOKEN_GROUP_MEMBER_SIZE, TYPE_SIZE, LENGTH_SIZE } from "@solana/spl-token";
+import { createInitializeMemberInstruction } from "@solana/spl-token-group";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
 import { notify } from "./notify.mjs";
@@ -63,6 +64,37 @@ function rollDay() { const d = dayKey(); if (d !== seenDay) { seenDay = d; seenA
 // Only Caddy talks to this socket; Caddy replaces X-Forwarded-For for untrusted clients, so its first hop is the real client.
 const clientIp = (req) => String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "?").split(",")[0].trim();
 
+// Devnet only: the faucet also hands out a stand-in Seeker Genesis Token (a member of the mock Token-2022 group whose
+// authority is the faucet key), so testers can see the holder discount. Reads the group mint from SGT_GROUP_MINT or
+// $KUBRAI_SECRETS/sgt-group-mint.txt; silently skipped when neither exists (mainnet).
+const SGT_GROUP_MINT = (() => { try { return new PublicKey((process.env.SGT_GROUP_MINT ?? fs.readFileSync(path.join(process.env.KUBRAI_SECRETS ?? path.join(os.homedir(), "secrets", process.env.CLUSTER ?? "devnet"), "sgt-group-mint.txt"), "utf8")).trim()); } catch { return null; } })();
+async function hasMockSgt(owner) {
+  const res = await conn.getParsedTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM_ID });
+  for (const a of res.value) {
+    if (Number(a.account.data.parsed?.info?.tokenAmount?.amount ?? 0) < 1) continue;
+    const mi = await conn.getParsedAccountInfo(new PublicKey(a.account.data.parsed.info.mint));
+    const member = (mi.value?.data?.parsed?.info?.extensions ?? []).find((e) => e.extension === "tokenGroupMember")?.state;
+    if (member?.group === SGT_GROUP_MINT.toBase58()) return true;
+  }
+  return false;
+}
+async function mintMockSgt(owner, payer) {
+  const member = Keypair.generate();
+  const mintLen = getMintLen([ExtensionType.GroupMemberPointer, ExtensionType.NonTransferable]);
+  const lamports = await conn.getMinimumBalanceForRentExemption(mintLen + TYPE_SIZE + LENGTH_SIZE + TOKEN_GROUP_MEMBER_SIZE);
+  const ata = getAssociatedTokenAddressSync(member.publicKey, owner, true, TOKEN_2022_PROGRAM_ID);
+  const tx = new Transaction().add(
+    SystemProgram.createAccount({ fromPubkey: payer.publicKey, newAccountPubkey: member.publicKey, space: mintLen, lamports, programId: TOKEN_2022_PROGRAM_ID }),
+    createInitializeGroupMemberPointerInstruction(member.publicKey, payer.publicKey, member.publicKey, TOKEN_2022_PROGRAM_ID),
+    createInitializeNonTransferableMintInstruction(member.publicKey, TOKEN_2022_PROGRAM_ID),
+    createInitializeMintInstruction(member.publicKey, 0, payer.publicKey, null, TOKEN_2022_PROGRAM_ID),
+    createInitializeMemberInstruction({ programId: TOKEN_2022_PROGRAM_ID, member: member.publicKey, memberMint: member.publicKey, memberMintAuthority: payer.publicKey, group: SGT_GROUP_MINT, groupUpdateAuthority: payer.publicKey }),
+    createAssociatedTokenAccountIdempotentInstruction(payer.publicKey, ata, owner, member.publicKey, TOKEN_2022_PROGRAM_ID),
+    createMintToInstruction(member.publicKey, ata, payer.publicKey, 1, [], TOKEN_2022_PROGRAM_ID),
+    createSetAuthorityInstruction(member.publicKey, payer.publicKey, AuthorityType.MintTokens, null, [], TOKEN_2022_PROGRAM_ID),
+  );
+  return sendAndConfirmTransaction(conn, tx, [payer, member]);
+}
 const json = (res, code, body, extra = {}) => { res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "content-type", "access-control-allow-methods": "GET,POST,OPTIONS", ...extra }); res.end(JSON.stringify(body)); };
 const readBody = (req, max = 4096) => new Promise((ok, err) => { let b = ""; req.on("data", (c) => { b += c; if (b.length > max) { err(Object.assign(new Error("body too large"), { status: 413 })); req.destroy(); } }); req.on("end", () => ok(b)); req.on("error", err); });
 const FEEDBACK_DIR = process.env.FEEDBACK_DIR ?? path.join(os.homedir(), "apps", "kubrai", "feedback");
@@ -212,7 +244,9 @@ reason=${reason}`;
         tx.add(createAssociatedTokenAccountIdempotentInstruction(faucet.publicKey, ata, address, mint));
         tx.add(createTransferInstruction(from, ata, faucet.publicKey, FAUCET_TOKENS));
         const sig = await sendAndConfirmTransaction(conn, tx, [faucet]);
-        return json(res, 200, { ok: true, address: address.toBase58(), tokens: "1000 tSKR", sol: giveSol ? FAUCET_SOL + " SOL" : "already funded", signatures: { tokens: sig, ...(giveSol ? { sol: sig } : {}) } });
+        let sgt = null;
+        if (SGT_GROUP_MINT) { try { sgt = (await hasMockSgt(address)) ? "already held" : await mintMockSgt(address, faucet); } catch (e) { console.error("mock SGT mint failed", e?.message); sgt = "failed"; } }
+        return json(res, 200, { ok: true, address: address.toBase58(), tokens: "1000 tSKR", sol: giveSol ? FAUCET_SOL + " SOL" : "already funded", genesisToken: sgt ? (sgt === "already held" || sgt === "failed" ? sgt : "test Genesis Token minted (−1% fee)") : undefined, signatures: { tokens: sig, ...(giveSol ? { sol: sig } : {}), ...(sgt && sgt.length > 40 ? { genesisToken: sgt } : {}) } });
       } catch (e) { seenAddr.delete(k); faucetToday--; console.error("faucet failed", e?.message); return json(res, 503, { error: "faucet transaction failed, try again in a minute" }); }
     }
     json(res, 404, { error: "not found" });
