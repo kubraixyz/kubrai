@@ -21,6 +21,11 @@
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, CloseAccount, Mint, Token, TokenAccount, Transfer};
+use anchor_spl::token_2022::spl_token_2022::{
+    extension::{BaseStateWithExtensions, StateWithExtensions},
+    state::{Account as T22Account, Mint as T22Mint},
+};
+use spl_token_group_interface::state::TokenGroupMember;
 
 declare_id!("F9qowxW3hmwrzDeKQXpL4rVmFcPvWe7e43oGnWU3AvQb");
 
@@ -65,6 +70,22 @@ pub mod kubrai {
         if let Some(a) = new_admin {
             c.admin = a;
         }
+        Ok(())
+    }
+
+    /// Admin: holder discounts (Seeker Genesis Token, SKR staking) and the fee floor. Creates the account on first use.
+    pub fn set_fee_tiers(ctx: Context<SetFeeTiers>, args: FeeTiersArgs) -> Result<()> {
+        args.validate(ctx.accounts.config.fee_bps)?;
+        let t = &mut ctx.accounts.fee_tiers;
+        t.sgt_group_mint = args.sgt_group_mint;
+        t.sgt_discount_bps = args.sgt_discount_bps;
+        t.stake_program = args.stake_program;
+        t.stake_owner_offset = args.stake_owner_offset;
+        t.stake_amount_offset = args.stake_amount_offset;
+        t.stake_min_amount = args.stake_min_amount;
+        t.stake_discount_bps = args.stake_discount_bps;
+        t.min_fee_bps = args.min_fee_bps;
+        t.bump = ctx.bumps.fee_tiers;
         Ok(())
     }
 
@@ -132,9 +153,11 @@ pub mod kubrai {
             if now < m.open_ts.saturating_add(Market::early_bird_secs(c, m)) {
                 fee_bps = fee_bps.saturating_sub(c.early_bird_discount_bps);
             }
-            // TODO(v1.1): SKR staking tier discount — read the staker account of the
-            // SKR staking program (SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ) passed as
-            // an optional remaining account; layout to be confirmed on mainnet.
+            // Holder discounts are proven by extra accounts the client appends (all optional, so old clients still
+            // work): [fee_tiers PDA, Seeker Genesis Token account + its mint, SKR stake account]. Each proof is
+            // verified against the account data itself; a discount is never granted on the client's word.
+            let (sgt, stake, floor) = holder_discounts(&ctx.remaining_accounts, &ctx.accounts.user.key())?;
+            fee_bps = fee_bps.saturating_sub(sgt).saturating_sub(stake).max(floor);
             fee_bps
         };
         // Move the tokens first, then book-keep (borrow checker: CPI needs &ctx.accounts).
@@ -333,6 +356,80 @@ impl ConfigArgs {
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct FeeTiersArgs {
+    pub sgt_group_mint: Pubkey,
+    pub sgt_discount_bps: u16,
+    pub stake_program: Pubkey,
+    pub stake_owner_offset: u16,
+    pub stake_amount_offset: u16,
+    pub stake_min_amount: u64,
+    pub stake_discount_bps: u16,
+    pub min_fee_bps: u16,
+}
+impl FeeTiersArgs {
+    fn validate(&self, fee_bps: u16) -> Result<()> {
+        require!(self.sgt_discount_bps <= fee_bps && self.stake_discount_bps <= fee_bps && self.min_fee_bps <= fee_bps, KubraiError::FeeTooHigh);
+        Ok(())
+    }
+}
+
+/// Holder discounts, admin-settable without a redeploy. Zero discount / default pubkey = disabled.
+#[account]
+#[derive(InitSpace)]
+pub struct FeeTiers {
+    pub sgt_group_mint: Pubkey,     // Token-2022 group mint of the Seeker Genesis Token (GT22…99Te on mainnet)
+    pub sgt_discount_bps: u16,
+    pub stake_program: Pubkey,      // SKR staking program; its stake account layout is described by the two offsets
+    pub stake_owner_offset: u16,
+    pub stake_amount_offset: u16,
+    pub stake_min_amount: u64,
+    pub stake_discount_bps: u16,
+    pub min_fee_bps: u16,           // discounts never take the fee below this
+    pub bump: u8,
+}
+
+/// Returns (sgt_discount, stake_discount, fee_floor) proven by the remaining accounts; (0, 0, 0) when none apply.
+fn holder_discounts(remaining: &[AccountInfo], user: &Pubkey) -> Result<(u16, u16, u16)> {
+    let (tiers_pda, _) = Pubkey::find_program_address(&[b"fee_tiers"], &crate::ID);
+    let Some(tiers_ai) = remaining.iter().find(|a| a.key() == tiers_pda) else { return Ok((0, 0, 0)) };
+    require!(tiers_ai.owner == &crate::ID, KubraiError::BadProof);
+    let tiers = FeeTiers::try_deserialize(&mut &tiers_ai.data.borrow()[..])?;
+    let t22 = anchor_spl::token_2022::ID;
+    let mut sgt = 0u16;
+    let mut stake = 0u16;
+    // Seeker Genesis Token: a Token-2022 token account owned by the user, balance ≥ 1, whose mint is a member of the group.
+    if tiers.sgt_discount_bps > 0 && tiers.sgt_group_mint != Pubkey::default() {
+        'outer: for acc in remaining.iter().filter(|a| a.owner == &t22) {
+            let data = acc.data.borrow();
+            let Ok(tok) = StateWithExtensions::<T22Account>::unpack(&data) else { continue };
+            if tok.base.owner != *user || tok.base.amount == 0 { continue; }
+            for mint_ai in remaining.iter().filter(|a| a.owner == &t22 && a.key() == tok.base.mint) {
+                let mdata = mint_ai.data.borrow();
+                let Ok(mint) = StateWithExtensions::<T22Mint>::unpack(&mdata) else { continue };
+                if let Ok(member) = mint.get_extension::<TokenGroupMember>() {
+                    if Pubkey::from(member.group.to_bytes()) == tiers.sgt_group_mint && Pubkey::from(member.mint.to_bytes()) == mint_ai.key() {
+                        sgt = tiers.sgt_discount_bps;
+                        break 'outer;
+                    }
+                }
+            }
+        }
+    }
+    // SKR staking: an account of the staking program whose owner field is the user and whose amount field clears the minimum.
+    if tiers.stake_discount_bps > 0 && tiers.stake_program != Pubkey::default() {
+        let (oo, ao) = (tiers.stake_owner_offset as usize, tiers.stake_amount_offset as usize);
+        for acc in remaining.iter().filter(|a| a.owner == &tiers.stake_program) {
+            let data = acc.data.borrow();
+            if data.len() < oo + 32 || data.len() < ao + 8 { continue; }
+            if data[oo..oo + 32] != user.to_bytes() { continue; }
+            let amount = u64::from_le_bytes(data[ao..ao + 8].try_into().unwrap());
+            if amount >= tiers.stake_min_amount { stake = tiers.stake_discount_bps; break; }
+        }
+    }
+    Ok((sgt, stake, tiers.min_fee_bps))
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct MarketArgs {
     pub metric: [u8; 32],
     pub question_hash: [u8; 32],
@@ -469,6 +566,17 @@ impl<'info> SeedMarket<'info> {
 }
 
 #[derive(Accounts)]
+pub struct SetFeeTiers<'info> {
+    #[account(seeds = [b"config"], bump = config.bump, has_one = admin @ KubraiError::Unauthorized)]
+    pub config: Account<'info, Config>,
+    #[account(init_if_needed, payer = admin, space = 8 + FeeTiers::INIT_SPACE, seeds = [b"fee_tiers"], bump)]
+    pub fee_tiers: Account<'info, FeeTiers>,
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 pub struct PlaceBet<'info> {
     #[account(seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, Config>,
@@ -599,6 +707,8 @@ pub struct PositionSettled { pub market: Pubkey, pub user: Pubkey, pub payout: u
 
 #[error_code]
 pub enum KubraiError {
+    #[msg("discount proof account is malformed")]
+    BadProof,
     #[msg("unauthorized")] Unauthorized,
     #[msg("fee above hard ceiling")] FeeTooHigh,
     #[msg("bad schedule")] BadSchedule,

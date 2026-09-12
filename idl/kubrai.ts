@@ -511,6 +511,86 @@ export type Kubrai = {
       ]
     },
     {
+      "name": "setFeeTiers",
+      "docs": [
+        "Admin: holder discounts (Seeker Genesis Token, SKR staking) and the fee floor. Creates the account on first use."
+      ],
+      "discriminator": [
+        162,
+        35,
+        72,
+        250,
+        39,
+        183,
+        30,
+        7
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "feeTiers",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  95,
+                  116,
+                  105,
+                  101,
+                  114,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "feeTiersArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "settlePosition",
       "docs": [
         "Permissionless payout + close. Winners are paid, losers just get their",
@@ -846,6 +926,19 @@ export type Kubrai = {
       ]
     },
     {
+      "name": "feeTiers",
+      "discriminator": [
+        206,
+        145,
+        108,
+        161,
+        95,
+        145,
+        80,
+        78
+      ]
+    },
+    {
       "name": "market",
       "discriminator": [
         219,
@@ -942,86 +1035,91 @@ export type Kubrai = {
   "errors": [
     {
       "code": 6000,
+      "name": "badProof",
+      "msg": "discount proof account is malformed"
+    },
+    {
+      "code": 6001,
       "name": "unauthorized",
       "msg": "unauthorized"
     },
     {
-      "code": 6001,
+      "code": 6002,
       "name": "feeTooHigh",
       "msg": "fee above hard ceiling"
     },
     {
-      "code": 6002,
+      "code": 6003,
       "name": "badSchedule",
       "msg": "bad schedule"
     },
     {
-      "code": 6003,
+      "code": 6004,
       "name": "zeroAmount",
       "msg": "amount must be > 0"
     },
     {
-      "code": 6004,
+      "code": 6005,
       "name": "belowMinBet",
       "msg": "below minimum bet"
     },
     {
-      "code": 6005,
+      "code": 6006,
       "name": "marketNotOpen",
       "msg": "market is not open"
     },
     {
-      "code": 6006,
+      "code": 6007,
       "name": "bettingNotStarted",
       "msg": "betting has not started"
     },
     {
-      "code": 6007,
+      "code": 6008,
       "name": "bettingClosed",
       "msg": "betting is closed"
     },
     {
-      "code": 6008,
+      "code": 6009,
       "name": "paused",
       "msg": "protocol paused"
     },
     {
-      "code": 6009,
+      "code": 6010,
       "name": "tooEarlyToResolve",
       "msg": "too early to resolve"
     },
     {
-      "code": 6010,
+      "code": 6011,
       "name": "notProposed",
       "msg": "no resolution proposed"
     },
     {
-      "code": 6011,
+      "code": 6012,
       "name": "disputeWindowOpen",
       "msg": "dispute window still open"
     },
     {
-      "code": 6012,
+      "code": 6013,
       "name": "alreadyFinal",
       "msg": "market already final"
     },
     {
-      "code": 6013,
+      "code": 6014,
       "name": "notResolved",
       "msg": "market not resolved"
     },
     {
-      "code": 6014,
+      "code": 6015,
       "name": "positionsOutstanding",
       "msg": "positions still outstanding"
     },
     {
-      "code": 6015,
+      "code": 6016,
       "name": "badBuckets",
       "msg": "bad bucket definition or index"
     },
     {
-      "code": 6016,
+      "code": 6017,
       "name": "mathOverflow",
       "msg": "arithmetic overflow"
     }
@@ -1148,6 +1246,93 @@ export type Kubrai = {
           {
             "name": "minBet",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feeTiers",
+      "docs": [
+        "Holder discounts, admin-settable without a redeploy. Zero discount / default pubkey = disabled."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "sgtGroupMint",
+            "type": "pubkey"
+          },
+          {
+            "name": "sgtDiscountBps",
+            "type": "u16"
+          },
+          {
+            "name": "stakeProgram",
+            "type": "pubkey"
+          },
+          {
+            "name": "stakeOwnerOffset",
+            "type": "u16"
+          },
+          {
+            "name": "stakeAmountOffset",
+            "type": "u16"
+          },
+          {
+            "name": "stakeMinAmount",
+            "type": "u64"
+          },
+          {
+            "name": "stakeDiscountBps",
+            "type": "u16"
+          },
+          {
+            "name": "minFeeBps",
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "feeTiersArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "sgtGroupMint",
+            "type": "pubkey"
+          },
+          {
+            "name": "sgtDiscountBps",
+            "type": "u16"
+          },
+          {
+            "name": "stakeProgram",
+            "type": "pubkey"
+          },
+          {
+            "name": "stakeOwnerOffset",
+            "type": "u16"
+          },
+          {
+            "name": "stakeAmountOffset",
+            "type": "u16"
+          },
+          {
+            "name": "stakeMinAmount",
+            "type": "u64"
+          },
+          {
+            "name": "stakeDiscountBps",
+            "type": "u16"
+          },
+          {
+            "name": "minFeeBps",
+            "type": "u16"
           }
         ]
       }

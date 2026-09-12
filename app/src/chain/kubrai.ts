@@ -3,7 +3,7 @@
 import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { APP } from "../config";
-import { DISC, SIZE, decodeConfig, decodeMarket, decodePosition, discBase58, placeBetIx, type RawConfig } from "./raw";
+import { DISC, SIZE, decodeFeeTiers, type RawFeeTiers, decodeConfig, decodeMarket, decodePosition, discBase58, placeBetIx, type RawConfig } from "./raw";
 
 export const programId = new PublicKey(APP.programId);
 const u64le = (n: number) => { const b = Buffer.alloc(8); b.writeUInt32LE(n % 4294967296, 0); b.writeUInt32LE(Math.floor(n / 4294967296), 4); return b; };
@@ -12,7 +12,7 @@ export const marketPda = (id: number) => PublicKey.findProgramAddressSync([Buffe
 export const vaultPda = (m: PublicKey) => PublicKey.findProgramAddressSync([Buffer.from("vault"), m.toBuffer()], programId)[0];
 export const positionPda = (m: PublicKey, u: PublicKey) => PublicKey.findProgramAddressSync([Buffer.from("position"), m.toBuffer(), u.toBuffer()], programId)[0];
 /** Config shaped like the old Anchor object where screens expect .toNumber(). */
-export type ConfigView = RawConfig & { earlyBirdSecs: any; disputeWindowSecs: any; minBet: any; mint: any };
+export type ConfigView = RawConfig & { earlyBirdSecs: any; disputeWindowSecs: any; minBet: any; mint: any; feeTiers?: RawFeeTiers | null };
 const bnLike = (n: number) => ({ toNumber: () => n, toString: () => String(n) });
 
 export type MarketView = {
@@ -28,10 +28,13 @@ export function toView(pubkey: PublicKey, data: Uint8Array): MarketView {
   const m = decodeMarket(data);
   return { pubkey, id: m.id, metric: m.metric, nBuckets: m.nBuckets, thresholds: m.thresholds, openTs: m.openTs, closeTs: m.closeTs, resolveAfterTs: m.resolveAfterTs, baseline: m.baseline, pools: m.pools, seed: m.seedAmount, status: m.status, outcome: m.outcome, proposedOutcome: m.proposedOutcome, proposedValue: m.proposedValue, proposedAt: m.proposedAt, positions: m.positions, positionsOpen: m.positionsOpen, feeCollected: m.feeCollected, snapshotHash: Buffer.from(m.snapshotHash).toString("hex") };
 }
+export const feeTiersPda = PublicKey.findProgramAddressSync([Buffer.from("fee_tiers")], programId)[0];
 export async function fetchConfig(connection: Connection): Promise<ConfigView> {
-  const info = await connection.getAccountInfo(configPda, "confirmed"); if (!info) throw new Error("config account not found");
+  const [info, tiers] = await Promise.all([connection.getAccountInfo(configPda, "confirmed"), connection.getAccountInfo(feeTiersPda, "confirmed").catch(() => null)]);
+  if (!info) throw new Error("config account not found");
   const c = decodeConfig(new Uint8Array(info.data));
-  return { ...c, earlyBirdSecs: bnLike(c.earlyBirdSecs), disputeWindowSecs: bnLike(c.disputeWindowSecs), minBet: bnLike(c.minBet), mint: c.mint } as any;
+  let feeTiers = null; try { if (tiers) feeTiers = decodeFeeTiers(new Uint8Array(tiers.data)); } catch {}
+  return { ...c, earlyBirdSecs: bnLike(c.earlyBirdSecs), disputeWindowSecs: bnLike(c.disputeWindowSecs), minBet: bnLike(c.minBet), mint: c.mint, feeTiers } as any;
 }
 export async function fetchMarkets(connection: Connection): Promise<MarketView[]> {
   const accts = await connection.getProgramAccounts(programId, { commitment: "confirmed", filters: [{ dataSize: SIZE.market }, { memcmp: { offset: 0, bytes: discBase58(DISC.market) } }] });
@@ -70,8 +73,8 @@ export function payoutIfBucket(m: MarketView, amounts: number[], feeBpsByBucket:
   const gross = (losePool * stake) / winPool, fee = (gross * (feeBpsByBucket[w] ?? 0)) / 10000, seed = (m.seed * stake) / winPool;
   return { payout: stake + gross - fee + seed, kind: "won" as const };
 }
-export async function buildPlaceBetTx(connection: Connection, user: PublicKey, m: MarketView, bucket: number, amountBase: number, mint: PublicKey) {
-  const ix = placeBetIx(programId, { config: configPda, market: m.pubkey, position: positionPda(m.pubkey, user), vault: vaultPda(m.pubkey), userToken: getAssociatedTokenAddressSync(mint, user), user, tokenProgram: TOKEN_PROGRAM_ID }, bucket, amountBase);
+export async function buildPlaceBetTx(connection: Connection, user: PublicKey, m: MarketView, bucket: number, amountBase: number, mint: PublicKey, extra: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[] = []) {
+  const ix = placeBetIx(programId, { config: configPda, market: m.pubkey, position: positionPda(m.pubkey, user), vault: vaultPda(m.pubkey), userToken: getAssociatedTokenAddressSync(mint, user), user, tokenProgram: TOKEN_PROGRAM_ID }, bucket, amountBase, extra);
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
   const tx = new Transaction({ feePayer: user, blockhash, lastValidBlockHeight }).add(ix);
   return { tx, minContextSlot: await connection.getSlot("confirmed") };

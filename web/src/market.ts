@@ -1,20 +1,27 @@
 import { PublicKey } from "@solana/web3.js";
 import { bs58 } from "./wallet";
-import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, earlyBirdUntil, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
+import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, earlyBirdUntil, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
 import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel } from "./metrics";
 import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill, timeLeft } from "./ui";
 import { API_BASE, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
+import { discountLabel, feeWithDiscounts, holderProof, type HolderProof } from "./holder";
+import { connection, programId } from "./kubrai";
 
 mountNetBadge(); mountWallet();
 const root = document.getElementById("market")!;
 const id = Number(new URLSearchParams(location.search).get("id"));
 let m: MarketView, cfg: any, bucket = 0;
+let proof: HolderProof = { accounts: [], sgt: false, stake: false, sgtDiscountBps: 0, stakeDiscountBps: 0, minFeeBps: 0 };
+async function refreshProof() { proof = await holderProof(connection, programId, getSession()?.publicKey ?? null, cfg?.feeTiers ?? null); }
 
-async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); render(); }
+async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); await refreshProof(); render(); }
+onSession(async () => { if (!cfg) return; await refreshProof(); render(); });
 function render() {
   const copy = metricInfo(m.metric);
   const now = Date.now() / 1000, open = m.status === 0 && now >= m.openTs && now < m.closeTs;
-  const fee = currentFeeBps(cfg, m), earlyUntil = earlyBirdUntil(cfg, m);
+  const earlyUntil = earlyBirdUntil(cfg, m), early = now < earlyUntil;
+  const fee = feeWithDiscounts(cfg.feeBps, early, cfg.earlyBirdDiscountBps, proof);
+  const t = cfg.feeTiers;
   document.title = `Kubrai · ${metricLabel(m.metric)}`;
   root.innerHTML = `
     <div class="meta" style="display:flex;gap:10px;color:var(--dim);font-size:13px">${statusPill(m)}<span>Market #${m.id}</span><span>${m.status === 0 ? timeLeft(m.closeTs) : ""}</span></div>
@@ -29,6 +36,7 @@ function render() {
       <b>Betting opens</b><span>${fmtTs(m.openTs)}</span>
       <b>Betting closes</b><span>${fmtTs(m.closeTs)}</span>
       <b>Early-bird fee</b><span>${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyUntil)}, then ${cfg.feeBps / 100}%</span>
+      ${t ? `<b>Holder discounts</b><span>${[t.sgtDiscountBps ? `Seeker Genesis Token −${t.sgtDiscountBps / 100}%` : "", t.stakeDiscountBps ? `SKR staking (≥ ${(t.stakeMinAmount / 1e6).toLocaleString("en-US")} SKR) −${t.stakeDiscountBps / 100}%` : "SKR staking: coming"].filter(Boolean).join(" · ")}${t.minFeeBps ? ` · never below ${t.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.</span>` : ""}
       <b>Result proposed</b><span>${m.proposedAt ? `${fmtTs(m.proposedAt)} · observed <span class="mono">${fmtValue(m.metric, m.proposedValue)}</span> → <b>${bucketLabel(m, m.proposedOutcome)}</b>` : "after close"}</span>
       ${m.nBuckets > 2 ? `<b>How ranges are set</b><span>Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely. Odds then move with the pools.</span>` : ""}
       <b>Dispute window</b><span>${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize</span>
@@ -70,7 +78,7 @@ function renderBet(open: boolean, fee: number) {
     <div class="quote" id="quote"></div>
     ${s ? `<button class="primary" id="go" style="background:${bucketColor(m, bucket)};border-color:${bucketColor(m, bucket)}">Place bet on “${bucketLabel(m, bucket)}”</button>` : `<div class="note">Connect a wallet above to bet.</div>`}
     <div id="msg"></div>
-    <div class="note">Parimutuel: the quote is what you'd get if pools stayed as they are now. Fee (${fee / 100}%) applies to winnings only, locked in at the time of this bet.</div>
+    <div class="note">Parimutuel: the quote is what you'd get if pools stayed as they are now. <b>Your fee: ${fee / 100}%</b>${discountLabel(Date.now() / 1000 < earlyBirdUntil(cfg, m), proof) ? ` (${discountLabel(Date.now() / 1000 < earlyBirdUntil(cfg, m), proof)})` : ""} — applies to winnings only, locked in at the time of this bet.</div>
   </div>`;
   const amtEl = box.querySelector<HTMLInputElement>("#amt")!, quote = box.querySelector("#quote")!;
   const upd = () => {
@@ -88,7 +96,8 @@ function renderBet(open: boolean, fee: number) {
     if (a < cfg.minBet.toNumber()) { msg.innerHTML = `<div class="msg err">Minimum bet is ${fmtAmt(cfg.minBet.toNumber())} ${TOKEN_SYMBOL}.</div>`; return; }
     go.disabled = true; msg.innerHTML = `<div class="msg">Confirm in your wallet…</div>`;
     try {
-      const tx = await buildPlaceBetTx(sess.publicKey, m, bucket, a, new PublicKey(cfg.mint));
+      await refreshProof();
+      const tx = await buildPlaceBetTx(sess.publicKey, m, bucket, a, new PublicKey(cfg.mint), proof.accounts);
       const sig = await sess.signAndSend(tx);
       msg.innerHTML = `<div class="msg">Sent. Waiting for confirmation… <span class="hash">${esc(sig)}</span></div>`;
       await confirmBySig(sig);

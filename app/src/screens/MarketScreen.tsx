@@ -7,7 +7,8 @@ import { useBalances, useConfig, useInvalidateAll, useMarket, usePositions } fro
 import { metricInfo, metricLabel, fmtValue, SOURCE_LABEL } from "../chain/metrics";
 import { PoolBar } from "../components/PoolBar";
 import { bucketColor, bucketLabel, fmtAmt, fmtTs, statusLabel, timeLeft } from "../chain/format";
-import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, currentFeeBps, impliedPayout, earlyBirdUntil } from "../chain/kubrai";
+import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, impliedPayout, earlyBirdUntil, programId } from "../chain/kubrai";
+import { discountLabel, feeWithDiscounts, holderProof, type HolderProof } from "../chain/holder";
 import { useConnection } from "../utils/ConnectionProvider";
 import { useAuthorization } from "../utils/useAuthorization";
 import { useMobileWallet } from "../utils/useMobileWallet";
@@ -26,7 +27,11 @@ export function MarketScreen() {
   const [ev, setEv] = useState<any>(null);
   useEffect(() => { if (!m) return; fetch(`${APP.apiBase}/evidence?metric=${encodeURIComponent(m.metric)}&open=${m.openTs}&close=${m.closeTs}&baseline=${m.baseline}&id=${m.id}`).then((r) => (r.ok ? r.json() : null)).then(setEv).catch(() => setEv(null)); }, [m?.pubkey?.toBase58?.()]);
   const slotLabel = (slot: string) => slot.replace("T", " ") + ":00 UTC";
-  const fee = m && cfg ? currentFeeBps(cfg, m) : 0;
+  const NO_PROOF: HolderProof = { accounts: [], sgt: false, stake: false, sgtDiscountBps: 0, stakeDiscountBps: 0, minFeeBps: 0 };
+  const [proof, setProof] = useState<HolderProof>(NO_PROOF);
+  useEffect(() => { let live = true; holderProof(connection, programId, selectedAccount?.publicKey ?? null, cfg?.feeTiers ?? null).then((p) => { if (live) setProof(p); }); return () => { live = false; }; }, [selectedAccount?.publicKey?.toBase58?.(), cfg?.feeTiers?.sgtGroupMint]);
+  const early = !!m && !!cfg && Date.now() / 1000 < earlyBirdUntil(cfg, m);
+  const fee = m && cfg ? feeWithDiscounts(cfg.feeBps, early, cfg.earlyBirdDiscountBps, proof) : 0;
   const open = !!m && m.status === 0 && Date.now() / 1000 >= m.openTs && Date.now() / 1000 < m.closeTs;
   const a = Math.round((Number(amt) || 0) * 10 ** TOKEN_DECIMALS);
   const quote = useMemo(() => (m && a ? impliedPayout(m, bucket, a, fee) : null), [m, a, bucket, fee]);
@@ -38,7 +43,8 @@ export function MarketScreen() {
     setBusy(true); setMsg({ kind: "info", text: "Confirm in your wallet…" });
     try {
       const account = selectedAccount ?? (await connect());
-      const { tx, minContextSlot } = await buildPlaceBetTx(connection, account.publicKey, m, bucket, a, new PublicKey(cfg.mint));
+      const p = await holderProof(connection, programId, account.publicKey, cfg.feeTiers ?? null);
+      const { tx, minContextSlot } = await buildPlaceBetTx(connection, account.publicKey, m, bucket, a, new PublicKey(cfg.mint), p.accounts);
       let sig: string;
       try {
         sig = await signAndSendTransaction(tx, minContextSlot);
@@ -105,7 +111,7 @@ export function MarketScreen() {
           </View>
           <Button mode="contained" buttonColor={bucketColor(m, bucket)} textColor="#fff" loading={busy} disabled={busy} onPress={placeBet}>{selectedAccount ? `Place bet on “${bucketLabel(m, bucket)}”` : "Connect wallet & bet"}</Button>
           {msg && <Text style={{ color: msg.kind === "err" ? theme.colors.error : msg.kind === "ok" ? "#0f8f7c" : undefined }}>{msg.text}</Text>}
-          <Text variant="bodySmall" style={styles.dim}>Parimutuel: the quote assumes pools stay as they are. Fee ({fee / 100}%) applies to winnings only and is locked in at the time of this bet.</Text>
+          <Text variant="bodySmall" style={styles.dim}>Parimutuel: the quote assumes pools stay as they are. Your fee: {fee / 100}%{discountLabel(early, proof) ? ` (${discountLabel(early, proof)})` : ""} — applies to winnings only and is locked in at the time of this bet.</Text>
           {myPos && <KV k="Your position" v={myPos.amounts.slice(0, m.nBuckets).map((x: number, i: number) => (x ? `${bucketLabel(m, i)}: ${fmtAmt(x)}` : "")).filter(Boolean).join(" · ") + " " + TOKEN_SYMBOL} />}
         </View>
       )}
@@ -115,6 +121,7 @@ export function MarketScreen() {
       <KV k="Betting opens" v={fmtTs(m.openTs)} />
       <KV k="Betting closes" v={fmtTs(m.closeTs)} />
       {cfg && <KV k="Early-bird fee" v={`${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyBirdUntil(cfg, m))}, then ${cfg.feeBps / 100}%`} />}
+      {cfg?.feeTiers && <KV k="Holder discounts" v={`${[cfg.feeTiers.sgtDiscountBps ? `Seeker Genesis Token −${cfg.feeTiers.sgtDiscountBps / 100}%` : "", cfg.feeTiers.stakeDiscountBps ? `SKR staking −${cfg.feeTiers.stakeDiscountBps / 100}%` : "SKR staking: coming"].filter(Boolean).join(" · ")}${cfg.feeTiers.minFeeBps ? ` · never below ${cfg.feeTiers.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.`} />}
       <KV k="Result proposed" v={m.proposedAt ? `${fmtTs(m.proposedAt)} · observed ${fmtValue(m.metric, m.proposedValue)} → ${bucketLabel(m, m.proposedOutcome)}` : "after close"} />
       {m.nBuckets > 2 && <KV k="How ranges are set" v="Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely." />}
       {cfg && <KV k="Dispute window" v={`${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize`} />}

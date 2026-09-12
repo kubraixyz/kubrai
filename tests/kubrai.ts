@@ -1,7 +1,8 @@
 import * as anchor from "@coral-xyz/anchor";
+import { createInitializeGroupInstruction, createInitializeMemberInstruction } from "@solana/spl-token-group";
 import { Program, BN } from "@coral-xyz/anchor";
-import { Keypair, PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { createMint, getOrCreateAssociatedTokenAccount, mintTo, getAccount, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { Keypair, PublicKey, SystemProgram, LAMPORTS_PER_SOL, Transaction } from "@solana/web3.js";
+import { createMint, getOrCreateAssociatedTokenAccount, mintTo, getAccount, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, ExtensionType, getMintLen, createInitializeMintInstruction, getAssociatedTokenAddressSync, createInitializeGroupPointerInstruction, createInitializeGroupMemberPointerInstruction, createAssociatedTokenAccountIdempotentInstruction, createMintToInstruction, TOKEN_GROUP_SIZE, TOKEN_GROUP_MEMBER_SIZE, TYPE_SIZE, LENGTH_SIZE } from "@solana/spl-token";
 import { assert } from "chai";
 import { Kubrai } from "../target/types/kubrai";
 
@@ -195,6 +196,54 @@ describe("kubrai parimutuel", () => {
     assert.equal((await bal(ata.bob)) - b0, 60 * T + 40 * T - 40 * T * 0.02); // 60 back + 40 from alice − 2% early-bird fee = 99.2
     await sweep(m, v, dave);
     await expectErr(settle(m, v, alice, dave), "AccountNotInitialized");
+  });
+
+
+  it("holder discounts: Seeker Genesis Token proof cuts the fee, fee floor holds, old clients unaffected", async () => {
+    // --- a Token-2022 group (stand-in for GT22…) and one member token for alice ---
+    const T22 = TOKEN_2022_PROGRAM_ID;
+    const group = Keypair.generate();
+    { const len = getMintLen([ExtensionType.GroupPointer]); const lamports = await conn.getMinimumBalanceForRentExemption(len + TYPE_SIZE + LENGTH_SIZE + TOKEN_GROUP_SIZE);
+      const tx = new Transaction().add(
+        SystemProgram.createAccount({ fromPubkey: admin.publicKey, newAccountPubkey: group.publicKey, space: len, lamports, programId: T22 }),
+        createInitializeGroupPointerInstruction(group.publicKey, admin.publicKey, group.publicKey, T22),
+        createInitializeMintInstruction(group.publicKey, 0, admin.publicKey, null, T22),
+        createInitializeGroupInstruction({ programId: T22, group: group.publicKey, mint: group.publicKey, mintAuthority: admin.publicKey, updateAuthority: admin.publicKey, maxSize: BigInt(1000) }));
+      await provider.sendAndConfirm(tx, [group]); }
+    const member = Keypair.generate(); const aliceSgt = getAssociatedTokenAddressSync(member.publicKey, alice.publicKey, true, T22);
+    { const len = getMintLen([ExtensionType.GroupMemberPointer]); const lamports = await conn.getMinimumBalanceForRentExemption(len + TYPE_SIZE + LENGTH_SIZE + TOKEN_GROUP_MEMBER_SIZE);
+      const tx = new Transaction().add(
+        SystemProgram.createAccount({ fromPubkey: admin.publicKey, newAccountPubkey: member.publicKey, space: len, lamports, programId: T22 }),
+        createInitializeGroupMemberPointerInstruction(member.publicKey, admin.publicKey, member.publicKey, T22),
+        createInitializeMintInstruction(member.publicKey, 0, admin.publicKey, null, T22),
+        createInitializeMemberInstruction({ programId: T22, member: member.publicKey, memberMint: member.publicKey, memberMintAuthority: admin.publicKey, group: group.publicKey, groupUpdateAuthority: admin.publicKey }),
+        createAssociatedTokenAccountIdempotentInstruction(admin.publicKey, aliceSgt, alice.publicKey, member.publicKey, T22),
+        createMintToInstruction(member.publicKey, aliceSgt, admin.publicKey, 1, [], T22));
+      await provider.sendAndConfirm(tx, [member]); }
+    // --- tiers: SGT −1 %, floor 1 % ---
+    const [feeTiers] = PublicKey.findProgramAddressSync([Buffer.from("fee_tiers")], program.programId);
+    const tiers = { sgtGroupMint: group.publicKey, sgtDiscountBps: 100, stakeProgram: PublicKey.default, stakeOwnerOffset: 0, stakeAmountOffset: 0, stakeMinAmount: new BN(0), stakeDiscountBps: 0, minFeeBps: 100 };
+    await expectErr(program.methods.setFeeTiers(tiers).accounts({ config: configPda, feeTiers, admin: alice.publicKey, systemProgram: SystemProgram.programId }).signers([alice]).rpc(), "Unauthorized");
+    await expectErr(program.methods.setFeeTiers({ ...tiers, sgtDiscountBps: 5000 }).accounts({ config: configPda, feeTiers, admin: admin.publicKey, systemProgram: SystemProgram.programId }).rpc(), "FeeTooHigh");
+    await program.methods.setFeeTiers(tiers).accounts({ config: configPda, feeTiers, admin: admin.publicKey, systemProgram: SystemProgram.programId }).rpc();
+    const { m, v } = await createMarket(-1, 60);
+    const withProof = (who: Keypair, tokenAcc: PublicKey, mintAcc: PublicKey) => program.methods.placeBet(1, new BN(100 * T))
+      .accounts({ config: configPda, market: m, position: posPda(m, who.publicKey), vault: v, userToken: ata[nameOf(who)], user: who.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId })
+      .remainingAccounts([{ pubkey: feeTiers, isSigner: false, isWritable: false }, { pubkey: tokenAcc, isSigner: false, isWritable: false }, { pubkey: mintAcc, isSigner: false, isWritable: false }]).signers([who]).rpc();
+    // alice: early bird (−1) + SGT (−1) = 1 %, exactly the floor
+    await withProof(alice, aliceSgt, member.publicKey);
+    assert.equal((await program.account.position.fetch(posPda(m, alice.publicKey))).feeW[1].toString(), new BN(100 * T).muln(100).toString(), "alice pays 1%");
+    // bob presents alice's token account → not his, no discount (early bird only = 2 %)
+    await withProof(bob, aliceSgt, member.publicKey);
+    assert.equal((await program.account.position.fetch(posPda(m, bob.publicKey))).feeW[1].toString(), new BN(100 * T).muln(200).toString(), "bob gets no SGT discount");
+    // carol: old client, no remaining accounts → early bird only
+    await bet(m, v, carol, "yes", 100 * T);
+    assert.equal((await program.account.position.fetch(posPda(m, carol.publicKey))).feeW[1].toString(), new BN(100 * T).muln(200).toString(), "old client unaffected");
+    // floor: raise the SGT discount to 3 % → alice would be at 0 %, floor keeps 1 %
+    await program.methods.setFeeTiers({ ...tiers, sgtDiscountBps: 300 }).accounts({ config: configPda, feeTiers, admin: admin.publicKey, systemProgram: SystemProgram.programId }).rpc();
+    await withProof(alice, aliceSgt, member.publicKey);
+    assert.equal((await program.account.position.fetch(posPda(m, alice.publicKey))).feeW[1].toString(), new BN(200 * T).muln(100).toString(), "second 100 also at the 1% floor");
+    await program.methods.setFeeTiers(tiers).accounts({ config: configPda, feeTiers, admin: admin.publicKey, systemProgram: SystemProgram.programId }).rpc();
   });
 
   it("paused config blocks bets", async () => {

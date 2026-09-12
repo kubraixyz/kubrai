@@ -10,6 +10,7 @@ export const DISC = {
   market: Uint8Array.from([219, 190, 213, 55, 0, 227, 198, 154]),
   position: Uint8Array.from([170, 188, 143, 228, 122, 64, 247, 208]),
   placeBet: Uint8Array.from([222, 62, 67, 220, 63, 166, 126, 33]),
+  feeTiers: Uint8Array.from([206, 145, 108, 161, 95, 145, 80, 78]),
 };
 export const SIZE = { config: 174, market: 365, position: 297 };
 export const discBase58 = (d: Uint8Array) => bs58.encode(d);
@@ -30,6 +31,12 @@ class Reader {
 }
 const hasDisc = (data: Uint8Array, d: Uint8Array) => data.length >= 8 && d.every((b, i) => data[i] === b);
 
+export type RawFeeTiers = { sgtGroupMint: string; sgtDiscountBps: number; stakeProgram: string; stakeOwnerOffset: number; stakeAmountOffset: number; stakeMinAmount: number; stakeDiscountBps: number; minFeeBps: number };
+export function decodeFeeTiers(data: Uint8Array): RawFeeTiers {
+  if (!hasDisc(data, DISC.feeTiers)) throw new Error("not a FeeTiers account");
+  const r = new Reader(data);
+  return { sgtGroupMint: r.pubkey().toBase58(), sgtDiscountBps: r.u16(), stakeProgram: r.pubkey().toBase58(), stakeOwnerOffset: r.u16(), stakeAmountOffset: r.u16(), stakeMinAmount: r.u64(), stakeDiscountBps: r.u16(), minFeeBps: r.u16() };
+}
 export type RawConfig = { admin: PublicKey; proposer: PublicKey; treasury: PublicKey; mint: PublicKey; feeBps: number; earlyBirdDiscountBps: number; earlyBirdSecs: number; disputeWindowSecs: number; minBet: number; marketCount: number; paused: boolean; bump: number };
 export function decodeConfig(data: Uint8Array): RawConfig {
   if (!hasDisc(data, DISC.config)) throw new Error("not a Config account");
@@ -61,7 +68,7 @@ export function decodePosition(data: Uint8Array): RawPosition {
 }
 
 /** place_bet(bucket: u8, amount: u64) — accounts in IDL order. */
-export function placeBetIx(programId: PublicKey, keys: { config: PublicKey; market: PublicKey; position: PublicKey; vault: PublicKey; userToken: PublicKey; user: PublicKey; tokenProgram: PublicKey }, bucket: number, amount: number) {
+export function placeBetIx(programId: PublicKey, keys: { config: PublicKey; market: PublicKey; position: PublicKey; vault: PublicKey; userToken: PublicKey; user: PublicKey; tokenProgram: PublicKey }, bucket: number, amount: number, extra: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[] = []) {
   const data = new Uint8Array(17); data.set(DISC.placeBet, 0); data[8] = bucket;
   const dv = new DataView(data.buffer); const lo = amount % 4294967296, hi = Math.floor(amount / 4294967296); dv.setUint32(9, lo, true); dv.setUint32(13, hi, true);
   return new TransactionInstruction({
@@ -75,6 +82,7 @@ export function placeBetIx(programId: PublicKey, keys: { config: PublicKey; mark
       { pubkey: keys.user, isSigner: true, isWritable: true },
       { pubkey: keys.tokenProgram, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ...extra,
     ],
   });
 }

@@ -1,5 +1,5 @@
 import { AnchorProvider, BN, Program, type Idl } from "@coral-xyz/anchor";
-import { Connection, PublicKey, SystemProgram, Transaction, type TransactionInstruction } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram, Transaction, type TransactionInstruction, type AccountMeta } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import idl from "../../idl/kubrai.json";
 import { API_BASE, PROGRAM_ID, RPC_URL } from "./config";
@@ -49,9 +49,13 @@ export function toView(pubkey: PublicKey, a: any): MarketView {
 const fromApi = async (p: string) => { if (!API_BASE) throw new Error("no api"); const r = await fetch(API_BASE + p); if (!r.ok) throw new Error("api " + r.status); return r.json(); };
 const viewFromJson = (j: any): MarketView => ({ ...j, pubkey: new PublicKey(j.pubkey) });
 const cfgFromJson = (c: any) => ({ ...c, admin: new PublicKey(c.admin), proposer: new PublicKey(c.proposer), treasury: new PublicKey(c.treasury), mint: new PublicKey(c.mint), earlyBirdSecs: new BN(c.earlyBirdSecs), disputeWindowSecs: new BN(c.disputeWindowSecs), minBet: new BN(c.minBet), marketCount: new BN(c.marketCount) });
+export const feeTiersPda = PublicKey.findProgramAddressSync([Buffer.from("fee_tiers")], programId)[0];
+const tiersView = (t: any) => t ? { sgtGroupMint: t.sgtGroupMint.toBase58(), sgtDiscountBps: t.sgtDiscountBps, stakeProgram: t.stakeProgram.toBase58(), stakeOwnerOffset: t.stakeOwnerOffset, stakeAmountOffset: t.stakeAmountOffset, stakeMinAmount: t.stakeMinAmount.toNumber(), stakeDiscountBps: t.stakeDiscountBps, minFeeBps: t.minFeeBps } : null;
+/** Config plus the holder-discount tiers (`feeTiers`, null when the admin has not set them). */
 export async function fetchConfig(opts: { fresh?: boolean } = {}) {
   if (!opts.fresh) { try { return cfgFromJson((await fromApi("/config")).config); } catch {} }
-  return (program.account as any).config.fetch(configPda);
+  const [c, t] = await Promise.all([(program.account as any).config.fetch(configPda), (program.account as any).feeTiers.fetchNullable(feeTiersPda).catch(() => null)]);
+  return { ...c, feeTiers: tiersView(t) };
 }
 export async function fetchMarkets(opts: { fresh?: boolean } = {}): Promise<MarketView[]> {
   if (!opts.fresh) { try { return (await fromApi("/markets")).markets.map(viewFromJson); } catch {} }
@@ -100,8 +104,8 @@ export function impliedPayout(m: MarketView, bucket: number, stake: number, feeB
   return { fromLosers, fromSeed, fee, total: stake + fromLosers - fee + fromSeed };
 }
 
-export async function buildPlaceBetTx(user: PublicKey, m: MarketView, bucket: number, amountBase: number, mint: PublicKey): Promise<Transaction> {
-  const ix: TransactionInstruction = await program.methods.placeBet(bucket, new BN(amountBase))
+export async function buildPlaceBetTx(user: PublicKey, m: MarketView, bucket: number, amountBase: number, mint: PublicKey, extra: AccountMeta[] = []): Promise<Transaction> {
+  const ix: TransactionInstruction = await program.methods.placeBet(bucket, new BN(amountBase)).remainingAccounts(extra)
     .accounts({ config: configPda, market: m.pubkey, position: positionPda(m.pubkey, user), vault: vaultPda(m.pubkey), userToken: getAssociatedTokenAddressSync(mint, user), user, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId })
     .instruction();
   const tx = new Transaction().add(ix);

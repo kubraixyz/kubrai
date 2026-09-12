@@ -30,6 +30,8 @@ const conn = new Connection(RPC, "confirmed");
 const IDL = JSON.parse(fs.readFileSync(new URL("../idl/kubrai.json", import.meta.url), "utf8"));
 const roProgram = new anchor.Program(IDL, new anchor.AnchorProvider(conn, new anchor.Wallet(Keypair.generate()), { commitment: "confirmed" }));
 const [roConfigPda] = PublicKey.findProgramAddressSync([Buffer.from("config")], roProgram.programId);
+const [roFeeTiersPda] = PublicKey.findProgramAddressSync([Buffer.from("fee_tiers")], roProgram.programId);
+const serializeTiers = (t) => t ? ({ sgtGroupMint: t.sgtGroupMint.toBase58(), sgtDiscountBps: t.sgtDiscountBps, stakeProgram: t.stakeProgram.toBase58(), stakeOwnerOffset: t.stakeOwnerOffset, stakeAmountOffset: t.stakeAmountOffset, stakeMinAmount: num(t.stakeMinAmount), stakeDiscountBps: t.stakeDiscountBps, minFeeBps: t.minFeeBps }) : null;
 const tagOf = (b) => Buffer.from(b).toString("utf8").replace(/\0+$/, "");
 const num = (x) => (x?.toNumber ? x.toNumber() : Number(x));
 const serializeMarket = (pubkey, a) => ({ pubkey: pubkey.toBase58(), id: num(a.id), metric: tagOf(a.metric), nBuckets: a.nBuckets, thresholds: a.thresholds.slice(0, a.nBuckets - 1).map(num), openTs: num(a.openTs), closeTs: num(a.closeTs), resolveAfterTs: num(a.resolveAfterTs), baseline: num(a.baseline), pools: a.pools.slice(0, a.nBuckets).map(num), seed: num(a.seedAmount), status: a.status, outcome: a.outcome, proposedOutcome: a.proposedOutcome, proposedValue: num(a.proposedValue), proposedAt: num(a.proposedAt), positions: a.positions, positionsOpen: a.positionsOpen, feeCollected: num(a.feeCollected), snapshotHash: Buffer.from(a.snapshotHash).toString("hex") });
@@ -41,8 +43,8 @@ function chainState() {
   if (chainCache.pending) return chainCache.markets ? Promise.resolve(chainCache) : chainCache.pending;   // stale-while-revalidate
   const stale = chainCache.markets ? chainCache : null;
   chainCache.pending = (async () => {
-    const [all, cfg] = await Promise.all([roProgram.account.market.all([{ dataSize: roProgram.account.market.size }]), roProgram.account.config.fetch(roConfigPda)]);
-    chainCache = { at: Date.now(), markets: all.map((x) => serializeMarket(x.publicKey, x.account)).sort((a, b) => b.id - a.id), config: serializeConfig(cfg), pending: null };
+    const [all, cfg, tiers] = await Promise.all([roProgram.account.market.all([{ dataSize: roProgram.account.market.size }]), roProgram.account.config.fetch(roConfigPda), roProgram.account.feeTiers.fetchNullable(roFeeTiersPda).catch(() => null)]);
+    chainCache = { at: Date.now(), markets: all.map((x) => serializeMarket(x.publicKey, x.account)).sort((a, b) => b.id - a.id), config: { ...serializeConfig(cfg), feeTiers: serializeTiers(tiers) }, pending: null };
     return chainCache;
   })().catch((e) => { chainCache.pending = null; throw e; });
   return stale ? Promise.resolve(stale) : chainCache.pending;
