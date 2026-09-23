@@ -4,14 +4,14 @@ import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, earlyBirdUntil, fetchConfig,
 import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel } from "./metrics";
 import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill, timeLeft } from "./ui";
 import { API_BASE, CLUSTER, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
-import { discountLabel, feeWithDiscounts, holderProof, type HolderProof } from "./holder";
+import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type HolderProof } from "./holder";
 import { connection, programId } from "./kubrai";
 
 mountNetBadge(); mountWallet();
 const root = document.getElementById("market")!;
 const id = Number(new URLSearchParams(location.search).get("id"));
 let m: MarketView, cfg: any, bucket = 0;
-let proof: HolderProof = { accounts: [], sgt: false, stake: false, sgtDiscountBps: 0, stakeDiscountBps: 0, minFeeBps: 0 };
+let proof: HolderProof = { accounts: [], sgt: false, stake: false, sgtDiscountBps: 0, stakeDiscountBps: 0, minFeeBps: 0, stakeLabel: "" };
 async function refreshProof() { proof = await holderProof(connection, programId, getSession()?.publicKey ?? null, cfg?.feeTiers ?? null); }
 
 async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); await refreshProof(); render(); }
@@ -36,7 +36,7 @@ function render() {
       <b>Betting opens</b><span>${fmtTs(m.openTs)}</span>
       <b>Betting closes</b><span>${fmtTs(m.closeTs)}</span>
       <b>Early-bird fee</b><span>${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyUntil)}, then ${cfg.feeBps / 100}%</span>
-      ${t ? `<b>Holder discounts</b><span>${[t.sgtDiscountBps ? `Seeker Genesis Token −${t.sgtDiscountBps / 100}%` : "", t.stakeDiscountBps ? `SKR staking (≥ ${(t.stakeMinAmount / 1e6).toLocaleString("en-US")} SKR) −${t.stakeDiscountBps / 100}%` : ""].filter(Boolean).join(" · ")}${t.minFeeBps ? ` · never below ${t.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.${CLUSTER === "devnet" ? " <span class=\"warn\">Devnet note: the test faucet gives every wallet a stand-in Genesis Token so anyone can try the discount; on mainnet only a real Seeker's token qualifies.</span>" : ""}</span>` : ""}
+      ${t ? `<b>Holder discounts</b><span>${[t.sgtDiscountBps ? `Seeker Genesis Token −${t.sgtDiscountBps / 100}%` : "", stakeRuleText(t)].filter(Boolean).join(" · ")}${t.minFeeBps ? ` · never below ${t.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.${CLUSTER === "devnet" ? " <span class=\"warn\">Devnet note: the test faucet gives every wallet a stand-in Genesis Token and registers it as a stand-in ORE miner so anyone can try both discounts; on mainnet only a real Seeker's token and a real ORE Miner account qualify.</span>" : ""}</span>` : ""}
       <b>Result proposed</b><span>${m.proposedAt ? `${fmtTs(m.proposedAt)} · observed <span class="mono">${fmtValue(m.metric, m.proposedValue)}</span> → <b>${bucketLabel(m, m.proposedOutcome)}</b>` : "after close"}</span>
       ${m.nBuckets > 2 ? `<b>How ranges are set</b><span>Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely. Odds then move with the pools.</span>` : ""}
       <b>Dispute window</b><span>${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize</span>

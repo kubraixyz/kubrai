@@ -1,0 +1,20 @@
+[package]
+name = "ore-miner-stub"
+version = "0.1.0"
+edition = "2021"
+description = "Devnet stand-in for ORE's Miner account (same layout and PDA seeds); never deployed to mainnet"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "ore_miner_stub"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }

@@ -177,6 +177,66 @@ export async function skrPriceUsd() {
   return { value: Math.round(Number(p.usdPrice) * 1e8), raw: p, source: "jup.ag price v3 (scaled 1e8)" };
 }
 
+// --- ORE (the mining game on Solana mainnet; every value is read from ORE program accounts, anyone can recompute) ---
+export const ORE_PROGRAM = new PublicKey("oreV3EG1i9BEgiAJ8b177Z2S2rMarzak4NMv1kULvWv");
+const ORE_BOARD = new PublicKey("BrcSxdp1nXFzou1YyDnQJcPNBNHgoypZmTsyKBSLLXzi");
+const oreRoundPda = (id) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(id)); return PublicKey.findProgramAddressSync([Buffer.from("round"), b], ORE_PROGRAM)[0]; };
+const u64 = (d, o) => Number(d.readBigUInt64LE(o));
+// Board account (40 bytes): round_id @8, production_cost_ema @32 (lamports per ORE). Round account (952 bytes): id @8,
+// deployed[25] @16 (lamports per square), motherlode @656 (ORE base units, 11 decimals; > 0 only in a round that hit).
+// Layouts verified against the mainnet accounts on 2026-09-03 and 2026-09-23.
+export async function oreBoard(conn = new Connection(MAINNET)) {
+  const a = await conn.getAccountInfo(ORE_BOARD);
+  if (!a || !a.owner.equals(ORE_PROGRAM) || a.data.length < 40) throw new Error("ORE board account missing or not owned by the ORE program");
+  return { roundId: u64(a.data, 8), costEmaLamports: u64(a.data, 32) };
+}
+/** Protocol-smoothed cost of one ORE in lamports (the ORE program's own production_cost_ema). */
+export async function oreCostEma(conn = new Connection(MAINNET)) {
+  const b = await oreBoard(conn);
+  return { value: b.costEmaLamports, raw: { board: ORE_BOARD.toBase58(), roundId: b.roundId, costEmaLamports: b.costEmaLamports, costSolPerOre: b.costEmaLamports / 1e9 }, source: "rpc getAccountInfo(ORE board).production_cost_ema (lamports per ORE)" };
+}
+// Running totals over every finished ORE round (id < board.round_id): SOL deployed and motherlode hits. Each hourly
+// snapshot continues from the latest earlier snapshot's totals (raw.toRound) and scans only the rounds since, so a
+// daily market resolves on close − open like any cumulative metric. The ORE program keeps ~1,200 finished rounds
+// (~21 h); a gap longer than that cannot be filled, so the metric fails instead of guessing. The very first snapshot
+// starts both totals at 0 from the current round.
+const ORE_CUM_KEY = "ore_deployed_cum";
+function oreLatestTotals() {
+  const dir = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots");
+  const cur = process.env.SNAPSHOT_SLOT ?? new Date().toISOString().slice(0, 13);
+  if (!fs.existsSync(dir)) return null;
+  const slots = fs.readdirSync(dir).filter((f) => /^\d{4}-\d{2}-\d{2}T\d{2}\.json$/.test(f)).map((f) => f.slice(0, 13)).filter((s) => s < cur).sort().reverse();
+  for (const s of slots) {
+    try { const b = JSON.parse(fs.readFileSync(path.join(dir, s + ".json"), "utf8")); const d = b.metrics?.[ORE_CUM_KEY], h = b.metrics?.ore_motherlode_cum; if (d?.raw?.toRound != null && h?.raw?.toRound === d.raw.toRound) return { slot: s, toRound: d.raw.toRound, deployed: d.value, hits: h.value }; } catch {}
+  }
+  return null;
+}
+let oreScan = null;
+async function oreRoundsScan(conn = new Connection(MAINNET)) {
+  const board = await oreBoard(conn); const last = board.roundId - 1;
+  const prev = oreLatestTotals();
+  const from = prev ? prev.toRound + 1 : last + 1;
+  if (from - 1 > last) throw new Error(`ORE round counter went backwards (previous ${prev?.toRound}, board ${board.roundId})`);
+  let deployed = 0, hits = 0, rounds = 0; const hitRounds = [];
+  const ids = []; for (let id = from; id <= last; id++) ids.push(id);
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100); const accs = await conn.getMultipleAccountsInfo(chunk.map(oreRoundPda));
+    accs.forEach((a, j) => {
+      if (!a || !a.owner.equals(ORE_PROGRAM) || a.data.length < 952) throw new Error(`ORE round ${chunk[j]} is no longer on-chain: gap since snapshot ${prev?.slot} too long to fill`);
+      const d = a.data; let tot = 0; for (let k = 0; k < 25; k++) tot += u64(d, 16 + k * 8);
+      deployed += tot; rounds++; const ml = u64(d, 656); if (ml > 0) { hits++; hitRounds.push({ round: chunk[j], ore: ml / 1e11 }); }
+    });
+  }
+  const base = { fromRound: from, toRound: last, rounds, prevSlot: prev?.slot ?? null, boardRound: board.roundId };
+  return {
+    ore_deployed_cum: { value: (prev?.deployed ?? 0) + deployed, raw: { ...base, deployedLamports: deployed, deployedSol: deployed / 1e9 }, source: "rpc getMultipleAccountsInfo(ORE round PDAs): sum of deployed[25] over finished rounds, running total" },
+    ore_motherlode_cum: { value: (prev?.hits ?? 0) + hits, raw: { ...base, hits, hitRounds }, source: "rpc getMultipleAccountsInfo(ORE round PDAs): rounds with motherlode > 0, running total" },
+  };
+}
+const oreShared = () => (oreScan ??= oreRoundsScan());
+export const oreDeployedCum = async () => (await oreShared()).ore_deployed_cum;
+export const oreMotherlodeCum = async () => (await oreShared()).ore_motherlode_cum;
+
 // Hourly tier: cheap reads (≈80 store requests + a handful of RPC calls). Daily tier (the 00:00 UTC run) adds the
 // expensive scans. Markets settle on whichever tier carries their source.
 export const HOURLY_METRICS = {
@@ -189,6 +249,9 @@ export const HOURLY_METRICS = {
   skr_price_usd_e8: skrPriceUsd,
   skr_ids_total: skrIdsTotal,
   das: dailyActiveSeekers,
+  ore_cost_ema: oreCostEma,
+  ore_deployed_cum: oreDeployedCum,
+  ore_motherlode_cum: oreMotherlodeCum,
 };
 export const DAILY_METRICS = {
   reviewers_7d: storeReviewers7d,   // per-app review scan, minutes

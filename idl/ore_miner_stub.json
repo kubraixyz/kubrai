@@ -1,0 +1,112 @@
+{
+  "address": "7q9GeRXUv32MS8g6bz9eD8cbrTxXgbJou162bQK3fXiG",
+  "metadata": {
+    "name": "ore_miner_stub",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Devnet stand-in for ORE's Miner account (same layout and PDA seeds); never deployed to mainnet"
+  },
+  "instructions": [
+    {
+      "name": "register",
+      "discriminator": [
+        211,
+        124,
+        67,
+        15,
+        211,
+        194,
+        178,
+        240
+      ],
+      "accounts": [
+        {
+          "name": "miner",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  110,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "authority",
+          "type": "pubkey"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "MinerStub",
+      "discriminator": [
+        183,
+        18,
+        250,
+        240,
+        68,
+        169,
+        236,
+        17
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "MinerStub",
+      "docs": [
+        "8 (discriminator) + 32 + 696 + 8 + 8 = 752 bytes; field offsets match ORE's Miner."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "pad",
+            "type": {
+              "array": [
+                "u8",
+                696
+              ]
+            }
+          },
+          {
+            "name": "lifetime_deployed",
+            "type": "u64"
+          },
+          {
+            "name": "tail",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}

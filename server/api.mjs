@@ -3,7 +3,8 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { createHash } from "node:crypto";
 import { getOrCreateAssociatedTokenAccount, getAssociatedTokenAddressSync, createTransferInstruction, createAssociatedTokenAccountIdempotentInstruction, TOKEN_2022_PROGRAM_ID, ExtensionType, getMintLen, createInitializeMintInstruction, createInitializeGroupMemberPointerInstruction, createInitializeNonTransferableMintInstruction, createMintToInstruction, createSetAuthorityInstruction, AuthorityType, TOKEN_GROUP_MEMBER_SIZE, TYPE_SIZE, LENGTH_SIZE } from "@solana/spl-token";
 import { createInitializeMemberInstruction } from "@solana/spl-token-group";
 import nacl from "tweetnacl";
@@ -94,6 +95,18 @@ async function mintMockSgt(owner, payer) {
     createSetAuthorityInstruction(member.publicKey, payer.publicKey, AuthorityType.MintTokens, null, [], TOKEN_2022_PROGRAM_ID),
   );
   return sendAndConfirmTransaction(conn, tx, [payer, member]);
+}
+// Devnet only: the faucet also registers the wallet as a stand-in ORE miner (programs/ore-miner-stub: same account layout
+// and PDA seeds as ORE's Miner), so testers can see the ORE-miner discount. Program id from MINER_STUB_PROGRAM or
+// $KUBRAI_SECRETS/miner-stub-program.txt; silently skipped when neither exists (mainnet, where the real ORE program is the rule).
+const MINER_STUB_PROGRAM = (() => { try { return new PublicKey((process.env.MINER_STUB_PROGRAM ?? fs.readFileSync(path.join(SECRETS, "miner-stub-program.txt"), "utf8")).trim()); } catch { return null; } })();
+async function registerStubMiner(owner, payer) {
+  const [miner] = PublicKey.findProgramAddressSync([Buffer.from("miner"), owner.toBuffer()], MINER_STUB_PROGRAM);
+  if (await conn.getAccountInfo(miner)) return "already registered";
+  const data = Buffer.concat([createHash("sha256").update("global:register").digest().subarray(0, 8), owner.toBuffer()]);   // Anchor discriminator + authority arg
+  const ix = new TransactionInstruction({ programId: MINER_STUB_PROGRAM, data, keys: [{ pubkey: miner, isSigner: false, isWritable: true }, { pubkey: payer.publicKey, isSigner: true, isWritable: true }, { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }] });
+  await sendAndConfirmTransaction(conn, new Transaction().add(ix), [payer]);
+  return "registered";
 }
 const json = (res, code, body, extra = {}) => { res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "content-type", "access-control-allow-methods": "GET,POST,OPTIONS", ...extra }); res.end(JSON.stringify(body)); };
 const readBody = (req, max = 4096) => new Promise((ok, err) => { let b = ""; req.on("data", (c) => { b += c; if (b.length > max) { err(Object.assign(new Error("body too large"), { status: 413 })); req.destroy(); } }); req.on("end", () => ok(b)); req.on("error", err); });
@@ -246,7 +259,9 @@ reason=${reason}`;
         const sig = await sendAndConfirmTransaction(conn, tx, [faucet]);
         let sgt = null;
         if (SGT_GROUP_MINT) { try { sgt = (await hasMockSgt(address)) ? "already held" : await mintMockSgt(address, faucet); } catch (e) { console.error("mock SGT mint failed", e?.message); sgt = "failed"; } }
-        return json(res, 200, { ok: true, address: address.toBase58(), tokens: "1000 tSKR", sol: giveSol ? FAUCET_SOL + " SOL" : "already funded", genesisToken: sgt ? (sgt === "already held" || sgt === "failed" ? sgt : "test Genesis Token minted (−1% fee)") : undefined, signatures: { tokens: sig, ...(giveSol ? { sol: sig } : {}), ...(sgt && sgt.length > 40 ? { genesisToken: sgt } : {}) } });
+        let miner = null;
+        if (MINER_STUB_PROGRAM) { try { miner = await registerStubMiner(address, faucet); } catch (e) { console.error("stub miner registration failed", e?.message); miner = "failed"; } }
+        return json(res, 200, { ok: true, address: address.toBase58(), tokens: "1000 tSKR", sol: giveSol ? FAUCET_SOL + " SOL" : "already funded", genesisToken: sgt ? (sgt === "already held" || sgt === "failed" ? sgt : "test Genesis Token minted (−1% fee)") : undefined, oreMiner: miner ?? undefined, signatures: { tokens: sig, ...(giveSol ? { sol: sig } : {}), ...(sgt && sgt.length > 40 ? { genesisToken: sgt } : {}) } });
       } catch (e) { seenAddr.delete(k); faucetToday--; console.error("faucet failed", e?.message); return json(res, 503, { error: "faucet transaction failed, try again in a minute" }); }
     }
     json(res, 404, { error: "not found" });

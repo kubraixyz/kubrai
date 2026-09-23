@@ -47,7 +47,7 @@ for (const t of tpl.templates) {
   // thresholds
   let thresholds, how;
   const hist = windowValues(t.metric, SNAP).map((w) => w.value);
-  if (hist.length >= (tpl.minWindows ?? 8) && t.buckets > 1) { thresholds = quantileThresholds(hist, t.buckets); how = `quantiles of ${hist.length} windows`; }
+  if (hist.length >= (tpl.minWindows ?? 8) && t.buckets > 1 && t.auto !== false) { thresholds = quantileThresholds(hist, t.buckets); how = `quantiles of ${hist.length} windows`; }
   else if (t.seed === "baseline") { if (opening == null) { skipped.push(`${t.metric}: no recent snapshot value for ${spec.src}`); continue; } thresholds = [opening]; how = `yes/no at the ${latestSlot} level`; }
   else { thresholds = t.seed; how = `seed (${hist.length} windows of history so far)`; }
   if (spec.kind === "med" && t.seed !== "baseline" && thresholds === t.seed) { skipped.push(`${t.metric}: level metric needs 'baseline' seed`); continue; }

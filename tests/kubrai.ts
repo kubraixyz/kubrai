@@ -246,6 +246,34 @@ describe("kubrai parimutuel", () => {
     await program.methods.setFeeTiers(tiers).accounts({ config: configPda, feeTiers, admin: admin.publicKey, systemProgram: SystemProgram.programId }).rpc();
   });
 
+  it("holder discounts: stake rule (program + owner/amount offsets) proves an ORE-miner-style account; wrong owner or too small → no discount", async () => {
+    // The rule is generic: any account owned by `stakeProgram` whose bytes [ownerOffset..+32] equal the bettor and whose
+    // u64 at amountOffset clears the minimum. On mainnet it points at ORE's Miner (authority @8, lifetime_deployed @736);
+    // here a plain SPL token account (owner @32, amount @64) stands in, so no extra program has to be loaded.
+    const [feeTiers] = PublicKey.findProgramAddressSync([Buffer.from("fee_tiers")], program.programId);
+    const cur = await program.account.feeTiers.fetch(feeTiers);
+    const base = { sgtGroupMint: cur.sgtGroupMint, sgtDiscountBps: cur.sgtDiscountBps, minFeeBps: 100 };
+    const rule = (min: number) => ({ ...base, stakeProgram: TOKEN_PROGRAM_ID, stakeOwnerOffset: 32, stakeAmountOffset: 64, stakeMinAmount: new BN(min), stakeDiscountBps: 100 });
+    await program.methods.setFeeTiers(rule(1)).accounts({ config: configPda, feeTiers, admin: admin.publicKey, systemProgram: SystemProgram.programId }).rpc();
+    const { m, v } = await createMarket(-1, 60);
+    const withStake = (who: Keypair, acc: PublicKey) => program.methods.placeBet(1, new BN(100 * T))
+      .accounts({ config: configPda, market: m, position: posPda(m, who.publicKey), vault: v, userToken: ata[nameOf(who)], user: who.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId })
+      .remainingAccounts([{ pubkey: feeTiers, isSigner: false, isWritable: false }, { pubkey: acc, isSigner: false, isWritable: false }]).signers([who]).rpc();
+    // alice presents her own token account (owner = alice, amount ≥ 1): early bird −1 + stake −1 = 1 %
+    await withStake(alice, ata.alice);
+    assert.equal((await program.account.position.fetch(posPda(m, alice.publicKey))).feeW[1].toString(), new BN(100 * T).muln(100).toString(), "alice gets the stake discount");
+    // bob presents alice's account → owner mismatch, early bird only = 2 %
+    await withStake(bob, ata.alice);
+    assert.equal((await program.account.position.fetch(posPda(m, bob.publicKey))).feeW[1].toString(), new BN(100 * T).muln(200).toString(), "wrong owner → no stake discount");
+    // minimum above carol's balance → no discount (fresh market so carol is still inside the 15 s early-bird window of a 60 s market)
+    await program.methods.setFeeTiers(rule(1_000_000_000_000_000)).accounts({ config: configPda, feeTiers, admin: admin.publicKey, systemProgram: SystemProgram.programId }).rpc();
+    const m2 = await createMarket(-1, 60);
+    await program.methods.placeBet(1, new BN(100 * T)).accounts({ config: configPda, market: m2.m, position: posPda(m2.m, carol.publicKey), vault: m2.v, userToken: ata.carol, user: carol.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId })
+      .remainingAccounts([{ pubkey: feeTiers, isSigner: false, isWritable: false }, { pubkey: ata.carol, isSigner: false, isWritable: false }]).signers([carol]).rpc();
+    assert.equal((await program.account.position.fetch(posPda(m2.m, carol.publicKey))).feeW[1].toString(), new BN(100 * T).muln(200).toString(), "amount below minimum → no stake discount");
+    await program.methods.setFeeTiers({ ...base, stakeProgram: PublicKey.default, stakeOwnerOffset: 0, stakeAmountOffset: 0, stakeMinAmount: new BN(0), stakeDiscountBps: 0 }).accounts({ config: configPda, feeTiers, admin: admin.publicKey, systemProgram: SystemProgram.programId }).rpc();
+  });
+
   it("paused config blocks bets", async () => {
     const { m, v } = await createMarket(-1, 60);
     await program.methods.updateConfig(cfgArgs, null, true).accounts({ config: configPda, admin: admin.publicKey }).rpc();

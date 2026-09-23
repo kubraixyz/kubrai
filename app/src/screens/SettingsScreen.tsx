@@ -17,7 +17,7 @@ export function SettingsScreen() {
   const insets = useSafeAreaInsets(); const nav = useNavigation<any>();
   async function faucet() {
     if (!selectedAccount) return; setBusy(true); setMsg("Requesting…");
-    try { const j = await requestFaucet(selectedAccount.publicKey.toBase58()); setMsg(`Received ${j.tokens}${j.sol !== "already funded" ? ` and ${j.sol}` : ""}${j.genesisToken && j.genesisToken !== "failed" ? ` · ${j.genesisToken === "already held" ? "test Genesis Token already held" : "plus a test Genesis Token (−1% fee on devnet; on mainnet only a real Seeker’s token counts)"}` : ""}.`); invalidate(); }
+    try { const j = await requestFaucet(selectedAccount.publicKey.toBase58()); setMsg(`Received ${j.tokens}${j.sol !== "already funded" ? ` and ${j.sol}` : ""}${j.genesisToken && j.genesisToken !== "failed" ? ` · ${j.genesisToken === "already held" ? "test Genesis Token already held" : "plus a test Genesis Token (−1% fee on devnet; on mainnet only a real Seeker’s token counts)"}` : ""}${j.oreMiner === "registered" ? " · registered as a test ORE miner (−1% fee on devnet; on mainnet only a real ORE Miner account counts)" : j.oreMiner === "already registered" ? " · test ORE miner already registered" : ""}.`); invalidate(); }
     catch (e: any) { setMsg(e?.message ?? String(e)); } finally { setBusy(false); }
   }
   return (

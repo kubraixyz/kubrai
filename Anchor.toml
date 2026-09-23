@@ -7,9 +7,11 @@ skip-lint = false
 
 [programs.localnet]
 kubrai = "F9qowxW3hmwrzDeKQXpL4rVmFcPvWe7e43oGnWU3AvQb"
+ore_miner_stub = "7q9GeRXUv32MS8g6bz9eD8cbrTxXgbJou162bQK3fXiG"
 
 [programs.devnet]
 kubrai = "F9qowxW3hmwrzDeKQXpL4rVmFcPvWe7e43oGnWU3AvQb"
+ore_miner_stub = "7q9GeRXUv32MS8g6bz9eD8cbrTxXgbJou162bQK3fXiG"
 
 [registry]
 url = "https://api.apr.dev"

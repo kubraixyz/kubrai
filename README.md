@@ -1,8 +1,9 @@
 # Kubrai
 
 Parimutuel prediction pools on the numbers that describe the Solana Mobile / Seeker
-ecosystem itself: new `.skr` IDs this week, SKR staked, dApp Store listings, reviews of
-the apps Seekers actually use. Bet in SKR from any Solana wallet on the web, or natively
+ecosystem itself: Seekers activated today, SKR staked, dApp Store listings, reviews of
+the apps Seekers actually use, and the [ORE](https://ore.supply) mining game (SOL deployed,
+motherlode hits, mining cost). Bet in SKR from any Solana wallet on the web, or natively
 on Seeker with Seed Vault Wallet.
 
 Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
@@ -24,9 +25,11 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
   * Seeker Genesis Token holders get −1%: the bet carries the wallet's token account and its mint, and the program
     checks on-chain that the mint is a member of the Genesis Token group (Token-2022 group extension). Nothing is
     taken on the client's word.
-  * an SKR-staking discount exists in the program but is switched off for now (admin-set, no redeploy needed to enable it).
+  * ORE miners get −1%: the bet carries the wallet's ORE `Miner` account (PDA `["miner", wallet]` of the ORE program),
+    and the program checks that the account is owned by the ORE program, names the bettor as its authority (byte 8) and
+    has ever deployed SOL (`lifetime_deployed` at byte 736 ≥ 1). The rule is a generic "program + owner offset + amount
+    offset + minimum" in `FeeTiers`, so the same slot can point at the SKR staking program once its layout is known.
   * Discounts never take the fee below the configured floor (1%). All of this lives in an admin-set `FeeTiers` account.
-  * SKR staking tier and Seeker Genesis Token holders (mainnet): further −1% / −2%.
 * The treasury may **seed** a market with a fee-free prize; it is split pro-rata among
   winners. If nobody wins the seed returns to the treasury.
 * If a market is **voided** every bettor is refunded in full.
@@ -52,7 +55,9 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
    *third-party*.
 5. **Metrics are chosen to be expensive to manipulate.** A new `.skr` ID needs a Seeker
    Genesis Token, i.e. a $500 device; dApp Store reviews can only be written from verified
-   devices, one per device per app. Level metrics resolve on the median of every hourly snapshot inside the market window (24 for a daily market, 168 for a weekly one; at least 75 % must exist), so a last-minute deposit or withdrawal cannot move the result. Cumulative metrics resolve on the increase between the opening hour's snapshot and the closing hour's snapshot (markets open and close exactly on the hour; snapshots are taken right after the hour, so consecutive markets share one reading and nothing is counted twice).
+   devices, one per device per app; pushing up the SOL deployed in ORE burns about 10% of
+   every extra SOL (ORE returns 89% of a losing square), and whether an ORE round hits the
+   motherlode comes from the round's on-chain randomness, which nobody can steer. Level metrics resolve on the median of every hourly snapshot inside the market window (24 for a daily market, 168 for a weekly one; at least 75 % must exist), so a last-minute deposit or withdrawal cannot move the result. Cumulative metrics resolve on the increase between the opening hour's snapshot and the closing hour's snapshot (markets open and close exactly on the hour; snapshots are taken right after the hour, so consecutive markets share one reading and nothing is counted twice).
 6. **Settlement is permissionless.** A crank pays every winner and closes every position,
    returning the rent deposit to whoever paid it. Nobody has to remember to claim.
 
@@ -60,6 +65,7 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
 
 ```
 programs/kubrai   Anchor program (Rust) — N-bucket parimutuel, on-chain bucket derivation
+programs/ore-miner-stub   devnet-only stand-in for ORE's Miner account (same layout + PDA seeds) so the ORE-miner discount can be tried where ORE is not deployed
 tests/            9 end-to-end tests against a local validator (fees, discounts, void, no-winner, multi-bucket)
 server/           hourly snapshot recorder (memo hash), resolver + settlement crank, scheduled market opener (market-templates.json), public API + devnet faucet, bucket designer
 web/              market pages + wallet betting (Wallet Standard), "My bets", APK download
@@ -115,7 +121,7 @@ build can never talk to mainnet money.
 
 ## Status
 
-devnet: live. **For judges/testers:** the devnet faucet (web “Test wallet” or the app’s Settings screen) gives every wallet 0.05 SOL, 1,000 tSKR and a stand-in Seeker Genesis Token, so anyone can see the holder discount without owning a Seeker; on mainnet only a real Genesis Token qualifies. Markets open on a fixed schedule — daily ones at 00:00 UTC (Seekers activated, SKR staked 24 h median, store reviews written) and weekly ones on Mondays (the same plus listings and per-app reviews). Early-bird fee applies for the first quarter of each market (6 h daily / 24 h weekly). Seed Vault Wallet betting verified on a Seeker.
+devnet: live. **For judges/testers:** the devnet faucet (web “Test wallet” or the app’s Settings screen) gives every wallet 0.05 SOL, 1,000 tSKR, a stand-in Seeker Genesis Token and a stand-in ORE Miner account, so anyone can see both holder discounts without owning a Seeker or mining ORE; on mainnet only a real Genesis Token and a real ORE Miner account qualify. Markets open on a fixed schedule — daily ones at 00:00 UTC (Seekers activated, SKR staked 24 h median, store reviews written, SOL deployed by ORE miners, ORE motherlode hits, ORE mining cost 24 h median) and weekly ones on Mondays (the same plus listings and per-app reviews). Early-bird fee applies for the first quarter of each market (6 h daily / 24 h weekly). Seed Vault Wallet betting verified on a Seeker.
 mainnet: after the hackathon — upgrade authority and treasury move to a Squads multisig
 first, weekly seeding runs on a spending limit, cold-start seed budget is fixed for four
 weeks from launch and then funded from fees.
