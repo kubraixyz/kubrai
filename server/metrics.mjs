@@ -185,7 +185,9 @@ const u64 = (d, o) => Number(d.readBigUInt64LE(o));
 // Board account (40 bytes): round_id @8, production_cost_ema @32 (lamports per ORE). Round account (952 bytes): id @8,
 // deployed[25] @16 (lamports per square), motherlode @656 (ORE base units, 11 decimals; > 0 only in a round that hit).
 // Layouts verified against the mainnet accounts on 2026-09-03 and 2026-09-23.
-export async function oreBoard(conn = new Connection(MAINNET)) {
+let oreBoardOnce = null;   // one board read per snapshot run (the cost metric and the round scan share it)
+export const oreBoard = (conn) => (oreBoardOnce ??= oreBoardRead(conn));
+async function oreBoardRead(conn = new Connection(MAINNET)) {
   const a = await conn.getAccountInfo(ORE_BOARD);
   if (!a || !a.owner.equals(ORE_PROGRAM) || a.data.length < 40) throw new Error("ORE board account missing or not owned by the ORE program");
   return { roundId: u64(a.data, 8), costEmaLamports: u64(a.data, 32) };
