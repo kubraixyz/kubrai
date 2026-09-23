@@ -8,15 +8,17 @@ export type FeeTiersView = { sgtGroupMint: string; sgtDiscountBps: number; stake
 export type HolderProof = { accounts: AccountMeta[]; sgt: boolean; stake: boolean; sgtDiscountBps: number; stakeDiscountBps: number; minFeeBps: number; stakeLabel: string };
 const NONE: HolderProof = { accounts: [], sgt: false, stake: false, sgtDiscountBps: 0, stakeDiscountBps: 0, minFeeBps: 0, stakeLabel: "" };
 /** ORE mining program (mainnet). Its Miner account (PDA ["miner", authority], 752 bytes) has the authority at byte 8 and
- *  lifetime_deployed (lamports ever deployed) at byte 736. The stake rule with exactly those offsets is the ORE-miner discount;
- *  on devnet the same layout is served by a stand-in program (the faucet registers every wallet as a miner). */
+ *  rewards_ore (mined, unclaimed ORE in base units, 11 decimals) at byte 704. The stake rule with exactly those offsets is the
+ *  ORE-miner discount: unclaimed ORE worth at least ~$500 at the ORE price (the minimum is repriced daily by the operator, in ORE).
+ *  On devnet the same layout is served by a stand-in program (the faucet registers every wallet as a miner). */
 export const ORE_PROGRAM_ID = new PublicKey("oreV3EG1i9BEgiAJ8b177Z2S2rMarzak4NMv1kULvWv");
-export const ORE_MINER_OFFSETS = { owner: 8, amount: 736 };
+export const ORE_MINER_OFFSETS = { owner: 8, amount: 704 };
+export const ORE_BASE = 100_000_000_000;
 export const isOreMinerRule = (t: FeeTiersView) => !!t && t.stakeOwnerOffset === ORE_MINER_OFFSETS.owner && t.stakeAmountOffset === ORE_MINER_OFFSETS.amount;
 /** Human name of the configured stake rule ("" when none). */
 export const stakeRuleLabel = (t: FeeTiersView) => !t || !t.stakeDiscountBps || t.stakeProgram === PublicKey.default.toBase58() ? "" : isOreMinerRule(t) ? "ORE miner" : "SKR staking";
 /** One line for the fee schedule: who gets the stake discount and how it is proven. */
-export const stakeRuleText = (t: FeeTiersView) => !stakeRuleLabel(t) ? "" : isOreMinerRule(t) ? `ORE miner (wallet has an ORE Miner account that has ever deployed SOL) −${t!.stakeDiscountBps / 100}%` : `SKR staking (≥ ${(t!.stakeMinAmount / 1e6).toLocaleString("en-US")} SKR) −${t!.stakeDiscountBps / 100}%`;
+export const stakeRuleText = (t: FeeTiersView) => !stakeRuleLabel(t) ? "" : isOreMinerRule(t) ? `ORE miner (≥ ${(t!.stakeMinAmount / ORE_BASE).toLocaleString("en-US", { maximumFractionDigits: 2 })} ORE of unclaimed mining rewards in the wallet's ORE Miner account, about $500 at the ORE price, repriced daily) −${t!.stakeDiscountBps / 100}%` : `SKR staking (≥ ${(t!.stakeMinAmount / 1e6).toLocaleString("en-US")} SKR) −${t!.stakeDiscountBps / 100}%`;
 const ro = (pubkey: PublicKey): AccountMeta => ({ pubkey, isSigner: false, isWritable: false });
 
 /** Find the wallet's Genesis Token (a Token-2022 token with balance ≥ 1 whose mint is a member of the configured group). */

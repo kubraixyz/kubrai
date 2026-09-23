@@ -1,8 +1,9 @@
 // Admin: set holder discounts. Creates the fee_tiers PDA on first use. Unspecified fields keep current values (or zero).
 //   ANCHOR_PROVIDER_URL=... ANCHOR_WALLET=... node scripts/set-fee-tiers.mjs sgtGroupMint=GT22... sgtDiscountBps=100 minFeeBps=100 \
-//        [stakeProgram=... stakeOwnerOffset=8 stakeAmountOffset=736 stakeMinAmount=1 stakeDiscountBps=100]
-//   ORE-miner discount (mainnet): stakeProgram=oreV3EG1i9BEgiAJ8b177Z2S2rMarzak4NMv1kULvWv stakeOwnerOffset=8 stakeAmountOffset=736 stakeMinAmount=1 stakeDiscountBps=100
-//     (ORE Miner account: authority at byte 8, lifetime_deployed at byte 736). Devnet uses programs/ore-miner-stub with the same offsets.
+//        [stakeProgram=... stakeOwnerOffset=8 stakeAmountOffset=704 stakeMinAmount=<ORE base units> stakeDiscountBps=100]
+//   ORE-miner discount: server/ore-tier.mjs sets and reprices it daily (unclaimed ORE worth ≥ $500). Mainnet program
+//   oreV3EG1i9BEgiAJ8b177Z2S2rMarzak4NMv1kULvWv; Miner account: authority at byte 8, rewards_ore (unclaimed, 11 decimals) at byte 704.
+//   Devnet uses programs/ore-miner-stub with the same offsets.
 import anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 import fs from "node:fs";

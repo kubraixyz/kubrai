@@ -102,7 +102,6 @@ async function mintMockSgt(owner, payer) {
 const MINER_STUB_PROGRAM = (() => { try { return new PublicKey((process.env.MINER_STUB_PROGRAM ?? fs.readFileSync(path.join(SECRETS, "miner-stub-program.txt"), "utf8")).trim()); } catch { return null; } })();
 async function registerStubMiner(owner, payer) {
   const [miner] = PublicKey.findProgramAddressSync([Buffer.from("miner"), owner.toBuffer()], MINER_STUB_PROGRAM);
-  if (await conn.getAccountInfo(miner)) return "already registered";
   const data = Buffer.concat([createHash("sha256").update("global:register").digest().subarray(0, 8), owner.toBuffer()]);   // Anchor discriminator + authority arg
   const ix = new TransactionInstruction({ programId: MINER_STUB_PROGRAM, data, keys: [{ pubkey: miner, isSigner: false, isWritable: true }, { pubkey: payer.publicKey, isSigner: true, isWritable: true }, { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }] });
   await sendAndConfirmTransaction(conn, new Transaction().add(ix), [payer]);

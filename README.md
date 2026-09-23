@@ -27,8 +27,10 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
     taken on the client's word.
   * ORE miners get −1%: the bet carries the wallet's ORE `Miner` account (PDA `["miner", wallet]` of the ORE program),
     and the program checks that the account is owned by the ORE program, names the bettor as its authority (byte 8) and
-    has ever deployed SOL (`lifetime_deployed` at byte 736 ≥ 1). The rule is a generic "program + owner offset + amount
-    offset + minimum" in `FeeTiers`, so the same slot can point at the SKR staking program once its layout is known.
+    holds unclaimed mining rewards (`rewards_ore` at byte 704) worth at least **$500** — the same bar as a Seeker. The
+    minimum is stored in ORE and repriced daily from the ORE price (`server/ore-tier.mjs`); the market page shows the
+    current figure. The rule is a generic "program + owner offset + amount offset + minimum" in `FeeTiers`, so the same
+    slot can point at the SKR staking program once its layout is known.
   * Discounts never take the fee below the configured floor (1%). All of this lives in an admin-set `FeeTiers` account.
 * The treasury may **seed** a market with a fee-free prize; it is split pro-rata among
   winners. If nobody wins the seed returns to the treasury.

@@ -79,7 +79,7 @@
     {
       "name": "MinerStub",
       "docs": [
-        "8 (discriminator) + 32 + 696 + 8 + 8 = 752 bytes; field offsets match ORE's Miner."
+        "8 (discriminator) + 32 + 664 + 8 + 24 + 8 + 8 = 752 bytes; field offsets match ORE's Miner."
       ],
       "type": {
         "kind": "struct",
@@ -93,7 +93,20 @@
             "type": {
               "array": [
                 "u8",
-                696
+                664
+              ]
+            }
+          },
+          {
+            "name": "rewards_ore",
+            "type": "u64"
+          },
+          {
+            "name": "pad2",
+            "type": {
+              "array": [
+                "u8",
+                24
               ]
             }
           },
