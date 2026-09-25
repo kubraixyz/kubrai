@@ -232,5 +232,5 @@
  ],
  "minWindows": 8,
  "_retired": "2026-09-25: every review-count market (reviews_day/week, rev_week:<app>) retired. One verified Seeker may review each of the 1,300+ listed apps once, so a single device can move the store-wide count by hundreds in a day; the bettors are exactly the people who own Seekers. reviewers_7d (distinct devices) would be the honest version if a review market is ever wanted.",
- "_doc_next": "<id>_next: bet today on the number the source reports for tomorrow (UTC); 4 ranges cut at the quantiles of the source's last 84 days; resolved lagDays after that day ends."
+ "_doc_next": "<id>_next: bet today on the number the source reports for tomorrow (UTC); 4 ranges cut at the quantiles of the source's last 28 days (gap days of 0 left out); resolved lagDays after that day ends."
 }

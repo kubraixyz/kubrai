@@ -65,7 +65,7 @@ export function makeEvaluator({ snapDir, conn }) {
       const D = new Date(closeTs * 1000).toISOString().slice(0, 10); const from = slotOf(closeTs + 86400 * (1 + spec.lagDays));
       for (let i = 0; i < 48; i++) {
         const sl = addHours(from, i); const b = readSlot(sl); const ser = b?.metrics?.[src]?.raw?.series; if (!ser) continue;
-        const hit = ser.find(([d]) => d === D); if (hit) { used.push(sl); return { ok: true, value: hit[1], used, detail: { day: D, slot: sl, source: b.metrics[src].source, neighbours: ser.filter(([d]) => d >= D).slice(0, 3) } }; }
+        const hit = ser.find(([d]) => d === D); /* a 0 is a source gap, not a result: keep waiting */ if (hit && hit[1] > 0) { used.push(sl); return { ok: true, value: hit[1], used, detail: { day: D, slot: sl, source: b.metrics[src].source, neighbours: ser.filter(([d]) => d >= D).slice(0, 3) } }; }
       }
       return { ok: false, reason: `no reading for ${D} in the snapshots from ${from} (source not published yet)` };
     }

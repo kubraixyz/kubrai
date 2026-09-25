@@ -361,7 +361,7 @@
  "cad.week": "每週",
  "cad.next": "明日",
  "m.nextTitle": "{app}:{noun},明天(UTC)",
- "m.nextHow": "你押的是截止後那一整個 UTC 日的數字,下注時還沒有任何人看得到。該日結束 {lag} 天後讀值,之後的修訂不算。區間依來源過去 84 天的分位數切。",
+ "m.nextHow": "你押的是截止後那一整個 UTC 日的數字,下注時還沒有任何人看得到。該日結束 {lag} 天後讀值,之後的修訂不算。區間依來源過去 28 天的分位數切。",
  "ev.dailyDay": "日期",
  "ev.dailyReported": "目前報出",
  "ev.dailyNotYet": "尚未發布(該日結束 {lag} 天後讀值)",

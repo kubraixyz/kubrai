@@ -33,7 +33,9 @@ export const addHours = (slot, n) => new Date(Date.parse(slot + ":00:00Z") + n *
 export const median = (vals) => { const s = [...vals].sort((x, y) => x - y); return s.length % 2 ? s[(s.length - 1) / 2] : Math.floor((s[s.length / 2 - 1] + s[s.length / 2]) / 2); };
 export function windowValues(metric, snapDir) {
   const spec = parseMetric(metric); if (!spec) throw new Error(`unknown metric ${metric}`);
-  if (spec.kind === "daily") { const slots = loadSlots(snapDir); const last = [...slots.keys()].sort().reverse().find((k) => seriesIn(slots.get(k), spec.src)); const s = last ? seriesIn(slots.get(last), spec.src) : []; return s.slice(0, -1).slice(-84).map(([d, v]) => ({ end: d, value: v })); }
+  if (spec.kind === "daily") { const slots = loadSlots(snapDir); const last = [...slots.keys()].sort().reverse().find((k) => seriesIn(slots.get(k), spec.src)); const s = last ? seriesIn(slots.get(last), spec.src) : [];
+    // the last 28 complete days, without gap days (a source outage reads 0 or a sliver of a normal day)
+    const days = s.slice(0, -1).slice(-28), med = median(days.map(([, v]) => v)); return days.filter(([, v]) => v > 0 && v >= med * 0.05).map(([d, v]) => ({ end: d, value: v })); }
   const slots = loadSlots(snapDir); const ends = [...slots.keys()].filter((s) => s.endsWith("T00")).sort(); const out = [];
   for (const end of ends) {
     if (spec.kind === "cum") { const a = valueIn(slots.get(addHours(end, -spec.hours)), spec.src), b = valueIn(slots.get(end), spec.src); if (a != null && b != null) out.push({ end, value: b - a }); }

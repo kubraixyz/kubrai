@@ -361,7 +361,7 @@
  "cad.week": "semanal",
  "cad.next": "mañana",
  "m.nextTitle": "{app}: {noun}, mañana (UTC)",
- "m.nextHow": "Apuestas al número del día UTC que empieza al cerrar las apuestas, así que nadie ha visto nada todavía. Se lee {lag} días después de que termine ese día; las revisiones posteriores no cuentan. Los rangos se cortan en los cuantiles de los últimos 84 días de la fuente.",
+ "m.nextHow": "Apuestas al número del día UTC que empieza al cerrar las apuestas, así que nadie ha visto nada todavía. Se lee {lag} días después de que termine ese día; las revisiones posteriores no cuentan. Los rangos se cortan en los cuantiles de los últimos 28 días de la fuente.",
  "ev.dailyDay": "Día",
  "ev.dailyReported": "Reportado hasta ahora",
  "ev.dailyNotYet": "aún no publicado (se lee {lag} días después de que termine el día)",

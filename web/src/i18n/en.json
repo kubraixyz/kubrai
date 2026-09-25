@@ -361,7 +361,7 @@
  "cad.week": "weekly",
  "cad.next": "tomorrow",
  "m.nextTitle": "{app}: {noun}, tomorrow (UTC)",
- "m.nextHow": "You bet on the number for the UTC day that starts when betting closes, so nobody has seen any of it yet. It is read {lag} days after that day ends; later revisions do not count. Ranges are cut at the quantiles of the source's last 84 days.",
+ "m.nextHow": "You bet on the number for the UTC day that starts when betting closes, so nobody has seen any of it yet. It is read {lag} days after that day ends; later revisions do not count. Ranges are cut at the quantiles of the source's last 28 days.",
  "ev.dailyDay": "Day",
  "ev.dailyReported": "Reported so far",
  "ev.dailyNotYet": "not published yet (read {lag} days after the day ends)",

@@ -47,7 +47,7 @@ for (const t of tpl.templates) {
   // thresholds
   let thresholds, how;
   const hist = windowValues(t.metric, SNAP).map((w) => w.value);
-  if (spec.kind === "daily") { if (hist.length < 28) { skipped.push(`${t.metric}: only ${hist.length} days of source history`); continue; } thresholds = quantileThresholds(hist, t.buckets); how = `quantiles of the last ${hist.length} days reported by the source`; }
+  if (spec.kind === "daily") { if (hist.length < 20) { skipped.push(`${t.metric}: only ${hist.length} days of source history`); continue; } thresholds = quantileThresholds(hist, t.buckets); how = `quantiles of the last ${hist.length} days reported by the source`; }
   else if (hist.length >= (tpl.minWindows ?? 8) && t.buckets > 1 && t.auto !== false) { thresholds = quantileThresholds(hist, t.buckets); how = `quantiles of ${hist.length} windows`; }
   else if (t.seed === "baseline") { if (opening == null) { skipped.push(`${t.metric}: no recent snapshot value for ${spec.src}`); continue; } thresholds = [opening]; how = `yes/no at the ${latestSlot} level`; }
   else { thresholds = t.seed; how = `seed (${hist.length} windows of history so far)`; }
