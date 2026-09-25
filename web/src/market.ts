@@ -106,9 +106,12 @@ function renderBet(open: boolean, fee: number) {
       const sig = await send().catch(async (e) => { if (!/prior credit|Blockhash not found/i.test(String(e?.message ?? e))) throw e; msg.innerHTML = `<div class="msg">${t("bet.retry")}</div>`; await new Promise((r) => setTimeout(r, 4000)); return send(); });
       msg.innerHTML = `<div class="msg">${t("bet.sent")} <span class="hash">${esc(sig)}</span></div>`;
       await confirmBySig(sig);
-      msg.innerHTML = `<div class="msg ok">${t("bet.placed", { amt: fmtAmt(a), tok: TOKEN_SYMBOL, b: bucketLabel(m, bucket) })}</div>`;
+      const okHtml = `<div class="msg ok">${t("bet.placed", { amt: fmtAmt(a), tok: TOKEN_SYMBOL, b: bucketLabel(m, bucket) })}</div>`;
+      msg.innerHTML = okHtml;
       const refNote = await bindReferralAfterBet(sess);
       await refreshBalances(); await load(true); await showPosition();
+      // load() re-rendered the page: keep the confirmation visible in the fresh bet box
+      const fresh = document.getElementById("msg"); if (fresh) fresh.innerHTML = okHtml;
       if (refNote) { const b = document.getElementById("bet"); if (b) b.insertAdjacentHTML("beforeend", `<div class="msg ok" style="margin-top:8px">${esc(refNote)}</div>`); }
     } catch (e: any) { msg.innerHTML = `<div class="msg err">${esc(e?.message ?? e)}</div>`; go.disabled = false; }
   };
