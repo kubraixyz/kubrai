@@ -41,7 +41,7 @@ export function MarketsScreen() {
       {IS_TEST && <View style={styles.testnet}><Text variant="labelSmall" style={{ color: "#6b5200" }}>TEST NETWORK · devnet · tokens have no value</Text></View>}
       <Text variant="headlineSmall" style={{ marginBottom: 4 }}>Markets</Text>
       <Text variant="bodySmall" style={[styles.dim, { marginBottom: 10 }]}>Parimutuel pools on the numbers that describe the Seeker ecosystem. Winners split the losing pools; the fee is 3% of winnings only.</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginBottom: 12 }} contentContainerStyle={{ gap: 8 }}>
+      <View style={{ height: 44, marginBottom: 12 }}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, alignItems: "center", paddingRight: 8 }}>
         {([["open", "Open"], ["awaiting", "Awaiting result"], ["proposed", "Proposed"], ["settled", "Settled"]] as [Stage, string][]).map(([k, label]) => {
           const on = k === stage;
           return (
@@ -51,7 +51,7 @@ export function MarketsScreen() {
             </Pressable>
           );
         })}
-      </ScrollView>
+      </ScrollView></View>
       {isLoading ? <ActivityIndicator /> : error ? <View><Text>Could not load markets: {String((error as any)?.message ?? error)}</Text><Text variant="labelSmall" style={[styles.dim, { fontFamily: "monospace", marginTop: 6 }]} selectable>{String((error as any)?.stack ?? "").split("\n").slice(0, 6).join("\n")}</Text></View> :
         <FlatList data={live} keyExtractor={(m) => String(m.id)} renderItem={card} refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />} ListEmptyComponent={<Text style={styles.dim}>{EMPTY[stage]}</Text>} contentContainerStyle={{ gap: 12, paddingBottom: 24 }} />}
     </View>
@@ -63,6 +63,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   dim: { opacity: 0.7 },
   testnet: { backgroundColor: "#fff3c4", padding: 6, borderRadius: 6, alignItems: "center", marginBottom: 10 },
-  stageBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 14 },
+  stageBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 999, height: 38, paddingHorizontal: 14 },
   stageCount: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, minWidth: 22, alignItems: "center" },
 });
