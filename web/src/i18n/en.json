@@ -322,5 +322,20 @@
  "lb.lead": "One point per SKR staked in a market that paid out. Every range you bet counts, won or lost; voided markets score nothing.",
  "title.invite": "Kubrai · Invite",
  "inv.h1": "Invite friends",
- "inv.lead": "Your link unlocks with your first bet. Friends who join through it get 10% of the fee on their winnings back; you earn 20% of it, rising to 30% as your points grow. Paid every Monday in SKR."
+ "inv.lead": "Your link unlocks with your first bet. Friends who join through it get 10% of the fee on their winnings back; you earn 20% of it, rising to 30% as your points grow. Paid every Monday in SKR.",
+ "m.sgt.unit": "phones",
+ "m.skr_staked.unit": "SKR",
+ "m.reviews.unit": "reviews",
+ "m.dapps.unit": "apps",
+ "m.reviewers.unit": "wallets",
+ "m.skr_ids.unit": "IDs",
+ "m.das.unit": "IDs",
+ "m.skr_price.unit": "USD",
+ "m.ore_sol.unit": "SOL",
+ "m.ore_hits.unit": "hits",
+ "m.ore_cost.unit": "SOL/ORE",
+ "u.reviews": "reviews",
+ "u.SKR": "SKR",
+ "u.IDs": "IDs",
+ "u.USD": "USD"
 }

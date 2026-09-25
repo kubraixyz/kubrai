@@ -1,16 +1,17 @@
 // Every time the site shows — timestamps and the rules' wording alike — is the viewer's own clock, with its zone named
 // ("25 Sept 2026, 14:10 GMT+8"). Nobody should have to convert from UTC in their head.
 const at = (ts: number) => new Date(ts * 1000);
+const tidy = (s: string) => s.replace(/\[(GMT[^\]]*)\]/, "$1");
 // 24-hour clock everywhere (several locales default to a 12-hour one)
 const H23 = { hourCycle: "h23" } as const;
 import { DATE_LOCALE, t } from "./i18n";
 const LOCALE = DATE_LOCALE;
 /** "25 Sept 2026, 14:10 GMT+8" */
-export const fmtTs = (ts: number) => at(ts).toLocaleString(LOCALE, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 });
+export const fmtTs = (ts: number) => tidy(at(ts).toLocaleString(LOCALE, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 }));
 /** "25 Sept, 14:10 GMT+8": for tight spots where the year is obvious */
-export const fmtTsShort = (ts: number) => at(ts).toLocaleString(LOCALE, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 });
+export const fmtTsShort = (ts: number) => tidy(at(ts).toLocaleString(LOCALE, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 }));
 /** "14:10 GMT+8" */
-export const fmtHm = (ts: number) => at(ts).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 });
+export const fmtHm = (ts: number) => tidy(at(ts).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 }));
 /** "Fri 25 Sept", the viewer's calendar day */
 export const fmtDay = (ts: number) => at(ts).toLocaleDateString(LOCALE, { weekday: "short", month: "short", day: "numeric" });
 /** The viewer's zone, e.g. "Asia/Taipei" */
