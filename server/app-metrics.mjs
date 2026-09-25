@@ -36,7 +36,8 @@ let connOnce = null; const conn = () => (connOnce ??= new Connection(MAINNET, "c
 const STATE_DIR = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots");
 
 const FETCH = {
-  token_supply: (m) => async () => { const s = await conn().getTokenSupply(new PublicKey(m.mint)); return { value: Number(s.value.amount), raw: { mint: m.mint, decimals: s.value.decimals, uiAmount: s.value.uiAmountString }, source: `getTokenSupply ${m.mint}` }; },
+  // shift: drop that many decimal places before storing (supplies above 2^53 base units, e.g. BONK, lose precision as JS numbers)
+  token_supply: (m) => async () => { const s = await conn().getTokenSupply(new PublicKey(m.mint)); const v = BigInt(s.value.amount) / 10n ** BigInt(m.shift ?? 0); if (v > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error(`${m.id}: supply exceeds 2^53 after shift ${m.shift ?? 0}; raise shift`); return { value: Number(v), raw: { mint: m.mint, decimals: s.value.decimals, shift: m.shift ?? 0, uiAmount: s.value.uiAmountString }, source: `getTokenSupply ${m.mint}` }; },
   token_balance: (m) => async () => { const s = await conn().getTokenAccountBalance(new PublicKey(m.account)); return { value: Number(s.value.amount), raw: { account: m.account, decimals: s.value.decimals, uiAmount: s.value.uiAmountString }, source: `getTokenAccountBalance ${m.account}` }; },
   sol_balance: (m) => async () => { const l = await conn().getBalance(new PublicKey(m.address)); return { value: l, raw: { address: m.address, sol: l / 1e9 }, source: `getBalance ${m.address}` }; },
   account_u64: (m) => async () => { const a = await conn().getAccountInfo(new PublicKey(m.address)); if (!a) throw new Error(`account ${m.address} not found`); const v = a.data.readBigUInt64LE(m.offset); return { value: Number(v), raw: { address: m.address, offset: m.offset, owner: a.owner.toBase58(), len: a.data.length }, source: `account ${m.address} u64@${m.offset}` }; },

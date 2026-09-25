@@ -42,7 +42,7 @@ export function metricInfo(id: string): MetricInfo | undefined {
     const c = catalog[cm[1]], k = cm[2];
     if (k === "day" || k === "week") return { title: `Change in ${c.noun} ${WINDOW[k]}`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cumulative: true, cadence: k, key: c.id, how: `${c.how} Resolves on the change between the opening hour's snapshot and the closing hour's.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` };
     const w = MEDIAN_WINDOW[k as "dmed" | "wmed"];
-    return { title: `${c.level[0].toUpperCase()}${c.level.slice(1)} (${w})`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: k === "dmed" ? "day" : "week", key: c.id, how: `${c.how} Resolves on the ${w} of every hourly reading inside the window.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` };
+    return { title: `${c.level.includes(c.app) ? c.level : `${c.app} · ${c.level}`} (${w})`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: k === "dmed" ? "day" : "week", key: c.id, how: `${c.how} Resolves on the ${w} of every hourly reading inside the window.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` };
   }
   let m = id.match(/^rev_(week|day):(.+)$/);
   if (m) { const app = APP_NAMES[m[2]] ?? m[2]; const w = WINDOW[m[1] as "day" | "week"]; return { title: `New ${app} reviews ${w}`, unit: "reviews", cumulative: true, source: "store", cadence: m[1] as Cadence, key: "rev:" + m[2], how: `Increase in ${app}'s total dApp Store reviews between the opening baseline and the closing snapshot (${w}), read directly from the Solana dApp Store API. Reviews can only be written from a Seeker device, one per device per app, so each extra review costs a phone.` }; }

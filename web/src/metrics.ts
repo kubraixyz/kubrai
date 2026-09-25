@@ -44,7 +44,7 @@ export function metricInfo(id: string): MetricInfo | undefined {
     const c = catalog[cm[1]], k = cm[2];
     if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: t("m.appChange", { noun: c.noun }), w: WINDOW[k] }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cumulative: true, cadence: k, key: c.id, how: `${c.how} ${t("m.appCumHow", { w: WINDOW[k] })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
     const w = MEDIAN_WINDOW[k as "dmed" | "wmed"];
-    return { title: t("m.medTitle", { level: c.level, w }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: k === "dmed" ? "day" : "week", key: c.id, how: `${c.how} ${t("m.appMedHow", { w })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
+    return { title: t("m.medTitle", { level: c.level.includes(c.app) ? c.level : `${c.app} · ${c.level}`, w }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: k === "dmed" ? "day" : "week", key: c.id, how: `${c.how} ${t("m.appMedHow", { w })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
   }
   let m = id.match(/^rev_(week|day):(.+)$/);
   if (m) { const app = APP_NAMES[m[2]] ?? m[2]; const w = WINDOW[m[1] as "day" | "week"]; return { title: t("m.rev.title", { app, w }), unit: t("u.reviews"), cumulative: true, source: "store", cadence: m[1] as Cadence, key: "rev:" + m[2], how: t("m.rev.how", { app, w }) }; }
