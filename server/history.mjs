@@ -5,12 +5,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { APP_SLUGS } from "./metrics.mjs";
 import { APP_METRICS } from "./app-metrics.mjs";
+const DAILY = Object.fromEntries(APP_METRICS.filter((m) => m.kind === "defillama_daily").map((m) => [m.id, m.lagDays ?? 2]));
+/** DefiLlama-style daily metrics: <id>_next = the number reported for the UTC day that starts at the market close. */
+export const dailyLag = (id) => DAILY[id];
+export const seriesIn = (b, src) => b?.metrics?.[src]?.raw?.series ?? null;
 
 export const BASE = { ...Object.fromEntries(APP_METRICS.map((m) => [m.id, m.id])), sgt: "sgt_total", skr_ids: "skr_ids_onchain", dapps: "dapp_store_active_apps", reviews: "store_reviews_total", reviewers: "reviewers_7d", skr_staked: "skr_staked", das: "das", skr_price: "skr_price_usd_e8", ore_sol: "ore_deployed_cum", ore_hits: "ore_motherlode_cum", ore_cost: "ore_cost_ema" };
 const LEGACY = { skr_staked_med7: { kind: "med7", src: "skr_staked", hours: 168 }, das_med7: { kind: "med7", src: "das", hours: 168 }, skr_price_close: { kind: "close", src: "skr_price_usd_e8", hours: 0 } };
 export function parseMetric(metric) {
   if (LEGACY[metric]) return LEGACY[metric];
   let m = metric.match(/^rev_(week|day):(.+)$/); if (m) return APP_SLUGS[m[2]] ? { kind: "cum", src: "rev:" + m[2], hours: m[1] === "day" ? 24 : 168 } : null;
+  const n = metric.match(/^(.+)_next$/); if (n && DAILY[n[1]] != null) return { kind: "daily", src: n[1], hours: 24, lagDays: DAILY[n[1]] };
   m = metric.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASE[m[1]]) return null;
   return { kind: m[2] === "day" || m[2] === "week" ? "cum" : "med", src: BASE[m[1]], hours: m[2] === "day" || m[2] === "dmed" ? 24 : 168 };
 }
@@ -28,6 +33,7 @@ export const addHours = (slot, n) => new Date(Date.parse(slot + ":00:00Z") + n *
 export const median = (vals) => { const s = [...vals].sort((x, y) => x - y); return s.length % 2 ? s[(s.length - 1) / 2] : Math.floor((s[s.length / 2 - 1] + s[s.length / 2]) / 2); };
 export function windowValues(metric, snapDir) {
   const spec = parseMetric(metric); if (!spec) throw new Error(`unknown metric ${metric}`);
+  if (spec.kind === "daily") { const slots = loadSlots(snapDir); const last = [...slots.keys()].sort().reverse().find((k) => seriesIn(slots.get(k), spec.src)); const s = last ? seriesIn(slots.get(last), spec.src) : []; return s.slice(0, -1).slice(-84).map(([d, v]) => ({ end: d, value: v })); }
   const slots = loadSlots(snapDir); const ends = [...slots.keys()].filter((s) => s.endsWith("T00")).sort(); const out = [];
   for (const end of ends) {
     if (spec.kind === "cum") { const a = valueIn(slots.get(addHours(end, -spec.hours)), spec.src), b = valueIn(slots.get(end), spec.src); if (a != null && b != null) out.push({ end, value: b - a }); }

@@ -96,15 +96,6 @@
    "auto": false
   },
   {
-   "metric": "jup_volume_dmed",
-   "cadence": "day",
-   "question": "Jupiter 24-hour volume, median over the day: at or above the opening reading?",
-   "buckets": 2,
-   "seed": "baseline",
-   "seedSkr": 0,
-   "auto": false
-  },
-  {
    "metric": "msol_dmed",
    "cadence": "day",
    "question": "SOL staked with Marinade, 24-hour median: at or above today's opening level?",
@@ -141,24 +132,6 @@
    "auto": false
   },
   {
-   "metric": "raydium_volume_dmed",
-   "cadence": "day",
-   "question": "Raydium 24-hour volume, 24-hour median: at or above today's opening level?",
-   "buckets": 2,
-   "seed": "baseline",
-   "seedSkr": 0,
-   "auto": false
-  },
-  {
-   "metric": "orca_volume_dmed",
-   "cadence": "day",
-   "question": "Orca 24-hour volume, 24-hour median: at or above today's opening level?",
-   "buckets": 2,
-   "seed": "baseline",
-   "seedSkr": 0,
-   "auto": false
-  },
-  {
    "metric": "ore_price_dmed",
    "cadence": "day",
    "question": "ORE price, 24-hour median: at or above today's opening level?",
@@ -175,8 +148,89 @@
    "seed": "baseline",
    "seedSkr": 0,
    "auto": false
+  },
+  {
+   "metric": "jup_agg_volume_next",
+   "cadence": "day",
+   "question": "",
+   "buckets": 4,
+   "seed": "auto",
+   "seedSkr": 0
+  },
+  {
+   "metric": "jup_perps_fees_next",
+   "cadence": "day",
+   "question": "",
+   "buckets": 4,
+   "seed": "auto",
+   "seedSkr": 0
+  },
+  {
+   "metric": "kamino_fees_next",
+   "cadence": "day",
+   "question": "",
+   "buckets": 4,
+   "seed": "auto",
+   "seedSkr": 0
+  },
+  {
+   "metric": "phantom_rev_next",
+   "cadence": "day",
+   "question": "",
+   "buckets": 4,
+   "seed": "auto",
+   "seedSkr": 0
+  },
+  {
+   "metric": "pump_rev_next",
+   "cadence": "day",
+   "question": "",
+   "buckets": 4,
+   "seed": "auto",
+   "seedSkr": 0
+  },
+  {
+   "metric": "dexscreener_rev_next",
+   "cadence": "day",
+   "question": "",
+   "buckets": 4,
+   "seed": "auto",
+   "seedSkr": 0
+  },
+  {
+   "metric": "raydium_fees_next",
+   "cadence": "day",
+   "question": "",
+   "buckets": 4,
+   "seed": "auto",
+   "seedSkr": 0
+  },
+  {
+   "metric": "meteora_fees_next",
+   "cadence": "day",
+   "question": "",
+   "buckets": 4,
+   "seed": "auto",
+   "seedSkr": 0
+  },
+  {
+   "metric": "sanctum_fees_next",
+   "cadence": "day",
+   "question": "",
+   "buckets": 4,
+   "seed": "auto",
+   "seedSkr": 0
+  },
+  {
+   "metric": "solana_fees_next",
+   "cadence": "day",
+   "question": "",
+   "buckets": 4,
+   "seed": "auto",
+   "seedSkr": 0
   }
  ],
  "minWindows": 8,
- "_retired": "2026-09-25: every review-count market (reviews_day/week, rev_week:<app>) retired. One verified Seeker may review each of the 1,300+ listed apps once, so a single device can move the store-wide count by hundreds in a day; the bettors are exactly the people who own Seekers. reviewers_7d (distinct devices) would be the honest version if a review market is ever wanted."
+ "_retired": "2026-09-25: every review-count market (reviews_day/week, rev_week:<app>) retired. One verified Seeker may review each of the 1,300+ listed apps once, so a single device can move the store-wide count by hundreds in a day; the bettors are exactly the people who own Seekers. reviewers_7d (distinct devices) would be the honest version if a review market is ever wanted.",
+ "_doc_next": "<id>_next: bet today on the number the source reports for tomorrow (UTC); 4 ranges cut at the quantiles of the source's last 84 days; resolved lagDays after that day ends."
 }

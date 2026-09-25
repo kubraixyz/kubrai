@@ -47,7 +47,8 @@ for (const t of tpl.templates) {
   // thresholds
   let thresholds, how;
   const hist = windowValues(t.metric, SNAP).map((w) => w.value);
-  if (hist.length >= (tpl.minWindows ?? 8) && t.buckets > 1 && t.auto !== false) { thresholds = quantileThresholds(hist, t.buckets); how = `quantiles of ${hist.length} windows`; }
+  if (spec.kind === "daily") { if (hist.length < 28) { skipped.push(`${t.metric}: only ${hist.length} days of source history`); continue; } thresholds = quantileThresholds(hist, t.buckets); how = `quantiles of the last ${hist.length} days reported by the source`; }
+  else if (hist.length >= (tpl.minWindows ?? 8) && t.buckets > 1 && t.auto !== false) { thresholds = quantileThresholds(hist, t.buckets); how = `quantiles of ${hist.length} windows`; }
   else if (t.seed === "baseline") { if (opening == null) { skipped.push(`${t.metric}: no recent snapshot value for ${spec.src}`); continue; } thresholds = [opening]; how = `yes/no at the ${latestSlot} level`; }
   else { thresholds = t.seed; how = `seed (${hist.length} windows of history so far)`; }
   if (spec.kind === "med" && t.seed !== "baseline" && thresholds === t.seed) { skipped.push(`${t.metric}: level metric needs 'baseline' seed`); continue; }
@@ -62,7 +63,7 @@ for (const t of tpl.templates) {
   log(`${DRY ? "would open" : "opening"} #${id} ${t.metric} (${cadence}) thresholds ${thresholds.join("/")} [${how}] open ${new Date(openTs * 1000).toISOString()} close ${new Date(closeTs * 1000).toISOString()} seed ${t.seedSkr} SKR`);
   if (DRY) { opened.push({ id: id.toNumber(), metric: t.metric, dry: true }); continue; }
   try {
-    await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, thresholds: thrArr, nBuckets, openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(closeTs), baseline: new BN(baseline) })
+    await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, thresholds: thrArr, nBuckets, openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(spec.kind === "daily" ? closeTs + 86400 * (1 + spec.lagDays) : closeTs), baseline: new BN(baseline) })
       .accounts({ config: configPda, market, vault, mint: cfg.mint, signer, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).rpc();
     // No house prize unless SEED_MARKETS=1 (a test network can still show one): pools are only what bettors put in.
     if (t.seedSkr > 0 && process.env.SEED_MARKETS === "1") {

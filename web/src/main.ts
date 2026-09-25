@@ -1,5 +1,5 @@
 import { fetchMarkets, totalPool, type MarketView } from "./kubrai";
-import { fmtValue, metricCadence, metricInfo, metricLabel, type Cadence } from "./metrics";
+import { CATEGORY_ORDER, fmtValue, metricCategory, metricInfo, metricLabel } from "./metrics";
 import { esc, fmtAmt, mountNetBadge, mountWallet, poolsHtml, statusPill, timeLeft } from "./ui";
 import { TOKEN_SYMBOL } from "./config";
 import { fmtTsShort, localizeUtc } from "./time";
@@ -7,10 +7,11 @@ import { t } from "./i18n";
 
 mountNetBadge(); mountWallet();
 const root = document.getElementById("markets")!;
+const metricCadence2 = (id: string) => (/_next$/.test(id) ? "cad.next" : /_(week|wmed)$/.test(id) ? "cad.week" : "cad.day");
 function card(m: MarketView) {
   const q = metricLabel(m.metric);
   return `<a class="card" href="/market.html?id=${m.id}">
-    <div class="meta">${statusPill(m)}<span>#${m.id}</span><span>${m.status === 0 && Date.now() / 1000 < m.closeTs ? `${timeLeft(m.closeTs)} · ${t("card.closes", { ts: fmtTsShort(m.closeTs) })}` : m.status === 0 ? t("card.closedSoon", { ts: fmtTsShort(m.closeTs) }) : m.status === 1 ? t("card.proposed", { ts: fmtTsShort(m.proposedAt) }) : t("card.closed", { ts: fmtTsShort(m.closeTs) })}</span></div>
+    <div class="meta">${statusPill(m)}<span>#${m.id}</span><span class="pill">${esc(t(metricCadence2(m.metric)))}</span><span>${m.status === 0 && Date.now() / 1000 < m.closeTs ? `${timeLeft(m.closeTs)} · ${t("card.closes", { ts: fmtTsShort(m.closeTs) })}` : m.status === 0 ? t("card.closedSoon", { ts: fmtTsShort(m.closeTs) }) : m.status === 1 ? t("card.proposed", { ts: fmtTsShort(m.proposedAt) }) : t("card.closed", { ts: fmtTsShort(m.closeTs) })}</span></div>
     <div class="title">${m.nBuckets === 2 ? t("q.yesno", { q, v: `<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>` }) : t("q.range", { q })}</div>
     <div class="meta"><span class="pill">${t("src." + (metricInfo(m.metric)?.source ?? "thirdparty"))}</span>${metricInfo(m.metric)?.cumulative && m.baseline ? `<span>${t("card.fromAtOpen", { v: fmtValue(m.metric, m.baseline) })}</span>` : ""}</div>
     ${poolsHtml(m, m.status === 2 || m.status === 4 ? m.outcome : m.status === 1 ? m.proposedOutcome : -1)}
@@ -35,12 +36,9 @@ function renderList() {
   const now = Date.now() / 1000;
   // open/awaiting/proposed: soonest close first; settled: most recent first
   const items = all.filter((m) => stageOf(m, now) === stage).sort((a, b) => (stage === "settled" ? b.closeTs - a.closeTs || b.id - a.id : a.closeTs - b.closeTs || a.id - b.id));
-  const groups: { key: Cadence; title: string; blurb: string }[] = [
-    { key: "day", title: t("group.day"), blurb: stage === "open" ? t("group.dayBlurb") : "" },
-    { key: "week", title: t("group.week"), blurb: stage === "open" ? t("group.weekBlurb") : "" },
-    { key: "other", title: t("group.other"), blurb: "" },
-  ];
-  const html = groups.map((g) => { const gi = items.filter((m) => metricCadence(m.metric) === g.key); return gi.length ? `<h2 class="group">${g.title}</h2>${g.blurb ? `<p class="note">${g.blurb}</p>` : ""}<div class="grid">${gi.map(card).join("")}</div>` : ""; }).join("");
+  // grouped like the dApp Store: one section per category, each app's markets together
+  const cats = CATEGORY_ORDER.filter((c) => items.some((m) => metricCategory(m.metric) === c)).concat([...new Set(items.map((m) => metricCategory(m.metric)))].filter((c) => !CATEGORY_ORDER.includes(c)));
+  const html = (stage === "open" ? `<p class="note">${t("group.dayBlurb")}</p>` : "") + cats.map((c) => { const gi = items.filter((m) => metricCategory(m.metric) === c); return `<h2 class="group">${esc(t("cat." + c) === "cat." + c ? c : t("cat." + c))} <small class="note">${gi.length}</small></h2><div class="grid">${gi.map(card).join("")}</div>`; }).join("");
   root.innerHTML = html || `<div class="note">${EMPTY[stage]}</div>`; localizeUtc(root);
 }
 (async () => {

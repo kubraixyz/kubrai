@@ -59,6 +59,16 @@ export function makeEvaluator({ snapDir, conn }) {
       used.push(sClose);
       return { ok: true, value: b - base, used, detail: { baseline: base, baselineSlot: baseSlot ?? "on-chain", close: b, closeSlot: sClose } };
     }
+    if (kind === "daily") {
+      // the number reported for day D (the UTC day starting at close), read from the first snapshot at or after
+      // resolve_after (close + (1 + lag) days) that carries D; later revisions by the source do not count
+      const D = new Date(closeTs * 1000).toISOString().slice(0, 10); const from = slotOf(closeTs + 86400 * (1 + spec.lagDays));
+      for (let i = 0; i < 48; i++) {
+        const sl = addHours(from, i); const b = readSlot(sl); const ser = b?.metrics?.[src]?.raw?.series; if (!ser) continue;
+        const hit = ser.find(([d]) => d === D); if (hit) { used.push(sl); return { ok: true, value: hit[1], used, detail: { day: D, slot: sl, source: b.metrics[src].source, neighbours: ser.filter(([d]) => d >= D).slice(0, 3) } }; }
+      }
+      return { ok: false, reason: `no reading for ${D} in the snapshots from ${from} (source not published yet)` };
+    }
     if (kind === "med") {
       const expected = Math.max(1, Math.round((closeTs - openTs) / 3600)); const vals = [];
       const series = [];

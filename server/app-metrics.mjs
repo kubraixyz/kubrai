@@ -7,6 +7,9 @@
 //   account_u64      { address, offset, decimals } a u64 field inside an account (stake-pool totals, program counters)
 //   defillama_tvl    { slug }                      protocol TVL in USD (DefiLlama, third-party aggregator)
 //   defillama_dex    { slug, category? }           last-24h volume in USD (DefiLlama; category dexs | aggregators | derivatives)
+//   defillama_daily  { path, lagDays? }             one number per UTC day from DefiLlama (fees, revenue, volume...), e.g. path
+//                                                  "summary/fees/pump.fun?dataType=dailyRevenue". Stores the last 120 days as
+//                                                  raw.series [[YYYY-MM-DD, value]]; markets on it are <id>_next (see history.mjs).
 //   jup_price        { mint, decimals? }           Jupiter price v3 in USD (third-party quote), stored ×1e8
 //   program_tx       { program }                   running count of confirmed transactions that touched a program (cursor kept
 //                                                  on disk; a gap longer than what the RPC still holds fails loudly instead of guessing)
@@ -19,10 +22,10 @@ import { fileURLToPath } from "node:url";
 const MAINNET = process.env.MAINNET_RPC ?? "https://api.mainnet-beta.solana.com";
 const UA = "kubrai-snapshot/0.1 (+https://kubrai.xyz)";
 const CFG = process.env.APP_METRICS ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "app-metrics.json");
-const KIND_SOURCE = { token_supply: "onchain", token_balance: "onchain", sol_balance: "onchain", account_u64: "onchain", program_tx: "onchain", defillama_tvl: "thirdparty", defillama_dex: "thirdparty", jup_price: "thirdparty" };
+const KIND_SOURCE = { defillama_daily: "thirdparty", token_supply: "onchain", token_balance: "onchain", sol_balance: "onchain", account_u64: "onchain", program_tx: "onchain", defillama_tvl: "thirdparty", defillama_dex: "thirdparty", jup_price: "thirdparty" };
 export const APP_METRICS = fs.existsSync(CFG) ? JSON.parse(fs.readFileSync(CFG, "utf8")).metrics : [];
 /** id → copy for the web/app (title, unit, scale, source, how); the API serves it as /metrics. */
-export const APP_METRIC_CATALOG = Object.fromEntries(APP_METRICS.map((m) => [m.id, { id: m.id, app: m.app, package: m.package ?? null, noun: m.noun, level: m.level ?? m.noun, unit: m.unit, scale: m.scale ?? 1, digits: m.digits ?? 0, source: m.source ?? KIND_SOURCE[m.kind], how: m.how ?? "", pushCost: m.pushCost ?? null, kind: m.kind }]));
+export const APP_METRIC_CATALOG = Object.fromEntries(APP_METRICS.map((m) => [m.id, { id: m.id, category: m.category ?? "Other", app: m.app, package: m.package ?? null, noun: m.noun, level: m.level ?? m.noun, unit: m.unit, scale: m.scale ?? 1, digits: m.digits ?? 0, source: m.source ?? KIND_SOURCE[m.kind], how: m.how ?? "", pushCost: m.pushCost ?? null, kind: m.kind, lagDays: m.lagDays ?? 2 }]));
 
 async function getJson(url, timeoutMs = 30000, retries = 1) {
   for (let attempt = 0; ; attempt++) {
@@ -43,6 +46,13 @@ const FETCH = {
   account_u64: (m) => async () => { const a = await conn().getAccountInfo(new PublicKey(m.address)); if (!a) throw new Error(`account ${m.address} not found`); const v = a.data.readBigUInt64LE(m.offset); return { value: Number(v), raw: { address: m.address, offset: m.offset, owner: a.owner.toBase58(), len: a.data.length }, source: `account ${m.address} u64@${m.offset}` }; },
   defillama_tvl: (m) => async () => { const v = await getJson(`https://api.llama.fi/tvl/${m.slug}`); if (typeof v !== "number") throw new Error(`defillama tvl ${m.slug}: not a number`); return { value: Math.round(v), raw: { slug: m.slug, usd: v }, source: `https://api.llama.fi/tvl/${m.slug}` }; },
   defillama_dex: (m) => async () => { const cat = m.category ?? "dexs"; const url = `https://api.llama.fi/summary/${cat}/${m.slug}?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true`; const j = await getJson(url); const v = j?.total24h; if (typeof v !== "number") throw new Error(`defillama ${cat} ${m.slug}: no total24h`); return { value: Math.round(v), raw: { slug: m.slug, category: cat, total24h: v, total7d: j.total7d ?? null }, source: url.split("?")[0] }; },
+  defillama_daily: (m) => async () => {
+    const url = `https://api.llama.fi/${m.path}${m.path.includes("?") ? "&" : "?"}excludeTotalDataChartBreakdown=true`;
+    const j = await getJson(url, 45000); const c = j?.totalDataChart;
+    if (!Array.isArray(c) || !c.length) throw new Error(`defillama ${m.path}: no daily series`);
+    const series = c.slice(-120).map(([ts, v]) => [new Date(ts * 1000).toISOString().slice(0, 10), Math.round(v)]);
+    return { value: series.at(-1)[1], raw: { path: m.path, series }, source: url.split("?")[0] + (m.path.includes("dataType") ? " (" + m.path.split("dataType=")[1] + ")" : "") };
+  },
   jup_price: (m) => async () => { const j = await getJson(`https://lite-api.jup.ag/price/v3?ids=${m.mint}`); const p = j?.[m.mint]?.usdPrice; if (typeof p !== "number") throw new Error(`jupiter price ${m.mint}: missing`); return { value: Math.round(p * 1e8), raw: { mint: m.mint, usdPrice: p }, source: "https://lite-api.jup.ag/price/v3" }; },
   program_tx: (m) => async () => {
     // Running total of signatures for the program since we started counting; the cursor (newest signature seen) lives in

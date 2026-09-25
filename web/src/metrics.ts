@@ -34,11 +34,13 @@ const LEGACY: Record<string, MetricInfo> = {
 };
 // Per-app metrics are configured on the server (server/app-metrics.json) and described by /metrics; the page gets that
 // catalog embedded (window.__BOOT__.metricCatalog). Unknown ids resolve through it, so a new app market needs no web build.
-type CatalogEntry = { id: string; app: string; noun: string; level: string; unit: string; scale: number; digits: number; source: SourceKind; how: string; pushCost?: string | null };
+type CatalogEntry = { id: string; category?: string; lagDays?: number; app: string; noun: string; level: string; unit: string; scale: number; digits: number; source: SourceKind; how: string; pushCost?: string | null };
 const catalog: Record<string, CatalogEntry> = ((globalThis as any).__BOOT__?.metricCatalog as Record<string, CatalogEntry>) ?? {};
 export const catalogEntry = (id: string) => catalog[id];
 export function metricInfo(id: string): MetricInfo | undefined {
   if (LEGACY[id]) return LEGACY[id];
+  const nx = id.match(/^(.+)_next$/);
+  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: "day", key: c.id, how: `${c.how} ${t("m.nextHow", { lag: c.lagDays ?? 2 })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
   const cm = id.match(/^(.+)_(day|week|dmed|wmed)$/);
   if (cm && catalog[cm[1]]) {
     const c = catalog[cm[1]], k = cm[2];
@@ -56,6 +58,15 @@ export function metricInfo(id: string): MetricInfo | undefined {
 }
 export const metricLabel = (id: string) => metricInfo(id)?.title ?? t("m.unknown");
 export const metricCadence = (id: string): Cadence => metricInfo(id)?.cadence ?? "other";
+/** Store-style category of a market: per-app metrics carry one in the catalog; the built-in ones are Seeker / Store / ORE. */
+export function metricCategory(id: string): string {
+  const base = id.replace(/_(next|day|week|dmed|wmed|med7)$/, "");
+  if (catalog[base]?.category) return catalog[base].category!;
+  if (/^ore_/.test(base)) return "Games";
+  if (/^(dapps|reviews|reviewers|rev)/.test(base)) return "Store";
+  return "Seeker";
+}
+export const CATEGORY_ORDER = ["Seeker", "DeFi", "Trading", "DEX", "Lending", "Staking", "Wallets", "Launchpads", "Tools", "Games", "Chain", "DePIN", "Memes", "Store", "Other"];
 export const fmtValue = (id: string, v: number) => {
   const c = metricInfo(id); const x = c?.scale ? v / c.scale : v;
   return x.toLocaleString("en-US", { maximumFractionDigits: c?.digits ?? (c?.scale && c.scale > 1_000_000 ? 4 : 0) }) + (c?.unit ? " " + c.unit : "");

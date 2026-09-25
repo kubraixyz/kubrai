@@ -14,23 +14,8 @@
    "scale": 1000000000,
    "digits": 0,
    "pushCost": "expensive: ~10% of the pool is millions of SOL parked for the whole window",
-   "how": "Total JitoSOL in circulation (the liquid-staking token Jito mints for every SOL staked with it), read from the mint's supply on-chain."
-  },
-  {
-   "id": "jup_volume",
-   "app": "Jupiter",
-   "package": "ag.jup.jupiter.android",
-   "kind": "defillama_dex",
-   "slug": "jupiter-aggregator",
-   "tier": "hourly",
-   "noun": "Jupiter 24-hour volume",
-   "level": "Jupiter 24-hour volume",
-   "unit": "USD",
-   "scale": 1,
-   "digits": 0,
-   "pushCost": "medium: every $1M of extra volume costs the swapper fees and slippage",
-   "how": "USD volume routed through the Jupiter aggregator in the last 24 hours, as reported by DefiLlama (third-party aggregator; every hourly reading is in the snapshot).",
-   "category": "aggregators"
+   "how": "Total JitoSOL in circulation (the liquid-staking token Jito mints for every SOL staked with it), read from the mint's supply on-chain.",
+   "category": "Staking"
   },
   {
    "id": "msol",
@@ -43,7 +28,8 @@
    "unit": "mSOL",
    "scale": 1000000000,
    "pushCost": "expensive: moving the 24-hour median by a few percent means parking tens of thousands of SOL in it for half a day",
-   "how": "Total mSOL in circulation (Marinade's liquid-staking token, one per staked SOL share), read from the mint's supply on-chain."
+   "how": "Total mSOL in circulation (Marinade's liquid-staking token, one per staked SOL share), read from the mint's supply on-chain.",
+   "category": "Staking"
   },
   {
    "id": "jupsol",
@@ -57,7 +43,8 @@
    "unit": "JupSOL",
    "scale": 1000000000,
    "pushCost": "expensive: moving the 24-hour median by a few percent means parking tens of thousands of SOL in it for half a day",
-   "how": "Total JupSOL in circulation (Jupiter's liquid-staking token), read from the mint's supply on-chain."
+   "how": "Total JupSOL in circulation (Jupiter's liquid-staking token), read from the mint's supply on-chain.",
+   "category": "Staking"
   },
   {
    "id": "sanctum_inf",
@@ -70,7 +57,8 @@
    "unit": "INF",
    "scale": 1000000000,
    "pushCost": "expensive: moving the 24-hour median by a few percent means parking tens of thousands of SOL in it for half a day",
-   "how": "Total INF in circulation (the Sanctum Infinity multi-LST pool token), read from the mint's supply on-chain."
+   "how": "Total INF in circulation (the Sanctum Infinity multi-LST pool token), read from the mint's supply on-chain.",
+   "category": "Staking"
   },
   {
    "id": "kamino_tvl",
@@ -82,33 +70,8 @@
    "level": "Kamino Lend TVL",
    "unit": "USD",
    "pushCost": "expensive: 1% of TVL is over $10M deposited for half a day",
-   "how": "Total value locked in Kamino Lend, as reported by DefiLlama (third-party aggregator; every hourly reading is in the snapshot)."
-  },
-  {
-   "id": "raydium_volume",
-   "app": "Raydium",
-   "kind": "defillama_dex",
-   "slug": "raydium-amm",
-   "category": "dexs",
-   "tier": "hourly",
-   "noun": "Raydium AMM 24-hour volume",
-   "level": "Raydium AMM 24-hour volume",
-   "unit": "USD",
-   "pushCost": "expensive: every extra $1M of volume burns about $2,500 in pool fees",
-   "how": "USD volume traded on Raydium's AMM in the last 24 hours, as reported by DefiLlama (third-party aggregator)."
-  },
-  {
-   "id": "orca_volume",
-   "app": "Orca",
-   "kind": "defillama_dex",
-   "slug": "orca-dex",
-   "category": "dexs",
-   "tier": "hourly",
-   "noun": "Orca 24-hour volume",
-   "level": "Orca 24-hour volume",
-   "unit": "USD",
-   "pushCost": "expensive: every extra $1M of volume pays pool fees and slippage",
-   "how": "USD volume traded on Orca in the last 24 hours, as reported by DefiLlama (third-party aggregator)."
+   "how": "Total value locked in Kamino Lend, as reported by DefiLlama (third-party aggregator; every hourly reading is in the snapshot).",
+   "category": "Lending"
   },
   {
    "id": "ore_price",
@@ -123,7 +86,8 @@
    "scale": 100000000,
    "digits": 2,
    "pushCost": "medium to expensive: holding the price up for half a day against the pools' depth",
-   "how": "ORE/USD from Jupiter's price API (third-party quote), read every hour."
+   "how": "ORE/USD from Jupiter's price API (third-party quote), read every hour.",
+   "category": "Games"
   },
   {
    "id": "bonk_supply",
@@ -137,7 +101,8 @@
    "scale": 1,
    "pushCost": "medium: lowering it means burning BONK, which costs its market value",
    "how": "Total BONK supply on-chain; it only falls, by burns. Collected for history; markets open once enough days exist to set ranges.",
-   "shift": 5
+   "shift": 5,
+   "category": "Memes"
   },
   {
    "id": "honey_supply",
@@ -151,7 +116,8 @@
    "scale": 1,
    "pushCost": "medium: burn-and-mint; moving it costs burning HONEY for map credits",
    "how": "Total HONEY supply (Hivemapper's burn-and-mint token). Collected for history.",
-   "shift": 9
+   "shift": 9,
+   "category": "DePIN"
   },
   {
    "id": "mobile_supply",
@@ -165,7 +131,8 @@
    "scale": 1,
    "pushCost": "medium",
    "how": "Total MOBILE supply (Helium Mobile). Collected for history.",
-   "shift": 6
+   "shift": 6,
+   "category": "DePIN"
   },
   {
    "id": "hnt_supply",
@@ -179,7 +146,170 @@
    "scale": 1,
    "pushCost": "medium",
    "how": "Total HNT supply (Helium). Collected for history.",
-   "shift": 8
+   "shift": 8,
+   "category": "DePIN"
+  },
+  {
+   "id": "jup_agg_volume",
+   "category": "DeFi",
+   "app": "Jupiter",
+   "kind": "defillama_daily",
+   "path": "summary/aggregators/jupiter-aggregator",
+   "lagDays": 3,
+   "tier": "hourly",
+   "noun": "Jupiter swap volume",
+   "level": "Jupiter swap volume",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "expensive: every extra $1M of volume pays swap fees and slippage",
+   "how": "USD routed through the Jupiter aggregator in one UTC day, as reported by DefiLlama.",
+   "package": "ag.jup.jupiter.android"
+  },
+  {
+   "id": "jup_perps_fees",
+   "category": "Trading",
+   "app": "Jupiter Perps",
+   "kind": "defillama_daily",
+   "path": "summary/fees/jupiter-perpetual-exchange",
+   "lagDays": 2,
+   "tier": "hourly",
+   "noun": "Jupiter Perps fees",
+   "level": "Jupiter Perps fees",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
+   "how": "Fees paid by traders on Jupiter Perpetuals in one UTC day, as reported by DefiLlama.",
+   "package": "ag.jup.jupiter.android"
+  },
+  {
+   "id": "kamino_fees",
+   "category": "Lending",
+   "app": "Kamino",
+   "kind": "defillama_daily",
+   "path": "summary/fees/kamino-lend",
+   "lagDays": 2,
+   "tier": "hourly",
+   "noun": "Kamino Lend fees",
+   "level": "Kamino Lend fees",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
+   "how": "Interest and fees paid by Kamino Lend borrowers in one UTC day, as reported by DefiLlama."
+  },
+  {
+   "id": "phantom_rev",
+   "category": "Wallets",
+   "app": "Phantom",
+   "kind": "defillama_daily",
+   "path": "summary/fees/phantom-wallet?dataType=dailyRevenue",
+   "lagDays": 2,
+   "tier": "hourly",
+   "noun": "Phantom revenue",
+   "level": "Phantom revenue",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
+   "how": "Revenue Phantom Wallet earns from swaps and other fees in one UTC day, as reported by DefiLlama."
+  },
+  {
+   "id": "pump_rev",
+   "category": "Launchpads",
+   "app": "pump.fun",
+   "kind": "defillama_daily",
+   "path": "summary/fees/pump.fun?dataType=dailyRevenue",
+   "lagDays": 2,
+   "tier": "hourly",
+   "noun": "pump.fun revenue",
+   "level": "pump.fun revenue",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
+   "how": "Revenue pump.fun earns from token launches and trading in one UTC day, as reported by DefiLlama."
+  },
+  {
+   "id": "dexscreener_rev",
+   "category": "Tools",
+   "app": "DEX Screener",
+   "kind": "defillama_daily",
+   "path": "summary/fees/dex-screener?dataType=dailyRevenue",
+   "lagDays": 2,
+   "tier": "hourly",
+   "noun": "DEX Screener revenue",
+   "level": "DEX Screener revenue",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
+   "how": "Revenue DEX Screener earns (token info boosts and ads) in one UTC day, as reported by DefiLlama."
+  },
+  {
+   "id": "raydium_fees",
+   "category": "DEX",
+   "app": "Raydium",
+   "kind": "defillama_daily",
+   "path": "summary/fees/raydium-amm",
+   "lagDays": 2,
+   "tier": "hourly",
+   "noun": "Raydium AMM fees",
+   "level": "Raydium AMM fees",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
+   "how": "Swap fees paid on Raydium's AMM in one UTC day, as reported by DefiLlama."
+  },
+  {
+   "id": "meteora_fees",
+   "category": "DEX",
+   "app": "Meteora",
+   "kind": "defillama_daily",
+   "path": "summary/fees/meteora-dlmm",
+   "lagDays": 2,
+   "tier": "hourly",
+   "noun": "Meteora DLMM fees",
+   "level": "Meteora DLMM fees",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
+   "how": "Swap fees paid on Meteora's DLMM pools in one UTC day, as reported by DefiLlama."
+  },
+  {
+   "id": "sanctum_fees",
+   "category": "Staking",
+   "app": "Sanctum",
+   "kind": "defillama_daily",
+   "path": "summary/fees/sanctum-validator-lsts",
+   "lagDays": 2,
+   "tier": "hourly",
+   "noun": "Sanctum LST fees",
+   "level": "Sanctum LST fees",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
+   "how": "Fees and staking rewards flowing through Sanctum's validator LSTs in one UTC day, as reported by DefiLlama."
+  },
+  {
+   "id": "solana_fees",
+   "category": "Chain",
+   "app": "Solana",
+   "kind": "defillama_daily",
+   "path": "summary/fees/solana",
+   "lagDays": 2,
+   "tier": "hourly",
+   "noun": "Solana network fees",
+   "level": "Solana network fees",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
+   "how": "Transaction fees (base + priority) paid on Solana in one UTC day, as reported by DefiLlama."
   }
  ]
 }

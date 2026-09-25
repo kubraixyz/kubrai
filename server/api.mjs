@@ -349,6 +349,14 @@ reason=${reason}`;
       const metric = url.searchParams.get("metric") ?? "", openTs = Number(url.searchParams.get("open")), closeTs = Number(url.searchParams.get("close"));
       const baseline = Number(url.searchParams.get("baseline") ?? 0), id = url.searchParams.get("id");
       const spec = parseMetric(metric); if (!spec || !openTs || !closeTs) return json(res, 400, { error: "unknown metric or missing open/close" });
+      if (spec.kind === "daily") {
+        // one number per UTC day from the source: show what it has reported so far for the days around the market's day
+        const D = new Date(closeTs * 1000).toISOString().slice(0, 10), slots = loadSlots(SNAP), last = [...slots.keys()].sort().reverse().find((k) => slots.get(k)?.metrics?.[spec.src]?.raw?.series);
+        const ser = last ? slots.get(last).metrics[spec.src].raw.series : [], src = last ? slots.get(last).metrics[spec.src].source : null;
+        let resolution = null; const rf = id && /^\d+$/.test(id) ? path.join(SNAP, `resolution-${id}.json`) : null;
+        if (rf && fs.existsSync(rf)) { const r = JSON.parse(fs.readFileSync(rf, "utf8")); resolution = { observed: r.observed, bucket: r.bucket, detail: r.detail, evidenceHash: r.evidenceHash, at: r.at, slot: (r.slots ?? [])[0] ?? null }; }
+        return json(res, 200, { metric, kind: "daily", day: D, lagDays: spec.lagDays, source: src, latestSlot: last ?? null, recent: ser.slice(-7), reported: ser.find(([d]) => d === D)?.[1] ?? null, resolution }, { "cache-control": "public, max-age=60" });
+      }
       const slots = loadSlots(SNAP); const slotOf = (ts) => new Date(ts * 1000).toISOString().slice(0, 13);
       const sOpen = slotOf(openTs), sClose = slotOf(closeTs);
       const side = (slot) => { const f = [path.join(SNAP, slot + ".json"), slot.endsWith("T00") ? path.join(SNAP, slot.slice(0, 10) + ".json") : null].find((x) => x && fs.existsSync(x)); if (!f) return null; return { slot, value: valueIn(slots.get(slot), spec.src), sha256: fs.existsSync(f + ".sha256") ? fs.readFileSync(f + ".sha256", "utf8").trim() : null, memo: fs.existsSync(f + ".memo") ? JSON.parse(fs.readFileSync(f + ".memo", "utf8")).signature : null }; };

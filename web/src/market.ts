@@ -139,6 +139,14 @@ async function loadEvidence() {
     const proof = (x: any) => x?.sha256 ? ` · sha256 <span class="hash">${esc(x.sha256.slice(0, 12))}…</span>${x.memo ? ` · <a href="https://explorer.solana.com/tx/${x.memo}?cluster=devnet" target="_blank" rel="noopener">${t("ev.memo")}</a>` : ""}` : "";
     const row = (label: string, value: string, x: any) => `<div><b>${label}</b> <span class="mono">${value}</span>${x?.slot ? ` · ${when(x.slot)}` : ""}${proof(x)}</div>`;
     const rows: string[] = [];
+    if (e.kind === "daily") {
+      rows.push(row(t("ev.dailyDay"), `${esc(e.day)} (UTC)`, null));
+      if (e.resolution) rows.push(row(t("ev.result"), fv(e.resolution.observed), e.resolution.slot ? { slot: e.resolution.slot } : null));
+      else rows.push(row(t("ev.dailyReported"), e.reported != null ? fv(e.reported) : t("ev.dailyNotYet", { lag: e.lagDays }), null));
+      if (e.recent?.length) rows.push(`<details><summary>${t("ev.dailyRecent")}</summary>${e.recent.map(([d, v]: [string, number]) => row(esc(d), fv(v), null)).join("")}</details>`);
+      if (e.source) rows.push(`<div class="note">${esc(e.source)}</div>`);
+      el.innerHTML = rows.join(""); return;
+    }
     if (e.kind === "cum") {
       rows.push(e.opening ? row(t("ev.opening"), fv(e.opening.value), e.opening) : row(t("ev.opening"), t("ev.notYet"), null));
       if (e.resolution) { rows.push(row(t("ev.closing"), fv(e.closing?.value), e.closing)); rows.push(row(t("ev.result"), fv(e.resolution.observed), null)); }
