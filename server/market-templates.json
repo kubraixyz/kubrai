@@ -19,7 +19,8 @@
    "question": "SKR staked, 24-hour median: at or above today's opening level?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   },
   {
    "metric": "ore_sol_day",
@@ -51,7 +52,8 @@
    "question": "ORE mining cost (SOL per ORE), 24-hour median: at or above today's opening level?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   },
   {
    "metric": "sgt_week",
@@ -71,7 +73,8 @@
    "question": "SKR staked, 7-day median: at or above this week's opening level?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   },
   {
    "metric": "dapps_week",
@@ -89,7 +92,8 @@
    "question": "SOL staked with Jito, 24-hour median: at or above today's opening level?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   },
   {
    "metric": "jup_volume_dmed",
@@ -97,7 +101,8 @@
    "question": "Jupiter 24-hour volume, median over the day: at or above the opening reading?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   },
   {
    "metric": "msol_dmed",
@@ -105,7 +110,8 @@
    "question": "SOL staked with Marinade, 24-hour median: at or above today's opening level?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   },
   {
    "metric": "jupsol_dmed",
@@ -113,7 +119,8 @@
    "question": "SOL staked with Jupiter, 24-hour median: at or above today's opening level?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   },
   {
    "metric": "sanctum_inf_dmed",
@@ -121,7 +128,8 @@
    "question": "Sanctum Infinity pool, 24-hour median: at or above today's opening level?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   },
   {
    "metric": "kamino_tvl_dmed",
@@ -129,7 +137,8 @@
    "question": "Kamino Lend TVL, 24-hour median: at or above today's opening level?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   },
   {
    "metric": "raydium_volume_dmed",
@@ -137,7 +146,8 @@
    "question": "Raydium 24-hour volume, 24-hour median: at or above today's opening level?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   },
   {
    "metric": "orca_volume_dmed",
@@ -145,7 +155,8 @@
    "question": "Orca 24-hour volume, 24-hour median: at or above today's opening level?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   },
   {
    "metric": "ore_price_dmed",
@@ -153,7 +164,8 @@
    "question": "ORE price, 24-hour median: at or above today's opening level?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   },
   {
    "metric": "skr_price_dmed",
@@ -161,7 +173,8 @@
    "question": "SKR price, 24-hour median: at or above today's opening level?",
    "buckets": 2,
    "seed": "baseline",
-   "seedSkr": 0
+   "seedSkr": 0,
+   "auto": false
   }
  ],
  "minWindows": 8,
