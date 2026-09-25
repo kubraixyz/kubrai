@@ -32,13 +32,20 @@ function renderStages() {
   segEl.innerHTML = `<div class="seg" role="tablist">${STAGES.map(([k, label]) => `<button role="tab" data-s="${k}" class="${k === stage ? "on" : ""}">${label}<small>${count(k)}</small></button>`).join("")}</div>`;
   segEl.querySelectorAll<HTMLButtonElement>("button[data-s]").forEach((b) => (b.onclick = () => { stage = b.dataset.s as Stage; const u = new URL(location.href); if (stage === "open") u.searchParams.delete("status"); else u.searchParams.set("status", stage); history.replaceState(null, "", u); renderStages(); renderList(); }));
 }
+// Category chips under the stage tabs: one category at a time (the dApp Store's own grouping), chosen in the URL (?cat=)
+const catLabel = (c: string) => (t("cat." + c) === "cat." + c ? c : t("cat." + c));
+let cat = new URLSearchParams(location.search).get("cat") ?? "";
+const catEl = document.getElementById("cats")!;
 function renderList() {
   const now = Date.now() / 1000;
   // open/awaiting/proposed: soonest close first; settled: most recent first
-  const items = all.filter((m) => stageOf(m, now) === stage).sort((a, b) => (stage === "settled" ? b.closeTs - a.closeTs || b.id - a.id : a.closeTs - b.closeTs || a.id - b.id));
-  // grouped like the dApp Store: one section per category, each app's markets together
-  const cats = CATEGORY_ORDER.filter((c) => items.some((m) => metricCategory(m.metric) === c)).concat([...new Set(items.map((m) => metricCategory(m.metric)))].filter((c) => !CATEGORY_ORDER.includes(c)));
-  const html = (stage === "open" ? `<p class="note">${t("group.dayBlurb")}</p>` : "") + cats.map((c) => { const gi = items.filter((m) => metricCategory(m.metric) === c); return `<h2 class="group">${esc(t("cat." + c) === "cat." + c ? c : t("cat." + c))} <small class="note">${gi.length}</small></h2><div class="grid">${gi.map(card).join("")}</div>`; }).join("");
+  const inStage = all.filter((m) => stageOf(m, now) === stage).sort((a, b) => (stage === "settled" ? b.closeTs - a.closeTs || b.id - a.id : a.closeTs - b.closeTs || a.id - b.id));
+  const cats = CATEGORY_ORDER.filter((c) => inStage.some((m) => metricCategory(m.metric) === c)).concat([...new Set(inStage.map((m) => metricCategory(m.metric)))].filter((c) => !CATEGORY_ORDER.includes(c)));
+  if (!cats.includes(cat)) cat = cats[0] ?? "";
+  catEl.innerHTML = cats.length ? `<div class="chips" role="tablist">${cats.map((c) => `<button role="tab" data-c="${esc(c)}" class="chip${c === cat ? " on" : ""}">${esc(catLabel(c))}<small>${inStage.filter((m) => metricCategory(m.metric) === c).length}</small></button>`).join("")}</div>` : "";
+  catEl.querySelectorAll<HTMLButtonElement>("button[data-c]").forEach((b) => (b.onclick = () => { cat = b.dataset.c!; const u = new URL(location.href); u.searchParams.set("cat", cat); history.replaceState(null, "", u); renderList(); }));
+  const items = inStage.filter((m) => metricCategory(m.metric) === cat);
+  const html = (stage === "open" && items.length ? `<p class="note">${t("group.dayBlurb")}</p>` : "") + (items.length ? `<div class="grid">${items.map(card).join("")}</div>` : "");
   root.innerHTML = html || `<div class="note">${EMPTY[stage]}</div>`; localizeUtc(root);
 }
 (async () => {

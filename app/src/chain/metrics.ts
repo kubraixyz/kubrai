@@ -32,7 +32,7 @@ const LEGACY: Record<string, MetricInfo> = {
   skr_price_close: { title: "SKR price at close", unit: "USD", scale: 100_000_000, source: "thirdparty", cadence: "other", how: "Jupiter price v3 at the closing snapshot." },
 };
 // Per-app metrics are configured on the server; the app loads the catalog once (loadMetricCatalog) and resolves unknown ids through it.
-type CatalogEntry = { id: string; app: string; noun: string; level: string; unit: string; scale: number; digits: number; source: SourceKind; how: string; pushCost?: string | null };
+type CatalogEntry = { id: string; category?: string; app: string; noun: string; level: string; unit: string; scale: number; digits: number; source: SourceKind; how: string; pushCost?: string | null };
 let catalog: Record<string, CatalogEntry> = {};
 export async function loadMetricCatalog(apiBase: string) { try { const r = await fetch(apiBase + "/metrics"); if (r.ok) catalog = (await r.json()).metrics ?? {}; } catch {} }
 export function metricInfo(id: string): MetricInfo | undefined {
@@ -73,3 +73,13 @@ export async function openingValue(apiBase: string, id: string, openTs: number, 
     return typeof v === "number" ? v : null;
   } catch { return null; }
 }
+
+/** Store-style category of a market (same rules as the web). */
+export function metricCategory(id: string): string {
+  const base = id.replace(/_(next|day|week|dmed|wmed|med7)$/, "");
+  if (catalog[base]?.category) return catalog[base].category!;
+  if (/^ore_/.test(base)) return "ORE";
+  if (/^(dapps|reviews|reviewers|rev)/.test(base)) return "Store";
+  return "Seeker";
+}
+export const CATEGORY_ORDER = ["Seeker", "DeFi", "Trading", "DEX", "Lending", "Staking", "Wallets", "Launchpads", "Tools", "ORE", "Chain", "DePIN", "Memes", "Store", "Other"];

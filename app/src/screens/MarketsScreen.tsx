@@ -3,7 +3,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, View, RefreshControl } fro
 import { ActivityIndicator, Chip, Text, useTheme } from "react-native-paper";
 import { useNavigation } from "@react-navigation/native";
 import { useMarkets } from "../hooks/useKubrai";
-import { metricInfo, metricLabel, fmtValue } from "../chain/metrics";
+import { metricCategory, CATEGORY_ORDER, metricInfo, metricLabel, fmtValue } from "../chain/metrics";
 import { PoolBar } from "../components/PoolBar";
 import { fmtAmt, fmtTsShort, statusLabel, timeLeft } from "../chain/format";
 import { totalPool, type MarketView } from "../chain/kubrai";
@@ -20,7 +20,11 @@ export function MarketsScreen() {
   const now = Date.now() / 1000;
   const stageOf = (m: MarketView): Stage => (m.status === 0 ? (now < m.closeTs ? "open" : "awaiting") : m.status === 1 ? "proposed" : "settled");
   const all = data ?? []; const count = (k: Stage) => all.filter((m) => stageOf(m) === k).length;
-  const live = all.filter((m) => stageOf(m) === stage).sort((a, b) => (stage === "settled" ? b.closeTs - a.closeTs || b.id - a.id : a.closeTs - b.closeTs || a.id - b.id));
+  const [cat, setCat] = useState("");
+  const inStage = all.filter((m) => stageOf(m) === stage);
+  const cats = CATEGORY_ORDER.filter((c) => inStage.some((m) => metricCategory(m.metric) === c)).concat([...new Set(inStage.map((m) => metricCategory(m.metric)))].filter((c) => !CATEGORY_ORDER.includes(c)));
+  const curCat = cats.includes(cat) ? cat : cats[0] ?? "";
+  const live = inStage.filter((m) => metricCategory(m.metric) === curCat).sort((a, b) => (stage === "settled" ? b.closeTs - a.closeTs || b.id - a.id : a.closeTs - b.closeTs || a.id - b.id));
   const EMPTY: Record<Stage, string> = { open: "No market is open for bets right now; new ones open daily at 00:00 UTC (" + fmtTsShort(Math.ceil(now / 86400) * 86400).replace(/^\S+ \S+, /, "") + " your time).", awaiting: "No market is waiting for its result.", proposed: "No result is under dispute review right now.", settled: "Nothing has settled yet." };
   const when = (m: MarketView) => (stage === "open" ? timeLeft(m.closeTs) : stage === "awaiting" ? `closed ${fmtTsShort(m.closeTs)} · result soon` : stage === "proposed" ? `proposed ${fmtTsShort(m.proposedAt)}` : `closed ${fmtTsShort(m.closeTs)}`);
   const highlight = (m: MarketView) => (m.status === 2 || m.status === 4 ? m.outcome : m.status === 1 ? m.proposedOutcome : -1);
@@ -52,6 +56,12 @@ export function MarketsScreen() {
           );
         })}
       </ScrollView></View>
+      {cats.length > 0 && <View style={{ height: 40, marginBottom: 10 }}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, alignItems: "center", paddingRight: 8 }}>
+        {cats.map((c) => { const on = c === curCat; return (
+          <Pressable key={c} onPress={() => setCat(c)} style={[styles.catBtn, { backgroundColor: on ? theme.colors.secondaryContainer : "transparent", borderColor: on ? theme.colors.secondary : theme.colors.outlineVariant }]}>
+            <Text variant="labelLarge" style={{ color: theme.colors.onSurface }}>{c === "Chain" ? "Solana" : c}</Text><Text variant="labelSmall" style={styles.dim}>{inStage.filter((m) => metricCategory(m.metric) === c).length}</Text>
+          </Pressable>); })}
+      </ScrollView></View>}
       {isLoading ? <ActivityIndicator /> : error ? <View><Text>Could not load markets: {String((error as any)?.message ?? error)}</Text><Text variant="labelSmall" style={[styles.dim, { fontFamily: "monospace", marginTop: 6 }]} selectable>{String((error as any)?.stack ?? "").split("\n").slice(0, 6).join("\n")}</Text></View> :
         <FlatList data={live} keyExtractor={(m) => String(m.id)} renderItem={card} refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />} ListEmptyComponent={<Text style={styles.dim}>{EMPTY[stage]}</Text>} contentContainerStyle={{ gap: 12, paddingBottom: 24 }} />}
     </View>
@@ -64,5 +74,6 @@ const styles = StyleSheet.create({
   dim: { opacity: 0.7 },
   testnet: { backgroundColor: "#fff3c4", padding: 6, borderRadius: 6, alignItems: "center", marginBottom: 10 },
   stageBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 999, height: 38, paddingHorizontal: 14 },
+  catBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 999, height: 34, paddingHorizontal: 12 },
   stageCount: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, minWidth: 22, alignItems: "center" },
 });
