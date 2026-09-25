@@ -31,7 +31,7 @@
  "docs.money.h": "How the money works",
  "docs.money.1": "Each range has its own pool in SKR. <b>Winners get their stake back plus a pro-rata share of every losing pool.</b> Losers lose their stake.",
  "docs.money.2": "<b>The fee is 3% of what a winner takes from the losing pools</b>, never of the winner's own stake. It is locked into your position at the moment you bet.",
- "docs.money.3": "The treasury may <b>seed</b> a market with a fee-free prize, split among winners. If nobody picked the winning range, everyone is refunded and the seed goes back.",
+ "docs.money.3": "There is <b>no house prize</b>: a pool is only what bettors put in. If nobody picked the winning range, everyone is refunded in full.",
  "docs.money.4": "A <b>voided</b> market refunds every stake in full, no fee. A market that still has no verifiable evidence a day after it could have settled is voided automatically.",
  "docs.money.5": "Deposits sit in a program-owned vault; only the program's payout math can move them. The server holds no funds.",
  "docs.disc.h": "Discounts",

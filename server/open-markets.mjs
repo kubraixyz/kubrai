@@ -64,7 +64,8 @@ for (const t of tpl.templates) {
   try {
     await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, thresholds: thrArr, nBuckets, openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(closeTs), baseline: new BN(baseline) })
       .accounts({ config: configPda, market, vault, mint: cfg.mint, signer, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).rpc();
-    if (t.seedSkr > 0) {
+    // No house prize unless SEED_MARKETS=1 (a test network can still show one): pools are only what bettors put in.
+    if (t.seedSkr > 0 && process.env.SEED_MARKETS === "1") {
       const funderToken = getAssociatedTokenAddressSync(new PublicKey(cfg.mint), signer);
       await program.methods.seedMarket(new BN(Math.round(t.seedSkr * 1_000_000))).accounts({ market, vault, funderToken, funder: signer, tokenProgram: TOKEN_PROGRAM_ID }).rpc();
     }

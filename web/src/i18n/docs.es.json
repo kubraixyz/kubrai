@@ -31,7 +31,7 @@
  "docs.money.h": "Cómo funciona el dinero",
  "docs.money.1": "Cada rango tiene su propio bote en SKR. <b>Los ganadores recuperan su apuesta más una parte proporcional de cada bote perdedor.</b> Los perdedores pierden su apuesta.",
  "docs.money.2": "<b>La comisión es el 3% de lo que un ganador toma de los botes perdedores</b>, nunca de su propia apuesta. Queda fijada en tu posición en el momento de apostar.",
- "docs.money.3": "La tesorería puede <b>sembrar</b> un mercado con un premio sin comisión, repartido entre los ganadores. Si nadie eligió el rango ganador, se reembolsa a todos y la semilla vuelve.",
+ "docs.money.3": "<b>No hay premio de la casa</b>: un bote es solo lo que aportan quienes apuestan. Si nadie eligió el rango ganador, todos reciben su apuesta de vuelta.",
  "docs.money.4": "Un mercado <b>anulado</b> devuelve cada apuesta íntegra, sin comisión. Un mercado que un día después de haber podido liquidarse sigue sin evidencia verificable se anula automáticamente.",
  "docs.money.5": "Los depósitos están en una bóveda propiedad del programa; solo la lógica de pago del programa puede moverlos. El servidor no custodia fondos.",
  "docs.disc.h": "Descuentos",

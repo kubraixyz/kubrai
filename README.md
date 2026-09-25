@@ -32,8 +32,8 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
     current figure. The rule is a generic "program + owner offset + amount offset + minimum" in `FeeTiers`, so the same
     slot can point at the SKR staking program once its layout is known.
   * Discounts never take the fee below the configured floor (1%). All of this lives in an admin-set `FeeTiers` account.
-* The treasury may **seed** a market with a fee-free prize; it is split pro-rata among
-  winners. If nobody wins the seed returns to the treasury.
+* **No house prize.** Pools are only what bettors put in (the program still has `seed_market` for a prize that
+  is split pro-rata among winners, but the opener does not use it unless `SEED_MARKETS=1`).
 * If a market is **voided** every bettor is refunded in full.
 * Bucket thresholds are cut at the **quantiles of the metric's own recent history** (windows of the same length), so every
   range starts out roughly equally likely (`server/buckets.mjs`).
@@ -167,6 +167,4 @@ build can never talk to mainnet money.
 ## Status
 
 devnet: live. **For judges/testers:** the devnet faucet (web “Test wallet” or the app’s Settings screen) gives every wallet 0.05 SOL, 1,000 tSKR, a stand-in Seeker Genesis Token and a stand-in ORE Miner account, so anyone can see both holder discounts without owning a Seeker or mining ORE; on mainnet only a real Genesis Token and a real ORE Miner account qualify. Markets open on a fixed schedule — daily ones at 00:00 UTC (Seekers activated, SKR staked 24 h median, store reviews written, SOL deployed by ORE miners, ORE motherlode hits, ORE mining cost 24 h median) and weekly ones on Mondays (the same plus listings and per-app reviews). Early-bird fee applies for the first quarter of each market (6 h daily / 24 h weekly). Seed Vault Wallet betting verified on a Seeker.
-mainnet: after the hackathon — upgrade authority and treasury move to a Squads multisig
-first, weekly seeding runs on a spending limit, cold-start seed budget is fixed for four
-weeks from launch and then funded from fees.
+mainnet: after the hackathon — upgrade authority and treasury move to a Squads multisig first; no seeding.
