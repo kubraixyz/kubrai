@@ -5,7 +5,7 @@
 <header class="top"><a class="brand" href="/">Kubrai<small data-t="brand.tag">bet on the Seeker numbers</small></a><nav class="nav"><a class="navlink" href="/docs.html" data-t="nav.docs">Docs</a><a class="navlink" href="/leaderboard.html" data-t="nav.leaderboard">Leaderboard</a><a class="navlink" href="/invite.html" data-t="nav.invite">Invite</a><a class="navlink" href="/portfolio.html" data-t="nav.mybets">My bets</a></nav><span class="sp"></span><span id="netbadge"></span><div id="wallet" class="walletbox"></div></header>
 <main class="docs">
   <h1 data-t="docs.h1">How Kubrai works</h1>
-  <p class="lead" data-t="docs.lead">Kubrai runs parimutuel pools on the numbers that describe the Solana Mobile ecosystem itself: how many Seekers were activated today, how much SKR is staked, how many reviews the dApp Store got, what ORE miners deployed. You bet SKR on a range, winners split the losing pools, and every settlement is backed by hourly snapshots whose hashes sit on-chain.</p>
+  <p class="lead" data-t="docs.lead">Kubrai runs parimutuel pools on the numbers that describe the Solana Mobile ecosystem itself: how many Seekers were activated today, how much SKR is staked, how many apps the dApp Store lists, what ORE miners deployed. You bet SKR on a range, winners split the losing pools, and every settlement is backed by hourly snapshots whose hashes sit on-chain.</p>
 
   <div class="fcard vid" id="vid" hidden><video controls preload="metadata" playsinline src="/demo.mp4" poster="/demo-poster.jpg"></video>
     <p class="note" style="margin:0" data-t="docs.video">Three minutes: connect, get test tokens, bet on a range, and see a settled market with its snapshots checked against the on-chain hash. Recorded on devnet.</p></div>
@@ -15,7 +15,7 @@
   <h2 id="why" data-t="docs.why.h">Why bet on the Seeker numbers</h2>
   <p data-t="docs.why.1">Everyone holding a Seeker or SKR already has an opinion on whether the ecosystem is growing this week. Kubrai turns that opinion into a position: pick the range you believe in, put SKR behind it, and get paid from the people who believed otherwise. No order book, no market maker, no spread: it is one pot per range and the pools decide the odds.</p>
   <ul>
-    <li data-t="docs.why.2"><b>The numbers are public and hard to fake.</b> A new Seeker means a $500 device. A store review needs a verified phone. SOL deployed in ORE burns about 10% of every extra SOL. Nobody can buy the result.</li>
+    <li data-t="docs.why.2"><b>The numbers are public and hard to fake.</b> A new Seeker means a $500 device. Review counts are deliberately not a market: one phone can review every listed app. SOL deployed in ORE burns about 10% of every extra SOL. Nobody can buy the result.</li>
     <li data-t="docs.why.3"><b>New markets every day.</b> Daily markets open at <span data-utc="00:00">00:00 UTC</span> (your time) and run 24 hours; weekly ones open on Mondays. There is always something to bet on.</li>
     <li data-t="docs.why.4"><b>Seeker-native.</b> The Android app signs with Seed Vault Wallet through Mobile Wallet Adapter; Genesis Token holders and ORE miners pay a lower fee, proven on-chain from their own wallet.</li>
   </ul>
@@ -24,7 +24,7 @@
   <ol class="fsteps">
     <li data-t="docs.market.1"><b>One metric, 2 to 8 ranges.</b> A yes/no market is two ranges around one threshold; a multi-range market is cut at the quantiles of the metric's own recent history, so every range starts out roughly equally likely.</li>
     <li data-t="docs.market.2"><b>Bets open and close exactly on the hour.</b> Snapshots are taken one minute after the hour, so the closing reading does not exist yet when betting stops: nobody bets on a number they have already seen.</li>
-    <li data-t="docs.market.3"><b>Cumulative metrics</b> (Seekers activated, reviews written, SOL deployed) resolve on the increase between the opening hour's snapshot and the closing hour's. <b>Level metrics</b> (SKR staked, ORE mining cost) resolve on the median of every hourly snapshot inside the window, so a last-minute move cannot swing the result.</li>
+    <li data-t="docs.market.3"><b>Cumulative metrics</b> (Seekers activated, SOL deployed) resolve on the increase between the opening hour's snapshot and the closing hour's. <b>Level metrics</b> (SKR staked, ORE mining cost) resolve on the median of every hourly snapshot inside the window, so a last-minute move cannot swing the result.</li>
     <li data-t="docs.market.4"><b>The server proposes a number, never a winner.</b> The observed value and the hash of the snapshots it came from go on-chain; the program derives the winning range from the market's own thresholds.</li>
     <li data-t="docs.market.5"><b>Six hours to dispute, then payout.</b> Anyone can dispute a proposal inside the window. After it, a permissionless crank pays every winner and refunds every loser's rent. Nobody has to claim.</li>
   </ol>

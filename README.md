@@ -1,8 +1,8 @@
 # Kubrai
 
 Parimutuel prediction pools on the numbers that describe the Solana Mobile / Seeker
-ecosystem itself: Seekers activated today, SKR staked, dApp Store listings, reviews of
-the apps Seekers actually use, and the [ORE](https://ore.supply) mining game (SOL deployed,
+ecosystem itself: Seekers activated today, SKR staked, dApp Store listings, and the
+[ORE](https://ore.supply) mining game (SOL deployed,
 motherlode hits, mining cost). Bet in SKR from any Solana wallet on the web, or natively
 on Seeker with Seed Vault Wallet.
 
@@ -56,8 +56,9 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
    anyone: `.skr` name records, the SKR staking vault), *store data* (dApp Store catalog),
    *third-party*.
 5. **Metrics are chosen to be expensive to manipulate.** A new `.skr` ID needs a Seeker
-   Genesis Token, i.e. a $500 device; dApp Store reviews can only be written from verified
-   devices, one per device per app; pushing up the SOL deployed in ORE burns about 10% of
+   Genesis Token, i.e. a $500 device; (review counts are **not** a market: one verified
+   Seeker may review each of the 1,300+ listed apps once, so a single device could move the store-wide count by
+   hundreds in a day); pushing up the SOL deployed in ORE burns about 10% of
    every extra SOL (ORE returns 89% of a losing square), and whether an ORE round hits the
    motherlode comes from the round's on-chain randomness, which nobody can steer. Level metrics resolve on the median of every hourly snapshot inside the market window (24 for a daily market, 168 for a weekly one; at least 75 % must exist), so a last-minute deposit or withdrawal cannot move the result. Cumulative metrics resolve on the increase between the opening hour's snapshot and the closing hour's snapshot (markets open and close exactly on the hour; snapshots are taken right after the hour, so consecutive markets share one reading and nothing is counted twice).
 6. **Settlement is permissionless.** A crank pays every winner and closes every position,

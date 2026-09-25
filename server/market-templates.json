@@ -1,18 +1,89 @@
 {
-  "_doc": "Markets opened automatically by open-markets.mjs at 00:00 UTC. cadence day = every day (closes next 00:00 UTC); week = Mondays (closes next Monday 00:00 UTC). thresholds: 'auto' cuts N buckets at quantiles of the metric's own hourly history once >= minWindows windows exist, else 'seed' is used; a single seed value makes a yes/no market. auto:false keeps the seed forever (small-integer metrics whose quantiles collapse). seedSkr = fee-free prize added from the operator wallet.",
-  "templates": [
-    { "metric": "sgt_day",         "cadence": "day",  "question": "How many Seekers get activated today?",            "buckets": 4, "seed": [13, 16, 19],   "seedSkr": 0 },
-    { "metric": "skr_staked_dmed", "cadence": "day",  "question": "SKR staked, 24-hour median: at or above today's opening level?", "buckets": 2, "seed": "baseline", "seedSkr": 0 },
-    { "metric": "reviews_day",     "cadence": "day",  "question": "How many dApp Store reviews get written today?",    "buckets": 2, "seed": [210],         "seedSkr": 0 },
-    { "metric": "ore_sol_day",     "cadence": "day",  "question": "How much SOL do ORE miners deploy today?",           "buckets": 4, "seed": [6400000000000, 7400000000000, 7900000000000], "seedSkr": 0 },
-    { "metric": "ore_hits_day",    "cadence": "day",  "question": "How many ORE motherlodes hit today?",                "buckets": 3, "seed": [1, 2],        "seedSkr": 0, "auto": false },
-    { "metric": "ore_cost_dmed",   "cadence": "day",  "question": "ORE mining cost (SOL per ORE), 24-hour median: at or above today's opening level?", "buckets": 2, "seed": "baseline", "seedSkr": 0 },
-    { "metric": "sgt_week",        "cadence": "week", "question": "How many Seekers get activated this week?",         "buckets": 4, "seed": [108, 116, 124], "seedSkr": 0 },
-    { "metric": "skr_staked_wmed", "cadence": "week", "question": "SKR staked, 7-day median: at or above this week's opening level?", "buckets": 2, "seed": "baseline", "seedSkr": 0 },
-    { "metric": "reviews_week",    "cadence": "week", "question": "How many dApp Store reviews get written this week?", "buckets": 2, "seed": [1450],        "seedSkr": 0 },
-    { "metric": "dapps_week",      "cadence": "week", "question": "How many new dApp Store listings this week?",       "buckets": 2, "seed": [30],          "seedSkr": 0 },
-    { "metric": "rev_week:jupiter",  "cadence": "week", "question": "How many new Jupiter Mobile reviews this week?",  "buckets": 2, "seed": [15],          "seedSkr": 0 },
-    { "metric": "rev_week:seedvault","cadence": "week", "question": "How many new Seed Vault Wallet reviews this week?","buckets": 2, "seed": [40],          "seedSkr": 0 }
-  ],
-  "minWindows": 8
+ "_doc": "Markets opened automatically by open-markets.mjs at 00:00 UTC. cadence day = every day (closes next 00:00 UTC); week = Mondays (closes next Monday 00:00 UTC). thresholds: 'auto' cuts N buckets at quantiles of the metric's own hourly history once >= minWindows windows exist, else 'seed' is used; a single seed value makes a yes/no market. auto:false keeps the seed forever (small-integer metrics whose quantiles collapse). seedSkr = fee-free prize added from the operator wallet.",
+ "templates": [
+  {
+   "metric": "sgt_day",
+   "cadence": "day",
+   "question": "How many Seekers get activated today?",
+   "buckets": 4,
+   "seed": [
+    13,
+    16,
+    19
+   ],
+   "seedSkr": 0
+  },
+  {
+   "metric": "skr_staked_dmed",
+   "cadence": "day",
+   "question": "SKR staked, 24-hour median: at or above today's opening level?",
+   "buckets": 2,
+   "seed": "baseline",
+   "seedSkr": 0
+  },
+  {
+   "metric": "ore_sol_day",
+   "cadence": "day",
+   "question": "How much SOL do ORE miners deploy today?",
+   "buckets": 4,
+   "seed": [
+    6400000000000,
+    7400000000000,
+    7900000000000
+   ],
+   "seedSkr": 0
+  },
+  {
+   "metric": "ore_hits_day",
+   "cadence": "day",
+   "question": "How many ORE motherlodes hit today?",
+   "buckets": 3,
+   "seed": [
+    1,
+    2
+   ],
+   "seedSkr": 0,
+   "auto": false
+  },
+  {
+   "metric": "ore_cost_dmed",
+   "cadence": "day",
+   "question": "ORE mining cost (SOL per ORE), 24-hour median: at or above today's opening level?",
+   "buckets": 2,
+   "seed": "baseline",
+   "seedSkr": 0
+  },
+  {
+   "metric": "sgt_week",
+   "cadence": "week",
+   "question": "How many Seekers get activated this week?",
+   "buckets": 4,
+   "seed": [
+    108,
+    116,
+    124
+   ],
+   "seedSkr": 0
+  },
+  {
+   "metric": "skr_staked_wmed",
+   "cadence": "week",
+   "question": "SKR staked, 7-day median: at or above this week's opening level?",
+   "buckets": 2,
+   "seed": "baseline",
+   "seedSkr": 0
+  },
+  {
+   "metric": "dapps_week",
+   "cadence": "week",
+   "question": "How many new dApp Store listings this week?",
+   "buckets": 2,
+   "seed": [
+    30
+   ],
+   "seedSkr": 0
+  }
+ ],
+ "minWindows": 8,
+ "_retired": "2026-09-25: every review-count market (reviews_day/week, rev_week:<app>) retired. One verified Seeker may review each of the 1,300+ listed apps once, so a single device can move the store-wide count by hundreds in a day; the bettors are exactly the people who own Seekers. reviewers_7d (distinct devices) would be the honest version if a review market is ever wanted."
 }
