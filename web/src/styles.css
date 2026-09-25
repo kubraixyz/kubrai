@@ -109,3 +109,10 @@ select.lang{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--l
 .chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 0 16px;padding-bottom:2px}
 .chip{flex:none;white-space:nowrap;border-radius:999px;padding:7px 14px;font-size:14px;background:var(--surface);border:1px solid var(--line);color:var(--fg)}
 .chip small{margin-left:6px;color:var(--dim);font-size:12px}.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}.chip.on small{color:rgba(255,255,255,.8)}
+/* minimal home card */
+.card.mini{gap:8px;padding:14px 16px}.card.mini .title{font-size:15.5px}
+.orows{display:grid;gap:5px}
+.orow{position:relative;display:flex;justify-content:space-between;align-items:center;padding:5px 10px;border-radius:6px;background:var(--surface2);font-size:13px;overflow:hidden}
+.orow i{position:absolute;left:0;top:0;bottom:0;background:var(--c);opacity:.22}
+.orow span,.orow b{position:relative}.orow b{font-family:var(--mono);font-weight:600}
+.orow.win{outline:2px solid var(--c)}

@@ -32,9 +32,8 @@ export function MarketsScreen() {
     const info = metricInfo(m.metric);
     return (
       <Pressable onPress={() => nav.navigate("Market", { id: m.id })} style={({ pressed }) => [styles.card, { backgroundColor: theme.colors.elevation.level1, borderColor: pressed ? theme.colors.primary : theme.colors.outlineVariant }]}>
-        <View style={styles.row}><Chip compact mode="outlined">{statusLabel(m)}</Chip><Text variant="labelSmall" style={styles.dim}>#{m.id} · {when(m)}</Text></View>
+        <Text variant="labelSmall" style={styles.dim}>{/_next$/.test(m.metric) ? "tomorrow" : /_(week|wmed)$/.test(m.metric) ? "weekly" : "daily"} · {when(m)}</Text>
         <Text variant="titleMedium" style={{ marginVertical: 6 }}>{m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥ ${fmtValue(m.metric, m.thresholds[0])}?` : `${metricLabel(m.metric)}: which range?`}</Text>
-        <View style={styles.row}><Chip compact>{{ onchain: "on-chain", store: "store data", thirdparty: "3rd-party data" }[info?.source ?? "thirdparty"]}</Chip>{info?.cumulative && m.baseline ? <Text variant="labelSmall" style={styles.dim}>{`from ${fmtValue(m.metric, m.baseline)} at open`}</Text> : null}</View>
         <View style={{ marginTop: 8 }}><PoolBar m={m} compact highlight={highlight(m)} /></View>
         <Text variant="labelSmall" style={[styles.dim, { marginTop: 6 }]}>{m.positions} bettors · {fmtAmt(totalPool(m) + m.seed, 0)} {TOKEN_SYMBOL} in pot</Text>
       </Pressable>
