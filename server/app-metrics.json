@@ -64,7 +64,7 @@
    "digits": 2,
    "pushCost": "medium to expensive: holding the price up for half a day against the pools' depth",
    "how": "ORE/USD from Jupiter's price API (third-party quote), read every hour.",
-   "category": "Games",
+   "category": "ORE",
    "inStore": true
   },
   {

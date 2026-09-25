@@ -365,5 +365,6 @@
  "ev.dailyDay": "日付",
  "ev.dailyReported": "現時点の報告値",
  "ev.dailyNotYet": "未公開(その日の終了から {lag} 日後に読み取り)",
- "ev.dailyRecent": "ソースの直近 7 日"
+ "ev.dailyRecent": "ソースの直近 7 日",
+ "cat.ORE": "ORE"
 }

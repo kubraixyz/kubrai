@@ -62,11 +62,11 @@ export const metricCadence = (id: string): Cadence => metricInfo(id)?.cadence ??
 export function metricCategory(id: string): string {
   const base = id.replace(/_(next|day|week|dmed|wmed|med7)$/, "");
   if (catalog[base]?.category) return catalog[base].category!;
-  if (/^ore_/.test(base)) return "Games";
+  if (/^ore_/.test(base)) return "ORE";
   if (/^(dapps|reviews|reviewers|rev)/.test(base)) return "Store";
   return "Seeker";
 }
-export const CATEGORY_ORDER = ["Seeker", "DeFi", "Trading", "DEX", "Lending", "Staking", "Wallets", "Launchpads", "Tools", "Games", "Chain", "DePIN", "Memes", "Store", "Other"];
+export const CATEGORY_ORDER = ["Seeker", "DeFi", "Trading", "DEX", "Lending", "Staking", "Wallets", "Launchpads", "Tools", "ORE", "Chain", "DePIN", "Memes", "Store", "Other"];
 export const fmtValue = (id: string, v: number) => {
   const c = metricInfo(id); const x = c?.scale ? v / c.scale : v;
   return x.toLocaleString("en-US", { maximumFractionDigits: c?.digits ?? (c?.scale && c.scale > 1_000_000 ? 4 : 0) }) + (c?.unit ? " " + c.unit : "");

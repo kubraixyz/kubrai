@@ -365,5 +365,6 @@
  "ev.dailyDay": "날짜",
  "ev.dailyReported": "현재 보고된 값",
  "ev.dailyNotYet": "아직 공개 전(그날이 끝나고 {lag}일 뒤 읽음)",
- "ev.dailyRecent": "소스의 최근 7일"
+ "ev.dailyRecent": "소스의 최근 7일",
+ "cat.ORE": "ORE"
 }

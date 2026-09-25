@@ -365,5 +365,6 @@
  "ev.dailyDay": "日期",
  "ev.dailyReported": "目前報出",
  "ev.dailyNotYet": "尚未發布(該日結束 {lag} 天後讀值)",
- "ev.dailyRecent": "來源最近 7 天"
+ "ev.dailyRecent": "來源最近 7 天",
+ "cat.ORE": "ORE"
 }

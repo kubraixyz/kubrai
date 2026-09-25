@@ -365,5 +365,6 @@
  "ev.dailyDay": "Day",
  "ev.dailyReported": "Reported so far",
  "ev.dailyNotYet": "not published yet (read {lag} days after the day ends)",
- "ev.dailyRecent": "the source's last 7 days"
+ "ev.dailyRecent": "the source's last 7 days",
+ "cat.ORE": "ORE"
 }
