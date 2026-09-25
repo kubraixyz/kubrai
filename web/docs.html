@@ -1,22 +1,22 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" type="image/png" href="/favicon.png"><link rel="apple-touch-icon" href="/icon-192.png"><meta name="theme-color" content="#15171b"><title data-t="docs.title">Kubrai · How it works</title>
-<meta name="description" data-t-attr="content:docs.meta" content="Kubrai: parimutuel prediction pools on the numbers that describe the Seeker ecosystem, bet in SKR. How markets, fees, snapshots and settlement work, with a demo video.">
+<meta name="description" data-t-attr="content:docs.meta" content="Kubrai: prediction pools on the apps in the Solana dApp Store (their fees, revenue, volume and staking), bet in SKR. How markets, fees, evidence and settlement work, with a demo video.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/src/styles.css"></head><body><div class="wrap">
-<header class="top"><a class="brand" href="/">Kubrai<small data-t="brand.tag">bet on the Seeker numbers</small></a><nav class="nav"><a class="navlink" href="/docs.html" data-t="nav.docs">Docs</a><a class="navlink" href="/leaderboard.html" data-t="nav.leaderboard">Leaderboard</a><a class="navlink" href="/invite.html" data-t="nav.invite">Invite</a><a class="navlink" href="/portfolio.html" data-t="nav.mybets">My bets</a></nav><span class="sp"></span><span id="netbadge"></span><div id="wallet" class="walletbox"></div></header>
+<header class="top"><a class="brand" href="/">Kubrai<small data-t="brand.tag">bet on Seeker's dApps</small></a><nav class="nav"><a class="navlink" href="/docs.html" data-t="nav.docs">Docs</a><a class="navlink" href="/leaderboard.html" data-t="nav.leaderboard">Leaderboard</a><a class="navlink" href="/invite.html" data-t="nav.invite">Invite</a><a class="navlink" href="/portfolio.html" data-t="nav.mybets">My bets</a></nav><span class="sp"></span><span id="netbadge"></span><div id="wallet" class="walletbox"></div></header>
 <main class="docs">
   <h1 data-t="docs.h1">How Kubrai works</h1>
-  <p class="lead" data-t="docs.lead">Kubrai runs parimutuel pools on the numbers that describe the Solana Mobile ecosystem itself: how many Seekers were activated today, how much SKR is staked, how many apps the dApp Store lists, what ORE miners deployed. You bet SKR on a range, winners split the losing pools, and every settlement is backed by hourly snapshots whose hashes sit on-chain.</p>
+  <p class="lead" data-t="docs.lead">Kubrai runs parimutuel pools on the numbers of the apps in the Solana dApp Store: how much Jupiter trades and earns, what Phantom and the pump.fun app make, how much SOL is staked with Jito, JupSOL and Sanctum, what ORE miners deploy, how many Seekers get activated. You bet SKR on a range, winners split the losing pools, and every settlement is backed by hourly snapshots whose hashes sit on-chain.</p>
 
   <div class="fcard vid" id="vid" hidden><video controls preload="metadata" playsinline src="/demo.mp4" poster="/demo-poster.jpg"></video>
     <p class="note" style="margin:0" data-t="docs.video">Three minutes: connect, get test tokens, bet on a range, and see a settled market with its snapshots checked against the on-chain hash. Recorded on devnet.</p></div>
 
   <nav class="toc"><a href="#why" data-t="docs.toc.why">Why</a><a href="#market" data-t="docs.toc.market">A market</a><a href="#money" data-t="docs.toc.money">Money</a><a href="#discounts" data-t="docs.toc.discounts">Discounts</a><a href="#settle" data-t="docs.toc.settle">Settlement</a><a href="#trust" data-t="docs.toc.trust">Trust model</a><a href="#points" data-t="docs.toc.points">Points &amp; invites</a><a href="#api" data-t="docs.toc.api">API</a></nav>
 
-  <h2 id="why" data-t="docs.why.h">Why bet on the Seeker numbers</h2>
-  <p data-t="docs.why.1">Everyone holding a Seeker or SKR already has an opinion on whether the ecosystem is growing this week. Kubrai turns that opinion into a position: pick the range you believe in, put SKR behind it, and get paid from the people who believed otherwise. No order book, no market maker, no spread: it is one pot per range and the pools decide the odds.</p>
+  <h2 id="why" data-t="docs.why.h">Why bet on Seeker's dApps</h2>
+  <p data-t="docs.why.1">Seeker owners use these apps every day and already have a view on how they are doing: is Jupiter busier this week, did the pump.fun app cool off, is staking with Jito growing? Kubrai turns that view into a position: pick the range you believe in, put SKR behind it, and get paid from the people who believed otherwise. No order book, no market maker, no spread: one pot per range, and the pools decide the odds.</p>
   <ul>
-    <li data-t="docs.why.2"><b>The numbers are public and hard to fake.</b> A new Seeker means a $500 device. Review counts are deliberately not a market: one phone can review every listed app. SOL deployed in ORE burns about 10% of every extra SOL. Nobody can buy the result.</li>
-    <li data-t="docs.why.3"><b>New markets every day.</b> Daily markets open at <span data-utc="00:00">00:00 UTC</span> (your time) and run 24 hours; weekly ones open on Mondays. There is always something to bet on.</li>
+    <li data-t="docs.why.2"><b>Only numbers that cost money to move.</b> Fees and revenue have to be paid by someone, so pushing them up costs what it measures; staked SOL has to stay parked for the whole window; a new Seeker is a $500 device. Counts that are cheap to fake (transactions, wallets, store reviews) are deliberately not markets.</li>
+    <li data-t="docs.why.3"><b>New markets every day.</b> Markets open at <span data-utc="00:00">00:00 UTC</span> (your time). Daily markets close 24 h later; tomorrow markets are on the next full UTC day's number, which nobody has seen yet.</li>
     <li data-t="docs.why.4"><b>Seeker-native.</b> The Android app signs with Seed Vault Wallet through Mobile Wallet Adapter; Genesis Token holders and ORE miners pay a lower fee, proven on-chain from their own wallet.</li>
   </ul>
 
@@ -24,7 +24,7 @@
   <ol class="fsteps">
     <li data-t="docs.market.1"><b>One metric, 2 to 8 ranges.</b> A yes/no market is two ranges around one threshold; a multi-range market is cut at the quantiles of the metric's own recent history, so every range starts out roughly equally likely.</li>
     <li data-t="docs.market.2"><b>Bets open and close exactly on the hour.</b> Snapshots are taken one minute after the hour, so the closing reading does not exist yet when betting stops: nobody bets on a number they have already seen.</li>
-    <li data-t="docs.market.3"><b>Cumulative metrics</b> (Seekers activated, SOL deployed) resolve on the increase between the opening hour's snapshot and the closing hour's. <b>Level metrics</b> (SKR staked, ORE mining cost) resolve on the median of every hourly snapshot inside the window, so a last-minute move cannot swing the result.</li>
+    <li data-t="docs.market.3"><b>Three kinds.</b> Counters (Seekers activated, SOL deployed in ORE) resolve on the increase between the opening and closing hourly snapshots. Levels (staked SOL, SKR staked, prices, reserves) resolve on the median of every hourly snapshot in the window, so a last-minute move cannot swing them. Figures a source publishes once a day (fees, revenue, volume) are bet on a day ahead and read two days after that day ends; later revisions do not count.</li>
     <li data-t="docs.market.4"><b>The server proposes a number, never a winner.</b> The observed value and the hash of the snapshots it came from go on-chain; the program derives the winning range from the market's own thresholds.</li>
     <li data-t="docs.market.5"><b>Six hours to dispute, then payout.</b> Anyone can dispute a proposal inside the window. After it, a permissionless crank pays every winner and refunds every loser's rent. Nobody has to claim.</li>
   </ol>
@@ -50,9 +50,9 @@
   <h2 id="settle" data-t="docs.settle.h">Where the numbers come from</h2>
   <p data-t="docs.settle.1">Every hour the server reads each metric, writes the bundle to disk with its SHA-256, and records that hash in a memo transaction on Solana. A market resolves only from bundles whose bytes still match both the sidecar hash and the on-chain memo. Sources are labelled on every market:</p>
   <ul>
-    <li data-t="docs.settle.2"><b>on-chain:</b> Seeker Genesis Tokens (the Token-2022 group size), SKR in the staking vault, the ORE board and round accounts. Anyone can recompute them.</li>
-    <li data-t="docs.settle.3"><b>store data:</b> the Solana dApp Store catalog and its reviews, read from the store's own API. First-party, off-chain; the snapshot hash is on-chain.</li>
-    <li data-t="docs.settle.4"><b>third-party:</b> aggregators. Used only for markets we do not open any more; shown for history.</li>
+    <li data-t="docs.settle.2"><b>on-chain:</b> token supplies (JitoSOL, JupSOL, Sanctum INF), Seeker Genesis Tokens, SKR in the staking vault, the ORE board and round accounts. Anyone can recompute them.</li>
+    <li data-t="docs.settle.3"><b>third-party:</b> DefiLlama for protocol fees, revenue, volume and exchange reserves; Jupiter for prices. Every reading is stored in the hourly snapshot, so what a market settled on can always be checked.</li>
+    <li data-t="docs.settle.4"><b>store data:</b> the Solana dApp Store catalog, read from the store's own API, decides which apps qualify: only apps listed in the store get markets.</li>
   </ul>
   <p data-t="docs.settle.5">Open any market and expand “Snapshots” to see the opening and closing readings, their hashes and the memo transactions. That is the whole evidence; there is nothing else to trust.</p>
 

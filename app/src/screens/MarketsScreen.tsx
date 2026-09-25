@@ -44,7 +44,7 @@ export function MarketsScreen() {
     <View style={styles.screen}>
       {IS_TEST && <View style={styles.testnet}><Text variant="labelSmall" style={{ color: "#6b5200" }}>TEST NETWORK · devnet · tokens have no value</Text></View>}
       <Text variant="headlineSmall" style={{ marginBottom: 4 }}>Markets</Text>
-      <Text variant="bodySmall" style={[styles.dim, { marginBottom: 10 }]}>Parimutuel pools on the numbers that describe the Seeker ecosystem. Winners split the losing pools; the fee is 3% of winnings only.</Text>
+      <Text variant="bodySmall" style={[styles.dim, { marginBottom: 10 }]}>Prediction pools on the apps in the Solana dApp Store. Pick a range and stake SKR; winners split the losing pools. The fee is 3% of winnings only.</Text>
       <View style={{ height: 44, marginBottom: 12 }}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, alignItems: "center", paddingRight: 8 }}>
         {([["open", "Open"], ["awaiting", "Awaiting result"], ["proposed", "Proposed"], ["settled", "Settled"]] as [Stage, string][]).map(([k, label]) => {
           const on = k === stage;

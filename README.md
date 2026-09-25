@@ -1,10 +1,15 @@
 # Kubrai
 
-Parimutuel prediction pools on the numbers that describe the Solana Mobile / Seeker
-ecosystem itself: Seekers activated today, SKR staked, dApp Store listings, and the
-[ORE](https://ore.supply) mining game (SOL deployed,
-motherlode hits, mining cost). Bet in SKR from any Solana wallet on the web, or natively
-on Seeker with Seed Vault Wallet.
+Parimutuel prediction pools on the apps in the **Solana dApp Store**: Jupiter's swap volume
+and revenue, Jupiter Perps fees, Phantom's revenue, the pump.fun app's revenue, SOL staked with
+Jito / JupSOL / Sanctum, Backpack's reserves, the [ORE](https://ore.supply) mining game, and the
+Seeker itself (Genesis Tokens activated, SKR staked). Only apps listed in the store get markets,
+and only numbers that cost money to move: fees and revenue have to be paid, staked SOL has to stay
+parked; transaction, wallet and review counts are deliberately not markets. Bet in SKR from any
+Solana wallet on the web, or natively on Seeker with Seed Vault Wallet.
+
+No other prediction app in the dApp Store runs markets on the store's own apps (checked
+2026-09-25 against the 24 prediction and betting apps listed).
 
 Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
 

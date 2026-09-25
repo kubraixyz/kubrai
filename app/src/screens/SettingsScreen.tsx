@@ -54,7 +54,7 @@ export function SettingsScreen() {
         <Text style={styles.mono} selectable>{ref.link}</Text>
         <Text style={styles.dim}>Invited {ref.referred} · your share {(ref.tierBps / 100).toFixed(0)}% of invitees' fees · earned {Number(ref.earned).toLocaleString("en-US", { maximumFractionDigits: 2 })} {TOKEN_SYMBOL} (paid {Number(ref.paid).toLocaleString("en-US", { maximumFractionDigits: 2 })}){ref.bound ? ` · you joined through ${ref.bound.code}` : ""}</Text>
         <View style={styles.row}>
-          <Button mode="contained" icon="share-variant" onPress={() => Share.share({ message: `Bet on the Seeker numbers with me on Kubrai — join through my link and get 10% of the fee on your winnings back: ${ref.link}` }).catch(() => {})}>Share link</Button>
+          <Button mode="contained" icon="share-variant" onPress={() => Share.share({ message: `Bet on Seeker's dApps with me on Kubrai — join through my link and get 10% of the fee on your winnings back: ${ref.link}` }).catch(() => {})}>Share link</Button>
           <Button mode="outlined" icon="content-copy" onPress={async () => { try { await Clipboard.setStringAsync(ref.link); setRefMsg("Copied"); } catch { setRefMsg(ref.link); } setTimeout(() => setRefMsg(""), 2000); }}>Copy</Button>
         </View>
         {!!refMsg && <Text style={styles.dim}>{refMsg}</Text>}
@@ -70,7 +70,7 @@ export function SettingsScreen() {
       <Text style={styles.dim}>Program {APP.programId}</Text>
       <Divider style={{ marginVertical: 16 }} />
       <Text variant="titleMedium">About</Text>
-      <Text>Kubrai runs parimutuel pools on Seeker-ecosystem numbers. Every market settles from hourly snapshots whose hash is on-chain, the winning range is derived on-chain from the observed value, and payouts are pushed to your wallet automatically after a 6 h dispute window. Every time in the app is shown in your own time zone.</Text>
+      <Text>Kubrai runs parimutuel pools on the numbers of the apps in the Solana dApp Store (fees, revenue, volume, staking) and the Seeker itself. Every market settles from hourly snapshots whose hash is on-chain, the winning range is derived on-chain from the observed value, and payouts are pushed to your wallet automatically after a 6 h dispute window. Every time in the app is shown in your own time zone.</Text>
       <Text style={styles.dim}>kubrai.xyz</Text>
       <Divider style={{ marginVertical: 16 }} />
       <Text variant="titleMedium">Diagnostics</Text>
