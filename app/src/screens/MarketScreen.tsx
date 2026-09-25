@@ -6,7 +6,8 @@ import { PublicKey } from "@solana/web3.js";
 import { useBalances, useConfig, useInvalidateAll, useMarket, usePositions } from "../hooks/useKubrai";
 import { metricInfo, metricLabel, fmtValue, SOURCE_LABEL } from "../chain/metrics";
 import { PoolBar } from "../components/PoolBar";
-import { bucketColor, bucketLabel, fmtAmt, fmtTs, statusLabel, timeLeft } from "../chain/format";
+import { Timeline } from "../components/Timeline";
+import { bucketColor, bucketLabel, fmtAmt, fmtTs, fmtTsShort, statusLabel, timeLeft } from "../chain/format";
 import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, impliedPayout, earlyBirdUntil, programId } from "../chain/kubrai";
 import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type HolderProof } from "../chain/holder";
 import { useConnection } from "../utils/ConnectionProvider";
@@ -26,7 +27,7 @@ export function MarketScreen() {
   const info = m ? metricInfo(m.metric) : undefined;
   const [ev, setEv] = useState<any>(null);
   useEffect(() => { if (!m) return; fetch(`${APP.apiBase}/evidence?metric=${encodeURIComponent(m.metric)}&open=${m.openTs}&close=${m.closeTs}&baseline=${m.baseline}&id=${m.id}`).then((r) => (r.ok ? r.json() : null)).then(setEv).catch(() => setEv(null)); }, [m?.pubkey?.toBase58?.()]);
-  const slotLabel = (slot: string) => slot.replace("T", " ") + ":00 UTC";
+  const slotLabel = (slot: string) => fmtTsShort(Date.parse(slot + ":00:00Z") / 1000);
   const NO_PROOF: HolderProof = { accounts: [], sgt: false, stake: false, sgtDiscountBps: 0, stakeDiscountBps: 0, minFeeBps: 0, stakeLabel: "" };
   const [proof, setProof] = useState<HolderProof>(NO_PROOF);
   useEffect(() => { let live = true; holderProof(connection, programId, selectedAccount?.publicKey ?? null, cfg?.feeTiers ?? null).then((p) => { if (live) setProof(p); }); return () => { live = false; }; }, [selectedAccount?.publicKey?.toBase58?.(), cfg?.feeTiers?.sgtGroupMint]);
@@ -117,12 +118,12 @@ export function MarketScreen() {
       )}
 
       <Divider style={{ marginVertical: 16 }} />
-      <Text variant="titleMedium" style={styles.h2}>SCHEDULE</Text>
-      <KV k="Betting opens" v={fmtTs(m.openTs)} />
-      <KV k="Betting closes" v={fmtTs(m.closeTs)} />
+      <Text variant="titleMedium" style={styles.h2}>TIMELINE</Text>
+      <Timeline m={m} disputeWindowSecs={cfg ? cfg.disputeWindowSecs.toNumber() : null} />
+      <Text variant="titleMedium" style={[styles.h2, { marginTop: 8 }]}>RULES</Text>
       {cfg && <KV k="Early-bird fee" v={`${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyBirdUntil(cfg, m))}, then ${cfg.feeBps / 100}%`} />}
       {cfg?.feeTiers && <KV k="Holder discounts" v={`${[cfg.feeTiers.sgtDiscountBps ? `Seeker Genesis Token −${cfg.feeTiers.sgtDiscountBps / 100}%` : "", stakeRuleText(cfg.feeTiers)].filter(Boolean).join(" · ")}${cfg.feeTiers.minFeeBps ? ` · never below ${cfg.feeTiers.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.${IS_TEST ? " Devnet note: the test faucet gives every wallet a stand-in Genesis Token and registers it as a stand-in ORE miner so anyone can try both discounts; on mainnet only a real Seeker's token and a real ORE Miner account qualify." : ""}`} />}
-      <KV k="Result proposed" v={m.proposedAt ? `${fmtTs(m.proposedAt)} · observed ${fmtValue(m.metric, m.proposedValue)} → ${bucketLabel(m, m.proposedOutcome)}` : "after close"} />
+      <KV k="Result proposed" v={m.proposedAt ? `${fmtTs(m.proposedAt)} · observed ${fmtValue(m.metric, m.proposedValue)} → ${bucketLabel(m, m.proposedOutcome)}` : "after close (see the timeline above)"} />
       {m.nBuckets > 2 && <KV k="How ranges are set" v="Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely." />}
       {cfg && <KV k="Dispute window" v={`${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize`} />}
       {ev ? (ev.kind === "cum"

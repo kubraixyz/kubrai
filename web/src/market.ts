@@ -6,6 +6,9 @@ import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mou
 import { API_BASE, CLUSTER, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type HolderProof } from "./holder";
 import { connection, programId } from "./kubrai";
+import { timelineHtml } from "./timeline";
+import { bindReferralAfterBet } from "./referral";
+import { fmtTsShort, zoneName } from "./time";
 
 mountNetBadge(); mountWallet();
 const root = document.getElementById("market")!;
@@ -31,13 +34,13 @@ function render() {
     ${poolsHtml(m, m.status >= 1 && m.proposedOutcome !== NO_OUTCOME ? m.proposedOutcome : -1)}
     <h2>Bet</h2>
     <div id="bet"></div>
-    <h2>Schedule</h2>
+    <h2>Timeline <span class="note" style="text-transform:none;letter-spacing:0;font-family:var(--sans)">· times in your zone (${esc(zoneName())})</span></h2>
+    ${timelineHtml(m, cfg)}
+    <h2>Rules</h2>
     <div class="kv">
-      <b>Betting opens</b><span>${fmtTs(m.openTs)}</span>
-      <b>Betting closes</b><span>${fmtTs(m.closeTs)}</span>
       <b>Early-bird fee</b><span>${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyUntil)}, then ${cfg.feeBps / 100}%</span>
       ${t ? `<b>Holder discounts</b><span>${[t.sgtDiscountBps ? `Seeker Genesis Token −${t.sgtDiscountBps / 100}%` : "", stakeRuleText(t)].filter(Boolean).join(" · ")}${t.minFeeBps ? ` · never below ${t.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.${CLUSTER === "devnet" ? " <span class=\"warn\">Devnet note: the test faucet gives every wallet a stand-in Genesis Token and registers it as a stand-in ORE miner so anyone can try both discounts; on mainnet only a real Seeker's token and a real ORE Miner account qualify.</span>" : ""}</span>` : ""}
-      <b>Result proposed</b><span>${m.proposedAt ? `${fmtTs(m.proposedAt)} · observed <span class="mono">${fmtValue(m.metric, m.proposedValue)}</span> → <b>${bucketLabel(m, m.proposedOutcome)}</b>` : "after close"}</span>
+      <b>Result proposed</b><span>${m.proposedAt ? `${fmtTs(m.proposedAt)} · observed <span class="mono">${fmtValue(m.metric, m.proposedValue)}</span> → <b>${bucketLabel(m, m.proposedOutcome)}</b>` : "after close (see the timeline above)"}</span>
       ${m.nBuckets > 2 ? `<b>How ranges are set</b><span>Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely. Odds then move with the pools.</span>` : ""}
       <b>Dispute window</b><span>${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize</span>
       <b>Snapshots</b><span id="evidence" class="note">loading…</span>
@@ -97,12 +100,15 @@ function renderBet(open: boolean, fee: number) {
     go.disabled = true; msg.innerHTML = `<div class="msg">Confirm in your wallet…</div>`;
     try {
       await refreshProof();
-      const tx = await buildPlaceBetTx(sess.publicKey, m, bucket, a, new PublicKey(cfg.mint), proof.accounts);
-      const sig = await sess.signAndSend(tx);
+      // A wallet funded seconds ago can hit an RPC node that has not seen the credit yet; one retry covers it.
+      const send = async () => sess.signAndSend(await buildPlaceBetTx(sess.publicKey, m, bucket, a, new PublicKey(cfg.mint), proof.accounts));
+      const sig = await send().catch(async (e) => { if (!/prior credit|Blockhash not found/i.test(String(e?.message ?? e))) throw e; msg.innerHTML = `<div class="msg">The network has not caught up with your balance yet; retrying…</div>`; await new Promise((r) => setTimeout(r, 4000)); return send(); });
       msg.innerHTML = `<div class="msg">Sent. Waiting for confirmation… <span class="hash">${esc(sig)}</span></div>`;
       await confirmBySig(sig);
       msg.innerHTML = `<div class="msg ok">Bet placed: ${fmtAmt(a)} ${TOKEN_SYMBOL} on “${bucketLabel(m, bucket)}”.</div>`;
+      const refNote = await bindReferralAfterBet(sess);
       await refreshBalances(); await load(true); await showPosition();
+      if (refNote) { const b = document.getElementById("bet"); if (b) b.insertAdjacentHTML("beforeend", `<div class="msg ok" style="margin-top:8px">${esc(refNote)}</div>`); }
     } catch (e: any) { msg.innerHTML = `<div class="msg err">${esc(e?.message ?? e)}</div>`; go.disabled = false; }
   };
 }
@@ -118,14 +124,14 @@ onSession(() => { if (m) { render(); showPosition(); } });
 load().catch((e) => (root.innerHTML = `<div class="msg err">Could not load market #${esc(id)}: ${esc(e.message ?? e)}</div>`));
 
 /** The hourly snapshots behind this market, with their values, so nobody has to dig through the API.
- *  One format everywhere: "<label>  <value>  <YYYY-MM-DD HH:00 UTC>  sha256 <prefix>  memo tx". */
+ *  One format everywhere: "<label>  <value>  <snapshot hour, local time>  sha256 <prefix>  memo tx". */
 async function loadEvidence() {
   const el = document.getElementById("evidence"); if (!el) return;
   try {
     const r = await fetch(`${API_BASE}/evidence?metric=${encodeURIComponent(m.metric)}&open=${m.openTs}&close=${m.closeTs}&baseline=${m.baseline}&id=${m.id}`);
     if (!r.ok) { el.textContent = "no snapshot data yet"; return; }
     const e = await r.json(); const fv = (v: number | null | undefined) => (v == null ? "—" : fmtValue(m.metric, v));
-    const when = (slot?: string | null) => !slot ? "" : slot === "on-chain" ? "fixed on-chain at creation" : `<a href="${API_BASE}/snapshots/${slot}" target="_blank" rel="noopener">${esc(slot.replace("T", " "))}:00 UTC</a>`;
+    const when = (slot?: string | null) => !slot ? "" : slot === "on-chain" ? "fixed on-chain at creation" : `<a href="${API_BASE}/snapshots/${slot}" target="_blank" rel="noopener" title="snapshot slot ${esc(slot)} UTC">${esc(fmtTsShort(Date.parse(slot + ":00:00Z") / 1000))}</a>`;
     const proof = (x: any) => x?.sha256 ? ` · sha256 <span class="hash">${esc(x.sha256.slice(0, 12))}…</span>${x.memo ? ` · <a href="https://explorer.solana.com/tx/${x.memo}?cluster=devnet" target="_blank" rel="noopener">memo tx</a>` : ""}` : "";
     const row = (label: string, value: string, x: any) => `<div><b>${label}</b> <span class="mono">${value}</span>${x?.slot ? ` · ${when(x.slot)}` : ""}${proof(x)}</div>`;
     const rows: string[] = [];

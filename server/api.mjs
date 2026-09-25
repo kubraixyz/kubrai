@@ -12,6 +12,8 @@ import bs58 from "bs58";
 import { notify } from "./notify.mjs";
 import { renderOps, handleOpsAction } from "./ops.mjs";
 import { parseMetric, loadSlots, valueIn, median } from "./history.mjs";
+import { leaderboard, readSettlements } from "./points.mjs";
+import * as referrals from "./referrals.mjs";
 import anchor from "@coral-xyz/anchor";
 
 const PORT = Number(process.env.API_PORT ?? 8787);
@@ -58,10 +60,78 @@ const FAUCET_DAILY_GLOBAL = Number(process.env.FAUCET_DAILY_GLOBAL ?? 300);
 const DISPUTES = path.join(SNAP, "disputes.jsonl");
 const DIAG_MAX = 32 * 1024;
 
+// ---------- leaderboard (points.mjs) ----------
+// Scored from the crank's settlement log, so it only ever counts markets that actually paid out. Recomputed when that
+// file grows, not per request. Our own wallets (the demo bots that keep the devnet markets alive, throwaway wallets
+// from browser tests) are listed in snapshots/test-wallets.json so the board can say so instead of passing them off
+// as players; re-read every few minutes.
+let testWallets = { at: 0, set: new Set() };
+function ownWallets() {
+  if (Date.now() - testWallets.at > 300_000) {
+    let list = []; try { const f = path.join(SNAP, "test-wallets.json"); if (fs.existsSync(f)) list = JSON.parse(fs.readFileSync(f, "utf8")); } catch {}
+    testWallets = { at: Date.now(), set: new Set(list) };
+  }
+  return testWallets.set;
+}
+const boardCache = new Map();
+function leaderboardCached(key, since) {
+  let stamp = "-"; try { const st = fs.statSync(path.join(SNAP, "settlements.jsonl")); stamp = `${st.size}:${st.mtimeMs}`; } catch {}
+  const hit = boardCache.get(key);
+  // A window that ends "n days ago" slides, so a cached board also goes stale on its own after a few minutes.
+  if (hit && hit.stamp === stamp && Date.now() - hit.at < (since ? 300_000 : 3_600_000)) return hit;
+  const v = { ...leaderboard(readSettlements(SNAP), since), at: Date.now(), stamp };
+  boardCache.set(key, v); return v;
+}
+
+// ---------- referrals (referrals.mjs) ----------
+// One file for every network (keyed by wallet address): point REFERRALS_FILE at the same path on mainnet.
+const REFERRALS_FILE = process.env.REFERRALS_FILE ?? path.join(SNAP, "referrals.json");
+const REFERRAL_PAYOUTS = path.join(SNAP, "referral-payouts.jsonl");
+const SITE_URL = process.env.SITE_URL ?? (CLUSTER === "mainnet" ? "https://kubrai.xyz" : "https://devnet.kubrai.xyz");
+const isPubkey = (s) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(s ?? ""));
+const settledRowsOf = (wallet) => readSettlements(SNAP).filter((r) => r.owner === wallet);
+// Open positions of a wallet straight from the chain (they close on payout, so settled history is checked separately).
+const openPositionsOf = async (wallet) => (await roProgram.account.position.all([{ dataSize: roProgram.account.position.size }, { memcmp: { offset: 40, bytes: wallet } }])).length;
+const betCache = new Map();   // wallet → { at, open, settled }
+// A cache miss costs one getProgramAccounts call. A stranger can trigger misses at will (any address is a valid
+// question), so they are budgeted per network per day and globally per minute; over budget the answer is 429.
+// Reads (GET /referral/:wallet) and writes (bind / create a code) have separate per-minute budgets, so a stranger
+// cycling through random addresses cannot stop real bindings.
+const LOOKUP_IP_DAILY = Number(process.env.LOOKUP_IP_DAILY ?? 60), LOOKUP_PER_MINUTE = Number(process.env.LOOKUP_PER_MINUTE ?? 30);
+const seenLookup = new Map(); let lookupMinute = { at: 0, get: 0, post: 0 };
+function chargeLookup(ip, pool = "get") {
+  rollDay(); const minute = Math.floor(Date.now() / 60_000); if (lookupMinute.at !== minute) lookupMinute = { at: minute, get: 0, post: 0 };
+  if (lookupMinute[pool] >= LOOKUP_PER_MINUTE || (seenLookup.get(ip) ?? 0) >= LOOKUP_IP_DAILY) throw Object.assign(new Error("too many wallet lookups; try again later"), { status: 429 });
+  lookupMinute[pool]++; seenLookup.set(ip, (seenLookup.get(ip) ?? 0) + 1);
+  if (betCache.size > 5000) betCache.clear();
+}
+// "No bets yet" goes stale the moment the first bet lands, so it is only trusted for 10 s, and `fresh` skips it. A
+// positive answer is trusted for 60 s even when `fresh`: a position cannot vanish in that time, while the RPC's
+// account index can lag a few seconds behind the confirmation the browser just saw (one node says 1, the next says 0).
+async function betHistory(wallet, fresh = false, ip = "?") {
+  const hit = betCache.get(wallet); if (hit && Date.now() - hit.at < (hit.open + hit.settled ? 60_000 : fresh ? 0 : 10_000)) return hit;
+  chargeLookup(ip, fresh ? "post" : "get");
+  const v = { at: Date.now(), open: await openPositionsOf(wallet), settled: settledRowsOf(wallet).length };
+  betCache.set(wallet, v); return v;
+}
+const referralPoints = () => new Map(leaderboardCached("all", 0).entries.map((e) => [e.wallet, e.points]));
+const TOKEN_DECIMALS = 6, uiAmt = (raw) => Number(raw) / 10 ** TOKEN_DECIMALS;
+function referralView(wallet) {
+  const db = referrals.load(REFERRALS_FILE), rows = readSettlements(SNAP), pts = referralPoints();
+  const earn = referrals.earnings(rows, db, (w) => pts.get(w) ?? 0), payouts = referrals.effectivePayouts(referrals.readPayouts(REFERRAL_PAYOUTS));
+  const e = earn.byWallet.get(wallet), own = db.wallets[wallet], b = db.bindings[wallet] ?? null, points = pts.get(wallet) ?? 0;
+  let paid = 0n; for (const p of payouts) if (p.wallet === wallet) paid += BigInt(p.raw);
+  return { wallet, code: own?.code ?? null, link: own ? `${SITE_URL}/?ref=${own.code}` : null,
+    bound: b ? { code: b.code, referrer: b.referrer.slice(0, 4) + "…" + b.referrer.slice(-4), at: b.at } : null,
+    referred: e?.referred.size ?? 0, points, tierBps: referrals.tierBps(points), nextTier: referrals.nextTier(points), refereeBps: referrals.REFEREE_BPS, tiers: referrals.REFERRER_TIERS,
+    earned: uiAmt(e?.raw ?? 0n), asReferrer: uiAmt(e?.asReferrer ?? 0n), asReferee: uiAmt(e?.asReferee ?? 0n), paid: uiAmt(paid), owed: uiAmt((e?.raw ?? 0n) - paid), settlements: e?.rows ?? 0,
+    payouts: payouts.filter((p) => p.wallet === wallet).slice(-20).reverse().map(({ at, raw, ui, signature }) => ({ at, raw, amount: ui ?? uiAmt(raw), signature })) };
+}
+
 // rate limits: one faucet call per address per day, 20 per IP per day, a global daily cap; maps pruned daily
 const seenAddr = new Map(), seenIp = new Map(); let seenDay = "", faucetToday = 0;
 const dayKey = () => new Date().toISOString().slice(0, 10);
-function rollDay() { const d = dayKey(); if (d !== seenDay) { seenDay = d; seenAddr.clear(); seenIp.clear(); seenFb.clear(); faucetToday = 0; } }
+function rollDay() { const d = dayKey(); if (d !== seenDay) { seenDay = d; seenAddr.clear(); seenIp.clear(); seenFb.clear(); seenLookup.clear(); betCache.clear(); faucetToday = 0; } }
 // Only Caddy talks to this socket; Caddy replaces X-Forwarded-For for untrusted clients, so its first hop is the real client.
 const clientIp = (req) => String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "?").split(",")[0].trim();
 
@@ -146,6 +216,73 @@ const server = http.createServer(async (req, res) => {
       const f = path.join(SNAP, "settlements.jsonl");
       const rows = fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.owner === po[1]) : [];
       return json(res, 200, { owner: po[1], settled: rows.reverse() }, { "cache-control": "no-store" });
+    }
+    // Leaderboard: points = SKR staked, per settled market (points.mjs). ?window=7d|30d|all, ?limit=n.
+    if (url.pathname === "/leaderboard") {
+      const w0 = url.searchParams.get("window"), win = w0 === "7d" || w0 === "30d" ? w0 : "all";   // also the cache key: never the raw string
+      const days = win === "7d" ? 7 : win === "30d" ? 30 : 0;
+      const since = days ? Math.floor(Date.now() / 1000) - days * 86400 : 0;
+      const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 100) || 100));
+      const board = leaderboardCached(win, since), own = ownWallets();
+      return json(res, 200, { window: win, at: board.at, totals: board.totals, entries: board.entries.slice(0, limit).map((e) => ({ ...e, test: own.has(e.wallet) })) }, { "cache-control": "public, max-age=30" });
+    }
+    // ---------- referrals ----------
+    // GET /referral/lookup/:code → who a code belongs to (for the "invited by" banner)
+    const rl = url.pathname.match(/^\/referral\/lookup\/([A-Za-z0-9]{4,12})$/);
+    if (rl) {
+      const code = referrals.normalizeCode(rl[1]), w = referrals.referrerOf(referrals.load(REFERRALS_FILE), code);
+      return json(res, 200, w ? { valid: true, code, referrer: w.slice(0, 4) + "…" + w.slice(-4), refereeBps: referrals.REFEREE_BPS } : { valid: false, code }, { "cache-control": "public, max-age=60" });
+    }
+    // GET /referral/:wallet → the wallet's code, link, binding and earnings
+    const rw = url.pathname.match(/^\/referral\/([1-9A-HJ-NP-Za-km-z]{32,44})$/);
+    if (rw && req.method === "GET") {
+      let h; try { h = await betHistory(rw[1], false, clientIp(req)); } catch (e) { return json(res, e?.status ?? 500, { error: e?.message ?? "lookup failed" }); }
+      return json(res, 200, { ...referralView(rw[1]), eligible: h.open + h.settled > 0, bets: h.open + h.settled, firstBet: h.settled === 0 && h.open > 0 }, { "cache-control": "no-store" });
+    }
+    // POST /referral/code {wallet} → create the wallet's code once it has placed a bet (nothing to sign: a code only
+    // ever pays its owner)
+    if (url.pathname === "/referral/code" && req.method === "POST") {
+      let b; try { b = JSON.parse(await readBody(req)); } catch { return json(res, 400, { error: "bad body" }); }
+      const wallet = String(b.wallet ?? ""); if (!isPubkey(wallet)) return json(res, 400, { error: "wallet required" });
+      const db = referrals.load(REFERRALS_FILE);
+      if (!db.wallets[wallet]) {
+        let h; try { h = await betHistory(wallet, true, clientIp(req)); } catch (e) { return json(res, e?.status ?? 500, { error: e?.message ?? "lookup failed" }); }
+        if (h.open + h.settled === 0) return json(res, 403, { error: "place a bet first — the link unlocks with your first stake" });
+        // re-read after the await: another request may have saved meanwhile, and load → save must not span an await
+        const cur = referrals.load(REFERRALS_FILE);
+        referrals.ensureCode(cur, wallet); referrals.save(REFERRALS_FILE, cur);
+        console.log("referral code", wallet.slice(0, 6), cur.wallets[wallet].code);
+      }
+      return json(res, 200, { ...referralView(wallet), eligible: true });
+    }
+    // POST /referral/bind {wallet, code, ts, signature} → bind a first-time bettor to the code it arrived with. The
+    // wallet signs the canonical message naming this site and the time (valid BIND_MAX_AGE_SECS, so a signature
+    // cannot be kept and replayed); only a wallet with an open position and no settled history qualifies (= first bet).
+    if (url.pathname === "/referral/bind" && req.method === "POST") {
+      let b; try { b = JSON.parse(await readBody(req)); } catch { return json(res, 400, { error: "bad body" }); }
+      const wallet = String(b.wallet ?? ""), code = referrals.normalizeCode(b.code);
+      if (!isPubkey(wallet) || !referrals.CODE_RE.test(code)) return json(res, 400, { error: "wallet and code required" });
+      const host = new URL(SITE_URL).host, nowS = Math.floor(Date.now() / 1000), ts = Number(b.ts);
+      let ok = false, why = "signature does not match the wallet";
+      try {
+        if (!Number.isInteger(ts) || Math.abs(nowS - ts) > referrals.BIND_MAX_AGE_SECS) why = "signature is too old; try again";
+        else ok = nacl.sign.detached.verify(new TextEncoder().encode(referrals.bindMessage(wallet, code, host, ts)), bs58.decode(String(b.signature ?? "")), bs58.decode(wallet));
+      } catch {}
+      if (!ok) return json(res, 401, { error: why });
+      const db = referrals.load(REFERRALS_FILE);
+      if (db.bindings[wallet]) return json(res, db.bindings[wallet].code === code ? 200 : 409, db.bindings[wallet].code === code ? { ok: true, already: true } : { error: "this wallet is already bound to another code", permanent: true });
+      if (!referrals.referrerOf(db, code)) return json(res, 404, { error: "unknown referral code", permanent: true });
+      let h; try { h = await betHistory(wallet, true, clientIp(req)); } catch (e) { return json(res, e?.status ?? 500, { error: e?.message ?? "lookup failed" }); }
+      if (h.open === 0 && h.settled === 0) return json(res, 409, { error: "place your first bet, then the link binds" });
+      if (h.settled > 0) return json(res, 409, { error: "a referral link only counts on a wallet's first bet", permanent: true });
+      // re-read after the await (see /referral/code): load → bind → save runs without yielding
+      const cur = referrals.load(REFERRALS_FILE);
+      if (cur.bindings[wallet]) return json(res, cur.bindings[wallet].code === code ? 200 : 409, cur.bindings[wallet].code === code ? { ok: true, already: true } : { error: "this wallet is already bound to another code", permanent: true });
+      const r = referrals.bind(cur, { wallet, code, cluster: CLUSTER });
+      if (r.error) return json(res, 409, { error: r.error, permanent: true });
+      referrals.save(REFERRALS_FILE, cur);
+      console.log("referral bind", wallet.slice(0, 6), "→", code);
+      return json(res, 200, { ok: true });
     }
     // In-app feedback: { note, diagnostics, image (base64 jpeg/png, ≤ 6 MB) } → one .json (+ .jpg/.png) per report
     if (url.pathname === "/feedback" && req.method === "POST") {
@@ -255,7 +392,8 @@ reason=${reason}`;
         if (giveSol) tx.add(SystemProgram.transfer({ fromPubkey: faucet.publicKey, toPubkey: address, lamports: Math.round(FAUCET_SOL * LAMPORTS_PER_SOL) }));
         tx.add(createAssociatedTokenAccountIdempotentInstruction(faucet.publicKey, ata, address, mint));
         tx.add(createTransferInstruction(from, ata, faucet.publicKey, FAUCET_TOKENS));
-        const sig = await sendAndConfirmTransaction(conn, tx, [faucet]);
+        // Devnet RPCs hand out a blockhash one node and simulate on another; "Blockhash not found" is transient, retry.
+        let sig; for (let attempt = 1; ; attempt++) { try { sig = await sendAndConfirmTransaction(conn, tx, [faucet]); break; } catch (e) { if (attempt >= 3 || !/Blockhash not found|prior credit/i.test(String(e?.message ?? e))) throw e; await new Promise((r) => setTimeout(r, 1500)); } }
         let sgt = null;
         if (SGT_GROUP_MINT) { try { sgt = (await hasMockSgt(address)) ? "already held" : await mintMockSgt(address, faucet); } catch (e) { console.error("mock SGT mint failed", e?.message); sgt = "failed"; } }
         let miner = null;

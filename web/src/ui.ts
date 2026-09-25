@@ -4,12 +4,15 @@ import { STATUS, connection, fetchConfig, totalPool, type MarketView } from "./k
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { fmtValue } from "./metrics";
 import { connectWallet, devWallet, listWallets, type Session } from "./wallet";
+import { fmtTs as fmtTsLocal, timeLeft as timeLeftLocal } from "./time";
+import { bindIfPending, captureReferral } from "./referral";
 
 /** HTML-escape anything that did not originate in our own source. */
 export const esc = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 export const isBase58 = (s: unknown) => typeof s === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,90}$/.test(s);
 export const fmtAmt = (base: number, digits = 2) => (base / 10 ** TOKEN_DECIMALS).toLocaleString("en-US", { maximumFractionDigits: digits });
-export const fmtTs = (ts: number) => new Date(ts * 1000).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+/** Viewer's local time with its zone named ("25 Sept 2026, 14:10 GMT+8"). */
+export const fmtTs = fmtTsLocal;
 export const short = (pk: PublicKey | string) => { const s = pk.toString(); return s.slice(0, 4) + "…" + s.slice(-4); };
 export function statusPill(m: MarketView) {
   const now = Date.now() / 1000;
@@ -17,11 +20,7 @@ export function statusPill(m: MarketView) {
   const cls = m.status === 0 ? "open" : STATUS[m.status].toLowerCase();
   return `<span class="pill ${cls}">${label}</span>`;
 }
-export function timeLeft(ts: number) {
-  const s = ts - Date.now() / 1000; if (s <= 0) return "closed";
-  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-  return d > 0 ? `${d}d ${h}h left` : h > 0 ? `${h}h ${m}m left` : `${m}m left`;
-}
+export const timeLeft = timeLeftLocal;
 /** Human label of bucket i: "< t0", "t0 – t1", "≥ tlast". Yes/no markets read "No (< t)" / "Yes (≥ t)". */
 export function bucketLabel(m: MarketView, i: number) {
   const f = (v: number) => fmtValue(m.metric, v).replace(/ [^ ]+$/, "");
@@ -64,10 +63,10 @@ export async function refreshBalances() {
 const listeners: ((s: Session | null) => void)[] = [];
 export const onSession = (fn: (s: Session | null) => void) => { listeners.push(fn); fn(session); };
 export const getSession = () => session;
-function setSession(s: Session | null) { session = s; try { s ? localStorage.setItem("kubrai.wallet", s.label) : localStorage.removeItem("kubrai.wallet"); } catch {} balances.loaded = false; listeners.forEach((f) => f(s)); renderWallet(); refreshBalances(); }
+function setSession(s: Session | null) { session = s; try { s ? localStorage.setItem("kubrai.wallet", s.label) : localStorage.removeItem("kubrai.wallet"); } catch {} balances.loaded = false; listeners.forEach((f) => f(s)); renderWallet(); refreshBalances(); if (s) bindIfPending(s); }
 
 export function mountWallet() {
-  renderWallet();
+  renderWallet(); captureReferral();
   // auto-reconnect the last wallet
   try {
     const last = localStorage.getItem("kubrai.wallet");
@@ -85,10 +84,11 @@ function renderWallet() {
     const f = el.querySelector<HTMLButtonElement>("#wfaucet");
     if (f) f.onclick = async () => {
       f.disabled = true; f.textContent = "Sending…";
-      try { const r = await fetch(API_BASE + "/faucet", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: session!.publicKey.toBase58() }) }); const j = await r.json(); f.textContent = r.ok ? `Got ${j.tokens}` : (j.error ?? "Failed"); }
-      catch (e: any) { f.textContent = "Faucet unreachable"; }
+      let outcome = "Faucet unreachable";
+      try { const r = await fetch(API_BASE + "/faucet", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: session!.publicKey.toBase58() }) }); const j = await r.json(); outcome = r.ok ? `Got ${j.tokens}${j.genesisToken && j.genesisToken !== "failed" ? " + test Genesis Token" : ""}` : (j.error ?? "Failed"); }
+      catch {}
       await refreshBalances();
-      const f2 = el.querySelector<HTMLButtonElement>("#wfaucet"); if (f2) { f2.disabled = true; f2.textContent = "Got 1000 " + TOKEN_SYMBOL + " + test Genesis Token"; setTimeout(() => { f2.disabled = false; f2.textContent = "Get test tokens"; }, 4000); }
+      const f2 = el.querySelector<HTMLButtonElement>("#wfaucet"); if (f2) { f2.disabled = true; f2.textContent = outcome; setTimeout(() => { f2.disabled = false; f2.textContent = "Get test tokens"; }, 5000); }
       listeners.forEach((fn) => fn(session));
     };
     return;

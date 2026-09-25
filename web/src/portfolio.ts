@@ -3,6 +3,7 @@ import { NO_OUTCOME, fetchConfig, fetchMarkets, fetchPositionsByOwner, payoutIfB
 import { metricLabel } from "./metrics";
 import { bucketLabel, esc, fmtAmt, fmtTs, isBase58, mountNetBadge, mountWallet, onSession, statusPill } from "./ui";
 import { API_BASE, TOKEN_SYMBOL } from "./config";
+import { nextStepText } from "./timeline";
 
 mountNetBadge(); mountWallet();
 const openEl = document.getElementById("open")!, settledEl = document.getElementById("settled")!;
@@ -25,7 +26,7 @@ async function render(owner: PublicKey | null) {
       value = p.amounts.map((a: number, i: number) => (a ? `${fmtAmt(payoutIfBucket(m, p.amounts, feeBps, i).payout)} if ${bucketLabel(m, i)}` : "")).filter(Boolean).join("<br>");
     }
     const st = m.status === 2 ? "Resolved · paying out soon" : m.status === 1 ? `Result proposed: ${bucketLabel(m, m.proposedOutcome)}` : m.status === 3 ? "Voided · refunding" : Date.now() / 1000 < m.closeTs ? "Open" : "Awaiting result";
-    return `<tr><td><a href="/market.html?id=${m.id}">${metricLabel(m.metric)}</a><div class="note">#${m.id} · closes ${fmtTs(m.closeTs)}</div></td><td>${bets}</td><td>${statusPill(m)}<div class="note">${st}</div></td><td class="r mono">${value} ${TOKEN_SYMBOL}</td></tr>`;
+    return `<tr><td><a href="/market.html?id=${m.id}">${metricLabel(m.metric)}</a><div class="note">#${m.id} · closes ${fmtTs(m.closeTs)}</div></td><td>${bets}</td><td>${statusPill(m)}<div class="note">${st}</div><div class="note">${esc(nextStepText(m, cfg))}</div></td><td class="r mono">${value} ${TOKEN_SYMBOL}</td></tr>`;
   }).join("")}</tbody></table></div><div class="note" style="margin-top:8px">Payouts are settled automatically after the dispute window; nothing to claim. “Now worth” assumes pools stay as they are.</div>`;
 
   // settled history from the API

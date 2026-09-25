@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TopBar } from "../components/top-bar/top-bar-feature";
 import { MarketsScreen } from "../screens/MarketsScreen";
 import { MyBetsScreen } from "../screens/MyBetsScreen";
+import { LeaderboardScreen } from "../screens/LeaderboardScreen";
 
 const Tab = createBottomTabNavigator();
 export function HomeNavigator() {
@@ -23,10 +24,11 @@ export function HomeNavigator() {
       tabBarItemStyle: { paddingVertical: 6, justifyContent: "center" },
       tabBarLabelStyle: { fontSize: 12, marginTop: 2 },
       tabBarIconStyle: { marginTop: 2 },
-      tabBarIcon: ({ focused, color, size }) => <MaterialCommunityIcon name={route.name === "Markets" ? (focused ? "chart-box" : "chart-box-outline") : focused ? "ticket-confirmation" : "ticket-confirmation-outline"} size={size} color={color} />,
+      tabBarIcon: ({ focused, color, size }) => <MaterialCommunityIcon name={route.name === "Markets" ? (focused ? "chart-box" : "chart-box-outline") : route.name === "Ranks" ? (focused ? "trophy" : "trophy-outline") : focused ? "ticket-confirmation" : "ticket-confirmation-outline"} size={size} color={color} />,
     })}>
       <Tab.Screen name="Markets" component={MarketsScreen} />
       <Tab.Screen name="My bets" component={MyBetsScreen} />
+      <Tab.Screen name="Ranks" component={LeaderboardScreen} />
     </Tab.Navigator>
   );
 }

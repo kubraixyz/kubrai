@@ -63,6 +63,25 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
 6. **Settlement is permissionless.** A crank pays every winner and closes every position,
    returning the rent deposit to whoever paid it. Nobody has to remember to claim.
 
+## Leaderboard, invites, time
+
+- **Leaderboard** (`/leaderboard.html`, app tab “Ranks”; `GET /leaderboard?window=7d|30d|all`): one point per SKR
+  staked in a market that paid out, every range counted, won or lost; voided markets score nothing. Scored from the
+  crank's `settlements.jsonl` (`server/points.mjs`), so only markets that really settled count. Our own bot wallets are
+  listed in `snapshots/test-wallets.json` and shown as “Kubrai test bot”.
+- **Invite links** (`/invite.html`, app Settings; `server/referrals.mjs`): a wallet's link unlocks with its first bet
+  (`POST /referral/code`). A friend who arrives through `?ref=CODE` is bound by their own first bet — the wallet signs
+  `kubrai-referral v1` naming the site and the time, valid 10 minutes (`POST /referral/bind`); one code per wallet,
+  forever, on every network, no rings. Money: the invitee gets 10 % of the fee on every win back; the inviter earns 20 %
+  of it (25 % from 10k points, 30 % from 100k). Earnings are derived from the settlement log each time; nothing is
+  stored twice. `server/referral-payout.mjs` pays weekly from the rebate wallet, and only for settlement rows whose
+  signature the chain confirms carry this program's `PositionSettled` event for that market, owner and fee
+  (`settlement-proof.mjs`); the ledger is written *before* each send and reconciled against the chain, so a rebate is
+  never paid twice.
+- **Time**: every time on the web and in the app is the viewer's own clock with its zone named; each market page
+  shows its full timeline (bets open → close → closing snapshot → proposal → dispute window → payout) with a countdown
+  to the next step, and My bets carries the next step per position.
+
 ## Layout
 
 ```
@@ -105,6 +124,8 @@ ANCHOR_PROVIDER_URL=... ANCHOR_WALLET=... npx ts-node scripts/devnet-setup.ts
 CLOSE_AT=2026-09-19T00:00:00Z npx ts-node scripts/create-market.ts skr_ids_week 77,93,113 "How many new .skr IDs this week?" 0 0 500   # manual one-off
 node server/open-markets.mjs            # scheduled: daily markets every day, weekly ones on Mondays (cron 00:00 UTC; markets open/close exactly on the hour)
 node scripts/update-config.mjs disputeWindowSecs=21600
+node --test server/referrals.test.mjs      # points + referral rules
+CLUSTER=devnet REBATE_KEYPAIR=~/.config/solana/id.json DRY_RUN=1 node server/referral-payout.mjs   # weekly cron on the app host
 
 # server
 cd server && npm i && node snapshot.mjs && node resolve.mjs && node api.mjs

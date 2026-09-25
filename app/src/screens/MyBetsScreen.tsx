@@ -11,6 +11,8 @@ import { metricLabel, fmtValue } from "../chain/metrics";
 import { bucketColor, bucketLabel, fmtAmt, fmtTs, statusLabel, timeLeft } from "../chain/format";
 import { NO_OUTCOME, payoutIfBucket, totalPool, type MarketView } from "../chain/kubrai";
 import { PoolBar } from "../components/PoolBar";
+import { nextStepText } from "../chain/timeline";
+import { useConfig } from "../hooks/useKubrai";
 import { APP, TOKEN_SYMBOL } from "../config";
 
 const GREEN = "#0f8f7c", RED = "#c4553f";
@@ -29,7 +31,7 @@ function Big({ label, value, color, right }: { label: string; value: string; col
 export function MyBetsScreen() {
   const nav = useNavigation<any>(); const theme = useTheme();
   const { selectedAccount } = useAuthorization(); const { connect } = useMobileWallet();
-  const markets = useMarkets(); const positions = usePositions();
+  const markets = useMarkets(); const positions = usePositions(); const cfg = useConfig();
   const settled = useQuery({ queryKey: ["settled", selectedAccount?.publicKey.toBase58()], queryFn: () => fetchSettled(selectedAccount!.publicKey.toBase58()), enabled: !!selectedAccount, refetchInterval: 60_000 });
 
   if (!selectedAccount) return <View style={styles.center}><Text style={{ marginBottom: 12 }}>Connect a wallet to see your bets.</Text><Button mode="contained" onPress={() => connect()}>Connect wallet</Button></View>;
@@ -66,6 +68,7 @@ export function MyBetsScreen() {
             <Big label={valueLabel} value={fmtAmt(value)} color={tone} right />
           </View>
           <Text variant="labelSmall" style={styles.dim}>{sub}</Text>
+          <Text variant="labelSmall" style={styles.dim}>{nextStepText(m, cfg.data ? cfg.data.disputeWindowSecs.toNumber() : null)}</Text>
         </>, () => nav.navigate("Market", { id: m.id }), p.pubkey.toBase58());
       })}
 

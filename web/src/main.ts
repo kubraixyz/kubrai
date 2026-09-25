@@ -2,13 +2,14 @@ import { fetchMarkets, totalPool, type MarketView } from "./kubrai";
 import { fmtValue, metricCadence, metricInfo, metricLabel, type Cadence } from "./metrics";
 import { esc, fmtAmt, mountNetBadge, mountWallet, poolsHtml, statusPill, timeLeft } from "./ui";
 import { TOKEN_SYMBOL } from "./config";
+import { fmtTsShort, localizeUtc } from "./time";
 
 mountNetBadge(); mountWallet();
 const root = document.getElementById("markets")!;
 function card(m: MarketView) {
   const q = metricLabel(m.metric);
   return `<a class="card" href="/market.html?id=${m.id}">
-    <div class="meta">${statusPill(m)}<span>#${m.id}</span><span>${m.status === 0 ? timeLeft(m.closeTs) : ""}</span></div>
+    <div class="meta">${statusPill(m)}<span>#${m.id}</span><span>${m.status === 0 && Date.now() / 1000 < m.closeTs ? `${timeLeft(m.closeTs)} · closes ${fmtTsShort(m.closeTs)}` : m.status === 0 ? "awaiting result" : ""}</span></div>
     <div class="title">${m.nBuckets === 2 ? `${q} ≥&nbsp;<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>?` : `${q}: which range?`}</div>
     <div class="meta"><span class="pill">${{ onchain: "on-chain", store: "store data", thirdparty: "3rd-party data" }[metricInfo(m.metric)?.source ?? "thirdparty"]}</span>${metricInfo(m.metric)?.cumulative && m.baseline ? `<span>from ${fmtValue(m.metric, m.baseline)} at open</span>` : ""}</div>
     ${poolsHtml(m)}
@@ -22,12 +23,12 @@ function card(m: MarketView) {
     // any past market stays reachable by URL.
     const live = ms.filter((m) => m.status === 0 || m.status === 1).sort((a, b) => a.closeTs - b.closeTs || a.id - b.id);
     const groups: { key: Cadence; title: string; blurb: string }[] = [
-      { key: "day", title: "Daily markets", blurb: "Open every day at 00:00 UTC, close 24 h later, settle on the hourly snapshot taken right after close." },
-      { key: "week", title: "Weekly markets", blurb: "Run for a week; new ones open every Monday at 00:00 UTC." },
+      { key: "day", title: "Daily markets", blurb: `Open every day at <span data-utc="00:00">00:00 UTC</span> (your time), close 24 h later, settle on the hourly snapshot taken right after close.` },
+      { key: "week", title: "Weekly markets", blurb: `Run for a week; new ones open every Monday at <span data-utc="00:00">00:00 UTC</span> (your time).` },
       { key: "other", title: "Other markets", blurb: "" },
     ];
     const html = groups.map((g) => { const items = live.filter((m) => metricCadence(m.metric) === g.key); return items.length ? `<h2 class="group">${g.title}</h2>${g.blurb ? `<p class="note">${g.blurb}</p>` : ""}<div class="grid">${items.map(card).join("")}</div>` : ""; }).join("");
-    root.innerHTML = html || `<div class="note">No open markets right now.</div>`;
+    root.innerHTML = html || `<div class="note">No open markets right now.</div>`; localizeUtc(root);
   } catch (e: any) { root.innerHTML = `<div class="msg err">Could not load markets: ${esc(e.message ?? e)}</div>`; }
 })();
 
