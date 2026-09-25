@@ -13,6 +13,7 @@ import { notify } from "./notify.mjs";
 import { renderOps, handleOpsAction } from "./ops.mjs";
 import { parseMetric, loadSlots, valueIn, median } from "./history.mjs";
 import { leaderboard, readSettlements } from "./points.mjs";
+import { resolveLang, translateHtml, langScript, LANGS } from "./i18n.mjs";
 import * as referrals from "./referrals.mjs";
 import anchor from "@coral-xyz/anchor";
 
@@ -59,6 +60,30 @@ const mint = new PublicKey(state.mint);
 const FAUCET_DAILY_GLOBAL = Number(process.env.FAUCET_DAILY_GLOBAL ?? 300);
 const DISPUTES = path.join(SNAP, "disputes.jsonl");
 const DIAG_MAX = 32 * 1024;
+
+// ---------- pages ----------
+// The built site (WEB_DIST) is served through here for its HTML only: each page goes out in the viewer's language
+// (data-t markup swapped server-side, dictionary script added) and with the market list and config embedded as
+// window.__BOOT__, so the first paint needs no API round trip. Assets stay on the static server.
+const WEB_DIST = process.env.WEB_DIST ?? null;
+const pageCache = new Map();   // file → { mtimeMs, html }
+function readPage(name) {
+  if (!WEB_DIST) return null;
+  const f = path.join(WEB_DIST, name); let st; try { st = fs.statSync(f); } catch { return null; }
+  const hit = pageCache.get(f); if (hit && hit.mtimeMs === st.mtimeMs) return hit.html;
+  const html = fs.readFileSync(f, "utf8"); pageCache.set(f, { mtimeMs: st.mtimeMs, html }); return html;
+}
+async function servePage(req, res, url) {
+  const name = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+  if (!/^[a-z-]+\.html$/.test(name)) return false;
+  const raw = readPage(name); if (!raw) return false;
+  const { lang } = resolveLang(req, url);
+  let boot = "";
+  try { const st = await chainState(); boot = `<script>window.__BOOT__=${JSON.stringify({ at: st.at, markets: st.markets, config: st.config }).replace(/</g, "\\u003c")};</script>`; } catch {}
+  const html = translateHtml(raw, lang).replace("</head>", () => boot + "</head>");
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "private, max-age=0, must-revalidate", vary: "Cookie, Accept-Language", "content-language": lang, "x-frame-options": "DENY", "content-security-policy": "frame-ancestors 'none'" });
+  res.end(html); return true;
+}
 
 // ---------- leaderboard (points.mjs) ----------
 // Scored from the crank's settlement log, so it only ever counts markets that actually paid out. Recomputed when that
@@ -210,7 +235,10 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   if (req.method === "OPTIONS") return json(res, 204, {});
   try {
-    if (url.pathname === "/health") return json(res, 200, { ok: true, cluster: CLUSTER, programId: state.programId, mint: state.mint, faucet: FAUCET_ENABLED });
+    if (url.pathname === "/health") return json(res, 200, { ok: true, cluster: CLUSTER, programId: state.programId, mint: state.mint, faucet: FAUCET_ENABLED, langs: LANGS });
+    const li = url.pathname.match(/^\/i18n\/([A-Za-z-]{2,10})\.js$/);
+    if (li) { const body = langScript(li[1]); if (body == null) return json(res, 404, { error: "no such language" }); res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "public, max-age=31536000, immutable", "access-control-allow-origin": "*" }); return res.end(body); }
+    if (req.method === "GET" && (url.pathname === "/" || url.pathname.endsWith(".html")) && (await servePage(req, res, url))) return;
     const po = url.pathname.match(/^\/positions\/([1-9A-HJ-NP-Za-km-z]{32,44})$/);
     if (po) {
       const f = path.join(SNAP, "settlements.jsonl");

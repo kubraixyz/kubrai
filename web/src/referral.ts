@@ -2,6 +2,7 @@
 // first bet the connected wallet places then binds the wallet to it — signed by the wallet, so only its owner can.
 import { API_BASE } from "./config";
 import { bs58, type Session } from "./wallet";
+import { t } from "./i18n";
 
 const KEY = "kubrai.ref";
 const esc = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
@@ -19,7 +20,7 @@ export function captureReferral() {
     if (!pendingReferral()) return;   // bound (and cleared) while we were looking it up
     const host = document.querySelector("header.top"); if (!host || document.getElementById("refbar")) return;
     const bar = document.createElement("div"); bar.id = "refbar"; bar.className = "refbar";
-    bar.innerHTML = `Invited by <b class="mono">${esc(j.referrer)}</b> · your first bet applies the link: you get ${(j.refereeBps / 100).toFixed(0)}% of the fee on your winnings back, every time.`;
+    bar.innerHTML = t("ref.bar", { who: `<b class="mono">${esc(j.referrer)}</b>`, pct: (j.refereeBps / 100).toFixed(0) });
     host.after(bar);
   }).catch(() => {});
 }
@@ -45,7 +46,7 @@ export async function bindReferralAfterBet(s: Session): Promise<string | null> {
     const sig = await s.signMessage(new TextEncoder().encode(`kubrai-referral v1\ndomain=${location.host}\nwallet=${wallet}\ncode=${code}\nts=${ts}`));
     const r = await fetch(`${API_BASE}/referral/bind`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wallet, code, ts, signature: bs58(sig) }) });
     const j = await r.json();
-    if (r.ok) { clear(); document.getElementById("refbar")?.remove(); document.dispatchEvent(new Event("kubrai:referral-bound")); return j.already ? null : "Referral link applied: 10% of the fee on your winnings comes back to you."; }
+    if (r.ok) { clear(); document.getElementById("refbar")?.remove(); document.dispatchEvent(new Event("kubrai:referral-bound")); return j.already ? null : t("ref.applied", { pct: 10 }); }
     if (j.permanent) { clear(); document.getElementById("refbar")?.remove(); }   // wrong wallet for this link; stop asking
     return null;
   } catch { return null; }   // user declined the signature or network hiccup: the code stays for the next bet

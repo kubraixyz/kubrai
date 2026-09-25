@@ -903,6 +903,72 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "void_stale_market",
+      "docs": [
+        "Proposer (or admin) may void a market that is still without a proposal a full day after it could have had one:",
+        "the evidence never verified, so nobody wins and every stake is refunded. Cannot touch a market that has a proposal."
+      ],
+      "discriminator": [
+        91,
+        128,
+        56,
+        91,
+        77,
+        184,
+        56,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "proposer",
+          "signer": true
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -1116,6 +1182,11 @@
       "code": 6017,
       "name": "MathOverflow",
       "msg": "arithmetic overflow"
+    },
+    {
+      "code": 6018,
+      "name": "NotStaleYet",
+      "msg": "market is not stale yet: a day must pass after resolve_after_ts without a proposal"
     }
   ],
   "types": [

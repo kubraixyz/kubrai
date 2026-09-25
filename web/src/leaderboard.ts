@@ -3,10 +3,11 @@
 import { esc, getSession, mountNetBadge, mountWallet, onSession, short } from "./ui";
 import { API_BASE, CLUSTER, TOKEN_SYMBOL } from "./config";
 import { fmtTs } from "./time";
+import { t } from "./i18n";
 
 mountNetBadge(); mountWallet();
 const boardEl = document.getElementById("board")!, totalsEl = document.getElementById("totals")!, winEl = document.getElementById("windows")!, meEl = document.getElementById("me")!;
-const WINDOWS: [string, string][] = [["all", "All time"], ["30d", "Last 30 days"], ["7d", "Last 7 days"]];
+const WINDOWS: [string, string][] = [["all", t("lb.all")], ["30d", t("lb.30d")], ["7d", t("lb.7d")]];
 let win = new URLSearchParams(location.search).get("window") ?? "all";
 if (!WINDOWS.some(([k]) => k === win)) win = "all";
 const explorer = (w: string) => `https://explorer.solana.com/address/${w}?cluster=${CLUSTER === "mainnet" ? "mainnet-beta" : "devnet"}`;
@@ -20,27 +21,27 @@ function renderWindows() {
   }));
 }
 async function load() {
-  boardEl.innerHTML = `<div class="note">Loading…</div>`;
+  boardEl.innerHTML = `<div class="note">${t("common.loading")}</div>`;
   let j: any;
   try { const r = await fetch(`${API_BASE}/leaderboard?window=${encodeURIComponent(win)}&limit=100`); if (!r.ok) throw new Error(String(r.status)); j = await r.json(); }
-  catch { boardEl.innerHTML = `<div class="note">The leaderboard is unavailable right now.</div>`; return; }
+  catch { boardEl.innerHTML = `<div class="note">${t("lb.err")}</div>`; return; }
   const me = getSession()?.publicKey.toBase58() ?? null;
   const tot = j.totals ?? {};
-  totalsEl.innerHTML = [["Players", String(tot.players ?? 0)], ["Markets settled", String(tot.markets ?? 0)], ["Points awarded", fmtPoints(tot.points ?? 0)]].map(([k, v]) => `<div><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join("");
+  totalsEl.innerHTML = [[t("lb.players"), String(tot.players ?? 0)], [t("lb.settled"), String(tot.markets ?? 0)], [t("lb.awarded"), fmtPoints(tot.points ?? 0)]].map(([k, v]) => `<div><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join("");
   const rows: any[] = j.entries ?? [];
   const mine = me ? rows.find((e) => e.wallet === me) : null;
-  meEl.innerHTML = me ? (mine ? `You are <b>#${Number(mine.rank)}</b> with <b class="mono">${esc(fmtPoints(mine.points))}</b> points · ${Number(mine.won)} of ${Number(mine.markets)} markets won.` : `Your wallet has no settled market in this window yet. Points arrive when a market you bet on pays out.`) : `Connect a wallet to see your own rank.`;
-  if (!rows.length) { boardEl.innerHTML = `<div class="note">No market has settled in this window yet.</div>`; return; }
-  boardEl.innerHTML = `<div class="scroll"><table class="tbl"><thead><tr><th>#</th><th>Wallet</th><th class="r">Points</th><th class="r">Markets</th><th class="r">Won</th><th class="r">Last settled</th></tr></thead><tbody>${rows.map((e) => `
+  meEl.innerHTML = me ? (mine ? t("lb.me", { rank: `<b>#${Number(mine.rank)}</b>`, pts: `<b class="mono">${esc(fmtPoints(mine.points))}</b>`, won: Number(mine.won), n: Number(mine.markets) }) : t("lb.meNone")) : t("lb.connect");
+  if (!rows.length) { boardEl.innerHTML = `<div class="note">${t("lb.empty")}</div>`; return; }
+  boardEl.innerHTML = `<div class="scroll"><table class="tbl"><thead><tr><th>#</th><th>${t("lb.colWallet")}</th><th class="r">${t("lb.colPoints")}</th><th class="r">${t("lb.colMarkets")}</th><th class="r">${t("lb.colWon")}</th><th class="r">${t("lb.colLast")}</th></tr></thead><tbody>${rows.map((e) => `
     <tr${e.wallet === me ? ` class="me"` : ""}>
       <td class="mono">${Number(e.rank)}</td>
-      <td><a class="mono" href="${explorer(e.wallet)}" target="_blank" rel="noopener">${esc(short(e.wallet))}</a>${e.wallet === me ? ` <b>you</b>` : ""}${e.test ? ` <span class="pill">Kubrai test bot</span>` : ""}</td>
+      <td><a class="mono" href="${explorer(e.wallet)}" target="_blank" rel="noopener">${esc(short(e.wallet))}</a>${e.wallet === me ? ` <b>${t("lb.you")}</b>` : ""}${e.test ? ` <span class="pill">${t("lb.test")}</span>` : ""}</td>
       <td class="r mono"><b>${esc(fmtPoints(e.points))}</b></td>
       <td class="r mono">${Number(e.markets)}</td>
       <td class="r mono">${Number(e.won)} / ${Number(e.markets)}</td>
       <td class="r note">${esc(fmtTs(Date.parse(e.lastAt) / 1000))}</td>
     </tr>`).join("")}</tbody></table></div>
-  <p class="note" style="margin-top:8px">1 point per ${TOKEN_SYMBOL} staked in a market that paid out, every range counted, won or lost. Voided markets score nothing. Wallets marked “Kubrai test bot” are ours: they keep the devnet pools moving and are not players.</p>`;
+  <p class="note" style="margin-top:8px">${t("lb.how", { tok: TOKEN_SYMBOL })}</p>`;
 }
 renderWindows(); load();
 onSession(() => load());

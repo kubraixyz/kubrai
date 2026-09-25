@@ -1,0 +1,83 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" type="image/png" href="/favicon.png"><link rel="apple-touch-icon" href="/icon-192.png"><meta name="theme-color" content="#15171b"><title data-t="docs.title">Kubrai · How it works</title>
+<meta name="description" data-t-attr="content:docs.meta" content="Kubrai: parimutuel prediction pools on the numbers that describe the Seeker ecosystem, bet in SKR. How markets, fees, snapshots and settlement work, with a demo video.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/src/styles.css"></head><body><div class="wrap">
+<header class="top"><a class="brand" href="/">Kubrai<small data-t="brand.tag">bet on the Seeker numbers</small></a><nav class="nav"><a class="navlink" href="/docs.html" data-t="nav.docs">Docs</a><a class="navlink" href="/leaderboard.html" data-t="nav.leaderboard">Leaderboard</a><a class="navlink" href="/invite.html" data-t="nav.invite">Invite</a><a class="navlink" href="/portfolio.html" data-t="nav.mybets">My bets</a></nav><span class="sp"></span><span id="netbadge"></span><div id="wallet" class="walletbox"></div></header>
+<main class="docs">
+  <h1 data-t="docs.h1">How Kubrai works</h1>
+  <p class="lead" data-t="docs.lead">Kubrai runs parimutuel pools on the numbers that describe the Solana Mobile ecosystem itself: how many Seekers were activated today, how much SKR is staked, how many reviews the dApp Store got, what ORE miners deployed. You bet SKR on a range, winners split the losing pools, and every settlement is backed by hourly snapshots whose hashes sit on-chain.</p>
+
+  <div class="fcard vid" id="vid" hidden><video controls preload="metadata" playsinline src="/demo.mp4" poster="/demo-poster.jpg"></video>
+    <p class="note" style="margin:0" data-t="docs.video">Three minutes: connect, get test tokens, bet on a range, and see a settled market with its snapshots checked against the on-chain hash. Recorded on devnet.</p></div>
+
+  <nav class="toc"><a href="#why" data-t="docs.toc.why">Why</a><a href="#market" data-t="docs.toc.market">A market</a><a href="#money" data-t="docs.toc.money">Money</a><a href="#discounts" data-t="docs.toc.discounts">Discounts</a><a href="#settle" data-t="docs.toc.settle">Settlement</a><a href="#trust" data-t="docs.toc.trust">Trust model</a><a href="#points" data-t="docs.toc.points">Points &amp; invites</a><a href="#api" data-t="docs.toc.api">API</a></nav>
+
+  <h2 id="why" data-t="docs.why.h">Why bet on the Seeker numbers</h2>
+  <p data-t="docs.why.1">Everyone holding a Seeker or SKR already has an opinion on whether the ecosystem is growing this week. Kubrai turns that opinion into a position: pick the range you believe in, put SKR behind it, and get paid from the people who believed otherwise. No order book, no market maker, no spread: it is one pot per range and the pools decide the odds.</p>
+  <ul>
+    <li data-t="docs.why.2"><b>The numbers are public and hard to fake.</b> A new Seeker means a $500 device. A store review needs a verified phone. SOL deployed in ORE burns about 10% of every extra SOL. Nobody can buy the result.</li>
+    <li data-t="docs.why.3"><b>New markets every day.</b> Daily markets open at <span data-utc="00:00">00:00 UTC</span> (your time) and run 24 hours; weekly ones open on Mondays. There is always something to bet on.</li>
+    <li data-t="docs.why.4"><b>Seeker-native.</b> The Android app signs with Seed Vault Wallet through Mobile Wallet Adapter; Genesis Token holders and ORE miners pay a lower fee, proven on-chain from their own wallet.</li>
+  </ul>
+
+  <h2 id="market" data-t="docs.market.h">A market, step by step</h2>
+  <ol class="fsteps">
+    <li data-t="docs.market.1"><b>One metric, 2 to 8 ranges.</b> A yes/no market is two ranges around one threshold; a multi-range market is cut at the quantiles of the metric's own recent history, so every range starts out roughly equally likely.</li>
+    <li data-t="docs.market.2"><b>Bets open and close exactly on the hour.</b> Snapshots are taken one minute after the hour, so the closing reading does not exist yet when betting stops: nobody bets on a number they have already seen.</li>
+    <li data-t="docs.market.3"><b>Cumulative metrics</b> (Seekers activated, reviews written, SOL deployed) resolve on the increase between the opening hour's snapshot and the closing hour's. <b>Level metrics</b> (SKR staked, ORE mining cost) resolve on the median of every hourly snapshot inside the window, so a last-minute move cannot swing the result.</li>
+    <li data-t="docs.market.4"><b>The server proposes a number, never a winner.</b> The observed value and the hash of the snapshots it came from go on-chain; the program derives the winning range from the market's own thresholds.</li>
+    <li data-t="docs.market.5"><b>Six hours to dispute, then payout.</b> Anyone can dispute a proposal inside the window. After it, a permissionless crank pays every winner and refunds every loser's rent. Nobody has to claim.</li>
+  </ol>
+  <p data-t="docs.market.6">Every market page shows this as a timeline in your own time zone, with a countdown to the next step, and lists the exact snapshots behind the result with their hashes and memo transactions.</p>
+
+  <h2 id="money" data-t="docs.money.h">How the money works</h2>
+  <ul>
+    <li data-t="docs.money.1">Each range has its own pool in SKR. <b>Winners get their stake back plus a pro-rata share of every losing pool.</b> Losers lose their stake.</li>
+    <li data-t="docs.money.2"><b>The fee is 3% of what a winner takes from the losing pools</b>, never of the winner's own stake. It is locked into your position at the moment you bet.</li>
+    <li data-t="docs.money.3">The treasury may <b>seed</b> a market with a fee-free prize, split among winners. If nobody picked the winning range, everyone is refunded and the seed goes back.</li>
+    <li data-t="docs.money.4">A <b>voided</b> market refunds every stake in full, no fee. A market that still has no verifiable evidence a day after it could have settled is voided automatically.</li>
+    <li data-t="docs.money.5">Deposits sit in a program-owned vault; only the program's payout math can move them. The server holds no funds.</li>
+  </ul>
+
+  <h2 id="discounts" data-t="docs.disc.h">Discounts</h2>
+  <ul>
+    <li data-t="docs.disc.1"><b>Early bird, −1%:</b> bets placed in the first quarter of a market's window (6 h of a daily market, 24 h of a weekly one).</li>
+    <li data-t="docs.disc.2"><b>Seeker Genesis Token, −1%:</b> the bet carries your token account and its mint; the program checks on-chain that the mint belongs to the Genesis Token group. Nothing is taken on the app's word.</li>
+    <li data-t="docs.disc.3"><b>ORE miner, −1%:</b> the bet carries your ORE Miner account; the program checks it names you as its authority and holds unclaimed mining rewards worth at least $500, the price of a Seeker. The threshold is repriced daily from the ORE price.</li>
+    <li data-t="docs.disc.4">Discounts stack and never take the fee below 1%. On devnet the faucet hands every wallet a stand-in Genesis Token and a stand-in Miner account so anyone can try them; on mainnet only the real things count.</li>
+  </ul>
+
+  <h2 id="settle" data-t="docs.settle.h">Where the numbers come from</h2>
+  <p data-t="docs.settle.1">Every hour the server reads each metric, writes the bundle to disk with its SHA-256, and records that hash in a memo transaction on Solana. A market resolves only from bundles whose bytes still match both the sidecar hash and the on-chain memo. Sources are labelled on every market:</p>
+  <ul>
+    <li data-t="docs.settle.2"><b>on-chain:</b> Seeker Genesis Tokens (the Token-2022 group size), SKR in the staking vault, the ORE board and round accounts. Anyone can recompute them.</li>
+    <li data-t="docs.settle.3"><b>store data:</b> the Solana dApp Store catalog and its reviews, read from the store's own API. First-party, off-chain; the snapshot hash is on-chain.</li>
+    <li data-t="docs.settle.4"><b>third-party:</b> aggregators. Used only for markets we do not open any more; shown for history.</li>
+  </ul>
+  <p data-t="docs.settle.5">Open any market and expand “Snapshots” to see the opening and closing readings, their hashes and the memo transactions. That is the whole evidence; there is nothing else to trust.</p>
+
+  <h2 id="trust" data-t="docs.trust.h">Trust model, stated plainly</h2>
+  <ul>
+    <li data-t="docs.trust.1"><b>What a compromised server can do:</b> delay a market, or propose a wrong number that everyone can check against the published snapshots and dispute within six hours. It cannot pick a winner and it cannot move a pool.</li>
+    <li data-t="docs.trust.2"><b>What the admin key can do:</b> void a market (full refunds), finalize early, change fees within the hard-coded 10% ceiling. On mainnet it is a Squads multisig held by the operator's own Seeker and hardware wallet; the server is not a member.</li>
+    <li data-t="docs.trust.3"><b>What nobody can do:</b> take a winner's stake, charge a fee above the ceiling, or settle a market from snapshots that do not match their on-chain hash.</li>
+    <li data-t="docs.trust.4"><b>Test network:</b> everything you see on devnet.kubrai.xyz uses test tokens with no value. Mainnet follows the hackathon.</li>
+  </ul>
+
+  <h2 id="points" data-t="docs.points.h">Points and invites</h2>
+  <ul>
+    <li data-t="docs.points.1"><b>Points:</b> one point per SKR staked in a market that paid out, every range counted, won or lost. Voided markets score nothing. The <a href="/leaderboard.html">leaderboard</a> ranks wallets by points over 7 days, 30 days or all time.</li>
+    <li data-t="docs.points.2"><b>Invites:</b> your link unlocks with your first bet. A friend who bets through it gets 10% of the fee on their winnings back, forever; you earn 20% of that fee, rising to 25% at 10,000 points and 30% at 100,000. Paid every Monday in SKR. See <a href="/invite.html">Invite</a>.</li>
+  </ul>
+
+  <h2 id="api" data-t="docs.api.h">Build on it</h2>
+  <p data-t="docs.api.1">Everything the site shows is public, free and needs no key. Bets are transactions your own wallet signs; there is no server-side bet endpoint, so nobody can bet with your tokens but you.</p>
+  <pre>GET  /markets                 every market (cached 15 s)         GET /markets/:id
+GET  /config                  fees, dispute window, discounts    GET /evidence?metric&amp;open&amp;close&amp;baseline&amp;id
+GET  /snapshots               hourly slots                       GET /snapshots/:slot  (bundle + sha256 + memo tx)
+GET  /leaderboard?window=7d   points ranking                     GET /positions/:wallet  settled history
+GET  /referral/:wallet        invite link and earnings           POST /faucet {"address"}  (devnet)</pre>
+  <p data-t="docs.api.2">Base URL <span class="mono">https://api-devnet.kubrai.xyz</span>. The program IDL is in the repository; <span class="mono">examples/automate.mjs</span> lists markets, places a bet and reads results from a script. Source, program and tests: <a href="https://github.com/kubraixyz/kubrai" target="_blank" rel="noopener">github.com/kubraixyz/kubrai</a>.</p>
+</main>
+<footer><a href="/" data-t="nav.all">← All markets</a> · <span data-t="footer.times">All times are shown in your local time zone.</span></footer>
+</div><script type="module" src="/src/docs.ts"></script></body></html>

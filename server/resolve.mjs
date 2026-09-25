@@ -20,6 +20,7 @@ import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import idlJson from "../idl/kubrai.json" with { type: "json" };
 import { APP_SLUGS } from "./metrics.mjs";
+import { notify } from "./notify.mjs";
 
 const { AnchorProvider, Program, BN, Wallet } = anchor;
 const CLUSTER = process.env.CLUSTER ?? "devnet";
@@ -27,7 +28,8 @@ const RPC = process.env.CLUSTER_RPC ?? process.env.DEVNET_RPC ?? "http://127.0.0
 const SNAP = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots");
 const SECRETS = process.env.KUBRAI_SECRETS ?? path.join(os.homedir(), "secrets", CLUSTER);
 const DRY = process.env.DRY_RUN === "1";
-const ONLY = (process.env.STEPS ?? "propose,finalize,settle").split(",");
+const ONLY = (process.env.STEPS ?? "propose,finalize,settle,stale").split(",");
+const STALE_VOID_SECS = 86_400;
 const loadKp = (f) => Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(f, "utf8"))));
 const proposer = loadKp(path.join(SECRETS, "proposer.json"));
 // The admin key is only loaded for local/devnet test runs that explicitly ask for early finalization.
@@ -190,12 +192,28 @@ async function settle(markets, cfg) {
   }
 }
 
+// A market still Open a full day after resolve_after_ts had no verifiable evidence (every hour the resolver logged why).
+// Rather than hold stakes forever, void it (proposer may, on-chain rule) so the next settle pass refunds everyone.
+async function voidStale(markets, now) {
+  for (const { publicKey, account: m } of markets) {
+    if (m.status !== 0 || now < m.resolveAfterTs.toNumber() + STALE_VOID_SECS) continue;
+    const metric = tag(m.metric);
+    if (DRY) { log(`market #${m.id} (${metric}): would void as stale (no proposal ${Math.round((now - m.resolveAfterTs.toNumber()) / 3600)} h after resolve_after)`); continue; }
+    try {
+      const sig = await program.methods.voidStaleMarket().accounts({ config: configPda, market: publicKey, proposer: proposer.publicKey }).rpc();
+      log(`market #${m.id} (${metric}): VOIDED as stale ${sig}`);
+      await notify("⚠️ 盤子逾時作廢", `${CLUSTER} #${m.id} ${metric}:關盤後 24 h 仍無法提案(快照缺或驗不過,見 resolve.log),已作廢、下一輪全額退款。`, `stale:${m.id}`, 60);
+    } catch (e) { log(`market #${m.id}: stale void failed: ${e?.message?.split("\n")[0]}`); }
+  }
+}
+
 const cfg = await program.account.config.fetch(configPda);
 const marketFilter = [{ dataSize: program.account.market.size }]; // ignores accounts from older layouts
 const markets = await program.account.market.all(marketFilter);
 const now = Math.floor(Date.now() / 1000);
 log(`cluster=${CLUSTER} markets=${markets.length} proposer=${proposer.publicKey.toBase58()} dry=${DRY} steps=${ONLY.join(",")}`);
 if (ONLY.includes("propose")) await propose(markets, now);
+if (ONLY.includes("stale")) await voidStale(await program.account.market.all(marketFilter), now);
 if (ONLY.includes("finalize")) await finalize(await program.account.market.all(marketFilter), now, cfg);
 if (ONLY.includes("settle")) await settle(await program.account.market.all(marketFilter), cfg);
 log("done");

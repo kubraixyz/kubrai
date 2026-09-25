@@ -189,6 +189,8 @@ describe("kubrai parimutuel", () => {
     await expectErr(program.methods.finalizeResolution().accounts({ config: configPda, market: m, signer: admin.publicKey }).rpc(), "NotProposed");
     await expectErr(program.methods.proposeResolution(new BN(1), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc(), "MarketNotOpen");
     await expectErr(program.methods.voidMarket().accounts({ config: configPda, market: m, admin: admin.publicKey }).rpc(), "AlreadyFinal");
+    // stale void: refused while a proposal stands (market is not Open); on an Open market it needs a day past resolve_after_ts (Rust unit test covers the clock rule)
+    await expectErr(program.methods.voidStaleMarket().accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc(), "MarketNotOpen");
     // settle: owner_token must belong to the position owner
     await expectErr(program.methods.settlePosition().accounts({ market: m, position: posPda(m, alice.publicKey), payer: alice.publicKey, vault: v, ownerToken: ata.bob, cranker: dave.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).signers([dave]).rpc(), "ConstraintTokenOwner");
     const b0 = await bal(ata.bob);

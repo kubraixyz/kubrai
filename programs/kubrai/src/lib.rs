@@ -34,6 +34,10 @@ pub const MAX_FEE_BPS: u16 = 1_000; // 10% hard ceiling, protects users from a h
 pub const MAX_BUCKETS: usize = 8;
 pub const MAX_THRESHOLDS: usize = MAX_BUCKETS - 1;
 pub const NO_OUTCOME: u8 = 255;
+/// A market that is still Open this long after resolve_after_ts has no usable evidence (the snapshots never verified,
+/// the resolver held it); anyone allowed to propose may void it so the stakes go back instead of sitting forever.
+pub const STALE_VOID_SECS: i64 = 86_400;
+pub fn stale_void_allowed(now: i64, resolve_after_ts: i64) -> bool { now >= resolve_after_ts.saturating_add(STALE_VOID_SECS) }
 
 #[program]
 pub mod kubrai {
@@ -222,6 +226,19 @@ pub mod kubrai {
         require!(m.status == MarketStatus::Open as u8 || m.status == MarketStatus::Proposed as u8, KubraiError::AlreadyFinal);
         m.status = MarketStatus::Voided as u8;
         m.resolved_at = Clock::get()?.unix_timestamp;
+        emit!(MarketResolved { market: m.key(), bucket: NO_OUTCOME, voided: true });
+        Ok(())
+    }
+
+    /// Proposer (or admin) may void a market that is still without a proposal a full day after it could have had one:
+    /// the evidence never verified, so nobody wins and every stake is refunded. Cannot touch a market that has a proposal.
+    pub fn void_stale_market(ctx: Context<Propose>) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        let m = &mut ctx.accounts.market;
+        require!(m.status == MarketStatus::Open as u8, KubraiError::MarketNotOpen);
+        require!(stale_void_allowed(now, m.resolve_after_ts), KubraiError::NotStaleYet);
+        m.status = MarketStatus::Voided as u8;
+        m.resolved_at = now;
         emit!(MarketResolved { market: m.key(), bucket: NO_OUTCOME, voided: true });
         Ok(())
     }
@@ -726,4 +743,17 @@ pub enum KubraiError {
     #[msg("positions still outstanding")] PositionsOutstanding,
     #[msg("bad bucket definition or index")] BadBuckets,
     #[msg("arithmetic overflow")] MathOverflow,
+    #[msg("market is not stale yet: a day must pass after resolve_after_ts without a proposal")] NotStaleYet,
+}
+
+#[cfg(test)]
+mod stale_tests {
+    use super::*;
+    #[test]
+    fn stale_void_needs_a_full_day_after_resolve_after() {
+        assert!(!stale_void_allowed(1_000, 1_000));
+        assert!(!stale_void_allowed(1_000 + STALE_VOID_SECS - 1, 1_000));
+        assert!(stale_void_allowed(1_000 + STALE_VOID_SECS, 1_000));
+        assert!(stale_void_allowed(i64::MAX, i64::MAX - 5));
+    }
 }

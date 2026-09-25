@@ -46,7 +46,12 @@ export function toView(pubkey: PublicKey, a: any): MarketView {
 }
 // Reads go through the API's 15 s cache first (one small JSON instead of a getProgramAccounts round-trip on every page
 // view) and fall back to the RPC. `fresh: true` forces the RPC, used right after the user's own transaction.
-const fromApi = async (p: string) => { if (!API_BASE) throw new Error("no api"); const r = await fetch(API_BASE + p); if (!r.ok) throw new Error("api " + r.status); return r.json(); };
+// The page arrives with the market list and config embedded (window.__BOOT__, written by the API when it serves the
+// HTML); for the first 30 s that answers /markets and /config without a network round trip.
+const boot = (globalThis as any).__BOOT__ as { at: number; markets: any[]; config: any } | undefined;
+const fromApi = async (p: string) => {
+  if (boot && Date.now() - boot.at < 30_000) { if (p === "/markets") return { at: boot.at, markets: boot.markets }; if (p === "/config") return { at: boot.at, config: boot.config }; const mm = p.match(/^\/markets\/(\d+)$/); if (mm) { const m = boot.markets.find((x) => x.id === Number(mm[1])); if (m) return { at: boot.at, market: m, config: boot.config }; } }
+  if (!API_BASE) throw new Error("no api"); const r = await fetch(API_BASE + p); if (!r.ok) throw new Error("api " + r.status); return r.json(); };
 const viewFromJson = (j: any): MarketView => ({ ...j, pubkey: new PublicKey(j.pubkey) });
 const cfgFromJson = (c: any) => ({ ...c, admin: new PublicKey(c.admin), proposer: new PublicKey(c.proposer), treasury: new PublicKey(c.treasury), mint: new PublicKey(c.mint), earlyBirdSecs: new BN(c.earlyBirdSecs), disputeWindowSecs: new BN(c.disputeWindowSecs), minBet: new BN(c.minBet), marketCount: new BN(c.marketCount) });
 export const feeTiersPda = PublicKey.findProgramAddressSync([Buffer.from("fee_tiers")], programId)[0];

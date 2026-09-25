@@ -3,7 +3,8 @@
 const at = (ts: number) => new Date(ts * 1000);
 // 24-hour clock everywhere (several locales default to a 12-hour one)
 const H23 = { hourCycle: "h23" } as const;
-const LOCALE = "en-GB";
+import { DATE_LOCALE, t } from "./i18n";
+const LOCALE = DATE_LOCALE;
 /** "25 Sept 2026, 14:10 GMT+8" */
 export const fmtTs = (ts: number) => at(ts).toLocaleString(LOCALE, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 });
 /** "25 Sept, 14:10 GMT+8": for tight spots where the year is obvious */
@@ -13,18 +14,18 @@ export const fmtHm = (ts: number) => at(ts).toLocaleTimeString(LOCALE, { hour: "
 /** "Fri 25 Sept", the viewer's calendar day */
 export const fmtDay = (ts: number) => at(ts).toLocaleDateString(LOCALE, { weekday: "short", month: "short", day: "numeric" });
 /** The viewer's zone, e.g. "Asia/Taipei" */
-export const zoneName = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "your local time"; } catch { return "your local time"; } };
+export const zoneName = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone ?? t("time.local"); } catch { return t("time.local"); } };
 
 export function timeLeft(ts: number) {
-  const s = ts - Date.now() / 1000; if (s <= 0) return "closed";
+  const s = ts - Date.now() / 1000; if (s <= 0) return t("time.closed");
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-  return d > 0 ? `${d}d ${h}h left` : h > 0 ? `${h}h ${m}m left` : `${m}m left`;
+  return d > 0 ? t("time.dhLeft", { d, h }) : h > 0 ? t("time.hmLeft", { h, m }) : t("time.mLeft", { m });
 }
 /** "in 2h 10m" / "in 3 d" / "" once passed */
 export function inWords(ts: number) {
   const s = ts - Date.now() / 1000; if (s <= 0) return "";
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-  return d > 0 ? `in ${d}d ${h}h` : h > 0 ? `in ${h}h ${m}m` : `in ${Math.max(1, m)}m`;
+  return d > 0 ? t("time.inDh", { d, h }) : h > 0 ? t("time.inHm", { h, m }) : t("time.inM", { m: Math.max(1, m) });
 }
 
 /** Static copy writes fixed daily UTC times as <span data-utc="00:00">00:00 UTC</span>; rewrite them in the viewer's zone. */

@@ -3,45 +3,46 @@
 //       <base>_dmed / <base>_wmed (level: median of every hourly snapshot inside the market window),
 //       rev_day:<app> / rev_week:<app> (per-app store reviews, cumulative), plus a few legacy ids.
 // `scale` divides the on-chain integer threshold/observed value for display.
+import { t } from "./i18n";
 export type SourceKind = "onchain" | "store" | "thirdparty";
 export type Cadence = "day" | "week" | "other";
-export const SOURCE_LABEL: Record<SourceKind, string> = { onchain: "on-chain, anyone can recompute", store: "Solana dApp Store API (first-party, off-chain), snapshot hash on-chain", thirdparty: "third-party aggregator (seekertracker.com), snapshot hash on-chain" };
+export const SOURCE_LABEL: Record<SourceKind, string> = { onchain: t("srcl.onchain"), store: t("srcl.store"), thirdparty: t("srcl.thirdparty") };
 export const APP_NAMES: Record<string, string> = { jupiter: "Jupiter Mobile", tokenrun: "TokenRun", mattle: "MattleFun", cherry: "Cherry Messenger", seedvault: "Seed Vault Wallet", lootgo: "LootGO", jito: "Jito", sleepagotchi: "Sleepagotchi", moonwalk: "Moonwalk", ore: "ORE" };
 export type MetricInfo = { title: string; unit: string; how: string; scale?: number; digits?: number; source: SourceKind; cumulative?: boolean; cadence: Cadence; key?: string };
-const WINDOW = { day: "today", week: "this week" } as const;
-const MEDIAN_WINDOW = { dmed: "24-hour median", wmed: "7-day median" } as const;
+const WINDOW = { day: t("win.day"), week: t("win.week") };
+const MEDIAN_WINDOW = { dmed: t("win.dmed"), wmed: t("win.wmed") };
 const KEYS: Record<string, string> = { sgt: "sgt_total", skr_staked: "skr_staked", reviews: "store_reviews_total", dapps: "dapp_store_active_apps", reviewers: "reviewers_7d", skr_ids: "skr_ids_onchain", das: "das", skr_price: "skr_price_usd_e8", ore_sol: "ore_deployed_cum", ore_hits: "ore_motherlode_cum", ore_cost: "ore_cost_ema" };
 const BASES: Record<string, { noun: string; unit: string; source: SourceKind; scale?: number; digits?: number; cum: (w: string) => string; med: (w: string) => string; level: string }> = {
-  sgt: { noun: "Seekers activated", unit: "phones", source: "onchain", level: "Seeker Genesis Tokens", cum: (w) => `Increase in the number of Seeker Genesis Tokens between the opening baseline and the closing snapshot (${w}). Read from the token group size on the Genesis Token mint GT22…99Te. One soulbound token is minted per activated Seeker, so each unit is a $500 phone.`, med: (w) => `${w} of the Genesis Token count.` },
-  skr_staked: { noun: "SKR staked", unit: "SKR", source: "onchain", scale: 1_000_000, level: "SKR staked", cum: (w) => `Change in SKR held by the staking vault 8isV…ZbB8 (${w}).`, med: (w) => `${w} of hourly reads of the SKR staking vault 8isV…ZbB8, whose owner is re-verified against the staking program on every read. A median over the whole window cannot be moved by a last-minute deposit or withdrawal.` },
-  reviews: { noun: "Store reviews written", unit: "reviews", source: "store", level: "dApp Store reviews", cum: (w) => `Increase in the total number of reviews across every app in the Solana dApp Store (${w}), read directly from the store API. A review can only be written from a Seeker device, one per device per app, so every review is a phone acting.`, med: (w) => `${w} of the store-wide review total.` },
-  dapps: { noun: "New dApp Store listings", unit: "apps", source: "store", level: "dApp Store listings", cum: (w) => `Increase in the number of apps listed in the Solana dApp Store (${w}), counted from the store catalog and deduplicated by package name.`, med: (w) => `${w} of the number of listed apps.` },
-  reviewers: { noun: "Reviewing wallets (7-day)", unit: "wallets", source: "store", level: "wallets that reviewed in the last 7 days", cum: (w) => `Change in the number of distinct wallets that wrote a store review in the trailing 7 days (${w}).`, med: (w) => `${w} of the number of distinct wallets that wrote a dApp Store review in the trailing 7 days. Reviews are device-gated, so each wallet is a phone.` },
-  skr_ids: { noun: "New .skr IDs", unit: "IDs", source: "onchain", level: ".skr IDs", cum: (w) => `Increase in the number of .skr name records on-chain between the opening baseline and the closing snapshot (${w}), counted directly from the AllDomains name program.`, med: (w) => `${w} of the .skr record count.` },
-  das: { noun: "Daily active Seekers", unit: "IDs", source: "thirdparty", level: "daily active Seekers", cum: (w) => `Change in daily active Seekers (${w}).`, med: (w) => `${w} of seekertracker.com/api/das (IDs with ≥1 tx in 24h). Definition belongs to a third party.` },
-  skr_price: { noun: "SKR price", unit: "USD", source: "thirdparty", scale: 100_000_000, level: "SKR price", cum: (w) => `Change in the SKR/USD price (${w}).`, med: (w) => `${w} of the Jupiter SKR/USD price.` },
+  sgt: { noun: t("m.sgt.noun"), unit: "phones", source: "onchain", level: t("m.sgt.level"), cum: (w) => t("m.sgt.cum", { w }), med: (w) => t("m.sgt.med", { w }) },
+  skr_staked: { noun: t("m.skr_staked.noun"), unit: "SKR", source: "onchain", scale: 1_000_000, level: t("m.skr_staked.level"), cum: (w) => t("m.skr_staked.cum", { w }), med: (w) => t("m.skr_staked.med", { w }) },
+  reviews: { noun: t("m.reviews.noun"), unit: "reviews", source: "store", level: t("m.reviews.level"), cum: (w) => t("m.reviews.cum", { w }), med: (w) => t("m.reviews.med", { w }) },
+  dapps: { noun: t("m.dapps.noun"), unit: "apps", source: "store", level: t("m.dapps.level"), cum: (w) => t("m.dapps.cum", { w }), med: (w) => t("m.dapps.med", { w }) },
+  reviewers: { noun: t("m.reviewers.noun"), unit: "wallets", source: "store", level: t("m.reviewers.level"), cum: (w) => t("m.reviewers.cum", { w }), med: (w) => t("m.reviewers.med", { w }) },
+  skr_ids: { noun: t("m.skr_ids.noun"), unit: "IDs", source: "onchain", level: t("m.skr_ids.level"), cum: (w) => t("m.skr_ids.cum", { w }), med: (w) => t("m.skr_ids.med", { w }) },
+  das: { noun: t("m.das.noun"), unit: "IDs", source: "thirdparty", level: t("m.das.level"), cum: (w) => t("m.das.cum", { w }), med: (w) => t("m.das.med", { w }) },
+  skr_price: { noun: t("m.skr_price.noun"), unit: "USD", source: "thirdparty", scale: 100_000_000, level: t("m.skr_price.level"), cum: (w) => t("m.skr_price.cum", { w }), med: (w) => t("m.skr_price.med", { w }) },
   // ORE: the mining game on Solana mainnet (program oreV3…LvWv). Miners deploy SOL on a 5×5 board every ~60 s round;
   // one square wins 1 ORE, losing squares get 89% of their SOL back. Every number below is read from ORE's own accounts.
-  ore_sol: { noun: "SOL deployed by ORE miners", unit: "SOL", source: "onchain", scale: 1_000_000_000, digits: 0, level: "SOL deployed by ORE miners", cum: (w) => `Total SOL deployed across every ORE mining round that finished ${w}: the 25 squares of each round account of the ORE program (oreV3…LvWv), summed by our hourly snapshots as a running total, so the day's figure is close − open. Pushing this up costs real money: ORE returns only 89% of a losing square and 99% of a winning one, so every extra SOL deployed burns about 0.1 SOL.`, med: (w) => `${w} of the running total of SOL deployed in ORE rounds.` },
-  ore_hits: { noun: "ORE motherlodes hit", unit: "hits", source: "onchain", digits: 0, level: "ORE motherlode hits", cum: (w) => `Number of ORE rounds that finished ${w} in which the motherlode paid out (round account field motherlode > 0). Whether a round hits is drawn from the round's on-chain randomness: nobody, not the ORE team, not us, can steer it. Recent rate: about one hit a day, and the pot (0.2 ORE added every round) grows until it hits.`, med: (w) => `${w} of the running count of motherlode hits.` },
-  ore_cost: { noun: "ORE mining cost", unit: "SOL/ORE", source: "onchain", scale: 1_000_000_000, digits: 4, level: "ORE mining cost", cum: (w) => `Change in the ORE program's production-cost EMA (${w}).`, med: (w) => `${w} of hourly reads of the ORE program's production-cost EMA (board account, lamports per ORE): what miners are currently paying per ORE, smoothed by the protocol itself. A median over the whole window cannot be moved by one heavy round.` },
+  ore_sol: { noun: t("m.ore_sol.noun"), unit: "SOL", source: "onchain", scale: 1_000_000_000, digits: 0, level: t("m.ore_sol.level"), cum: (w) => t("m.ore_sol.cum", { w }), med: (w) => t("m.ore_sol.med", { w }) },
+  ore_hits: { noun: t("m.ore_hits.noun"), unit: "hits", source: "onchain", digits: 0, level: t("m.ore_hits.level"), cum: (w) => t("m.ore_hits.cum", { w }), med: (w) => t("m.ore_hits.med", { w }) },
+  ore_cost: { noun: t("m.ore_cost.noun"), unit: "SOL/ORE", source: "onchain", scale: 1_000_000_000, digits: 4, level: t("m.ore_cost.level"), cum: (w) => t("m.ore_cost.cum", { w }), med: (w) => t("m.ore_cost.med", { w }) },
 };
 const LEGACY: Record<string, MetricInfo> = {
-  skr_staked_med7: { title: "SKR staked (7-day median)", unit: "SKR", scale: 1_000_000, source: "onchain", cadence: "week", how: "Median of the 7 daily reads of the SKR staking vault 8isV…ZbB8, whose owner is re-verified against the staking program every day." },
-  das_med7: { title: "Daily active Seekers (7-day median)", unit: "IDs", source: "thirdparty", cadence: "week", how: "Median of 7 daily reads of seekertracker.com/api/das (IDs with ≥1 tx in 24h). Definition belongs to a third party." },
-  skr_price_close: { title: "SKR price at close", unit: "USD", scale: 100_000_000, source: "thirdparty", cadence: "other", how: "Jupiter price v3 at the closing snapshot." },
+  skr_staked_med7: { title: t("m.skr_staked_med7.title"), unit: "SKR", scale: 1_000_000, source: "onchain", cadence: "week", how: t("m.skr_staked_med7.how") },
+  das_med7: { title: t("m.das_med7.title"), unit: "IDs", source: "thirdparty", cadence: "week", how: t("m.das_med7.how") },
+  skr_price_close: { title: t("m.skr_price_close.title"), unit: "USD", scale: 100_000_000, source: "thirdparty", cadence: "other", how: t("m.skr_price_close.how") },
 };
 export function metricInfo(id: string): MetricInfo | undefined {
   if (LEGACY[id]) return LEGACY[id];
   let m = id.match(/^rev_(week|day):(.+)$/);
-  if (m) { const app = APP_NAMES[m[2]] ?? m[2]; const w = WINDOW[m[1] as "day" | "week"]; return { title: `New ${app} reviews ${w}`, unit: "reviews", cumulative: true, source: "store", cadence: m[1] as Cadence, key: "rev:" + m[2], how: `Increase in ${app}'s total dApp Store reviews between the opening baseline and the closing snapshot (${w}), read directly from the Solana dApp Store API. Reviews can only be written from a Seeker device, one per device per app, so each extra review costs a phone.` }; }
+  if (m) { const app = APP_NAMES[m[2]] ?? m[2]; const w = WINDOW[m[1] as "day" | "week"]; return { title: t("m.rev.title", { app, w }), unit: "reviews", cumulative: true, source: "store", cadence: m[1] as Cadence, key: "rev:" + m[2], how: t("m.rev.how", { app, w }) }; }
   m = id.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASES[m[1]]) return undefined;
   const b = BASES[m[1]], k = m[2];
-  if (k === "day" || k === "week") return { title: `${b.noun} ${WINDOW[k]}`, unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, cumulative: true, cadence: k, key: KEYS[m[1]], how: b.cum(WINDOW[k]) };
+  if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: b.noun, w: WINDOW[k] }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, cumulative: true, cadence: k, key: KEYS[m[1]], how: b.cum(WINDOW[k]) };
   const w = MEDIAN_WINDOW[k as "dmed" | "wmed"]; const cadence: Cadence = k === "dmed" ? "day" : "week";
-  return { title: `${b.level[0].toUpperCase()}${b.level.slice(1)} (${w})`, unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
+  return { title: t("m.medTitle", { level: b.level[0].toUpperCase() + b.level.slice(1), w }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
 }
-export const metricLabel = (id: string) => metricInfo(id)?.title ?? "Unknown market";
+export const metricLabel = (id: string) => metricInfo(id)?.title ?? t("m.unknown");
 export const metricCadence = (id: string): Cadence => metricInfo(id)?.cadence ?? "other";
 export const fmtValue = (id: string, v: number) => {
   const c = metricInfo(id); const x = c?.scale ? v / c.scale : v;
