@@ -96,15 +96,6 @@
    "auto": false
   },
   {
-   "metric": "msol_dmed",
-   "cadence": "day",
-   "question": "SOL staked with Marinade, 24-hour median: at or above today's opening level?",
-   "buckets": 2,
-   "seed": "baseline",
-   "seedSkr": 0,
-   "auto": false
-  },
-  {
    "metric": "jupsol_dmed",
    "cadence": "day",
    "question": "SOL staked with Jupiter, 24-hour median: at or above today's opening level?",
@@ -117,15 +108,6 @@
    "metric": "sanctum_inf_dmed",
    "cadence": "day",
    "question": "Sanctum Infinity pool, 24-hour median: at or above today's opening level?",
-   "buckets": 2,
-   "seed": "baseline",
-   "seedSkr": 0,
-   "auto": false
-  },
-  {
-   "metric": "kamino_tvl_dmed",
-   "cadence": "day",
-   "question": "Kamino Lend TVL, 24-hour median: at or above today's opening level?",
    "buckets": 2,
    "seed": "baseline",
    "seedSkr": 0,
@@ -166,14 +148,6 @@
    "seedSkr": 0
   },
   {
-   "metric": "kamino_fees_next",
-   "cadence": "day",
-   "question": "",
-   "buckets": 4,
-   "seed": "auto",
-   "seedSkr": 0
-  },
-  {
    "metric": "phantom_rev_next",
    "cadence": "day",
    "question": "",
@@ -183,30 +157,6 @@
   },
   {
    "metric": "pump_rev_next",
-   "cadence": "day",
-   "question": "",
-   "buckets": 4,
-   "seed": "auto",
-   "seedSkr": 0
-  },
-  {
-   "metric": "dexscreener_rev_next",
-   "cadence": "day",
-   "question": "",
-   "buckets": 4,
-   "seed": "auto",
-   "seedSkr": 0
-  },
-  {
-   "metric": "raydium_fees_next",
-   "cadence": "day",
-   "question": "",
-   "buckets": 4,
-   "seed": "auto",
-   "seedSkr": 0
-  },
-  {
-   "metric": "meteora_fees_next",
    "cadence": "day",
    "question": "",
    "buckets": 4,
@@ -228,9 +178,35 @@
    "buckets": 4,
    "seed": "auto",
    "seedSkr": 0
+  },
+  {
+   "metric": "jito_tips_next",
+   "cadence": "day",
+   "question": "",
+   "buckets": 4,
+   "seed": "auto",
+   "seedSkr": 0
+  },
+  {
+   "metric": "jup_rev_next",
+   "cadence": "day",
+   "question": "",
+   "buckets": 4,
+   "seed": "auto",
+   "seedSkr": 0
+  },
+  {
+   "metric": "backpack_reserves_dmed",
+   "cadence": "day",
+   "question": "Backpack reserves, 24-hour median: at or above today's opening level?",
+   "buckets": 2,
+   "seed": "baseline",
+   "auto": false,
+   "seedSkr": 0
   }
  ],
  "minWindows": 8,
  "_retired": "2026-09-25: every review-count market (reviews_day/week, rev_week:<app>) retired. One verified Seeker may review each of the 1,300+ listed apps once, so a single device can move the store-wide count by hundreds in a day; the bettors are exactly the people who own Seekers. reviewers_7d (distinct devices) would be the honest version if a review market is ever wanted.",
- "_doc_next": "<id>_next: bet today on the number the source reports for tomorrow (UTC); 4 ranges cut at the quantiles of the source's last 28 days (gap days of 0 left out); resolved lagDays after that day ends."
+ "_doc_next": "<id>_next: bet today on the number the source reports for tomorrow (UTC); 4 ranges cut at the quantiles of the source's last 28 days (gap days of 0 left out); resolved lagDays after that day ends.",
+ "_rule": "Only apps listed in the Solana dApp Store (package names in app-metrics.json), plus the Seeker/SKR/Solana numbers themselves."
 }

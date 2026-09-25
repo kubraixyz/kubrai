@@ -15,21 +15,8 @@
    "digits": 0,
    "pushCost": "expensive: ~10% of the pool is millions of SOL parked for the whole window",
    "how": "Total JitoSOL in circulation (the liquid-staking token Jito mints for every SOL staked with it), read from the mint's supply on-chain.",
-   "category": "Staking"
-  },
-  {
-   "id": "msol",
-   "app": "Marinade",
-   "kind": "token_supply",
-   "mint": "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
-   "tier": "hourly",
-   "noun": "SOL staked with Marinade",
-   "level": "mSOL supply",
-   "unit": "mSOL",
-   "scale": 1000000000,
-   "pushCost": "expensive: moving the 24-hour median by a few percent means parking tens of thousands of SOL in it for half a day",
-   "how": "Total mSOL in circulation (Marinade's liquid-staking token, one per staked SOL share), read from the mint's supply on-chain.",
-   "category": "Staking"
+   "category": "Staking",
+   "inStore": true
   },
   {
    "id": "jupsol",
@@ -44,7 +31,8 @@
    "scale": 1000000000,
    "pushCost": "expensive: moving the 24-hour median by a few percent means parking tens of thousands of SOL in it for half a day",
    "how": "Total JupSOL in circulation (Jupiter's liquid-staking token), read from the mint's supply on-chain.",
-   "category": "Staking"
+   "category": "Staking",
+   "inStore": true
   },
   {
    "id": "sanctum_inf",
@@ -58,20 +46,9 @@
    "scale": 1000000000,
    "pushCost": "expensive: moving the 24-hour median by a few percent means parking tens of thousands of SOL in it for half a day",
    "how": "Total INF in circulation (the Sanctum Infinity multi-LST pool token), read from the mint's supply on-chain.",
-   "category": "Staking"
-  },
-  {
-   "id": "kamino_tvl",
-   "app": "Kamino",
-   "kind": "defillama_tvl",
-   "slug": "kamino-lend",
-   "tier": "hourly",
-   "noun": "Kamino Lend TVL",
-   "level": "Kamino Lend TVL",
-   "unit": "USD",
-   "pushCost": "expensive: 1% of TVL is over $10M deposited for half a day",
-   "how": "Total value locked in Kamino Lend, as reported by DefiLlama (third-party aggregator; every hourly reading is in the snapshot).",
-   "category": "Lending"
+   "category": "Staking",
+   "package": "so.sanctum.app",
+   "inStore": true
   },
   {
    "id": "ore_price",
@@ -87,67 +64,8 @@
    "digits": 2,
    "pushCost": "medium to expensive: holding the price up for half a day against the pools' depth",
    "how": "ORE/USD from Jupiter's price API (third-party quote), read every hour.",
-   "category": "Games"
-  },
-  {
-   "id": "bonk_supply",
-   "app": "Bonk",
-   "kind": "token_supply",
-   "mint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-   "tier": "hourly",
-   "noun": "BONK supply",
-   "level": "BONK supply",
-   "unit": "BONK",
-   "scale": 1,
-   "pushCost": "medium: lowering it means burning BONK, which costs its market value",
-   "how": "Total BONK supply on-chain; it only falls, by burns. Collected for history; markets open once enough days exist to set ranges.",
-   "shift": 5,
-   "category": "Memes"
-  },
-  {
-   "id": "honey_supply",
-   "app": "Hivemapper",
-   "kind": "token_supply",
-   "mint": "4vMsoUT2BWatFweudnQM1xedRLfJgJ7hswhcpz4xgBTy",
-   "tier": "hourly",
-   "noun": "HONEY supply",
-   "level": "HONEY supply",
-   "unit": "HONEY",
-   "scale": 1,
-   "pushCost": "medium: burn-and-mint; moving it costs burning HONEY for map credits",
-   "how": "Total HONEY supply (Hivemapper's burn-and-mint token). Collected for history.",
-   "shift": 9,
-   "category": "DePIN"
-  },
-  {
-   "id": "mobile_supply",
-   "app": "Helium Mobile",
-   "kind": "token_supply",
-   "mint": "mb1eu7TzEc71KxDpsmsKoucSSuuoGLv1drys1oP2jh6",
-   "tier": "hourly",
-   "noun": "MOBILE supply",
-   "level": "MOBILE supply",
-   "unit": "MOBILE",
-   "scale": 1,
-   "pushCost": "medium",
-   "how": "Total MOBILE supply (Helium Mobile). Collected for history.",
-   "shift": 6,
-   "category": "DePIN"
-  },
-  {
-   "id": "hnt_supply",
-   "app": "Helium",
-   "kind": "token_supply",
-   "mint": "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",
-   "tier": "hourly",
-   "noun": "HNT supply",
-   "level": "HNT supply",
-   "unit": "HNT",
-   "scale": 1,
-   "pushCost": "medium",
-   "how": "Total HNT supply (Helium). Collected for history.",
-   "shift": 8,
-   "category": "DePIN"
+   "category": "Games",
+   "inStore": true
   },
   {
    "id": "jup_agg_volume",
@@ -164,7 +82,8 @@
    "digits": 0,
    "pushCost": "expensive: every extra $1M of volume pays swap fees and slippage",
    "how": "USD routed through the Jupiter aggregator in one UTC day, as reported by DefiLlama.",
-   "package": "ag.jup.jupiter.android"
+   "package": "ag.jup.jupiter.android",
+   "inStore": true
   },
   {
    "id": "jup_perps_fees",
@@ -181,23 +100,8 @@
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
    "how": "Fees paid by traders on Jupiter Perpetuals in one UTC day, as reported by DefiLlama.",
-   "package": "ag.jup.jupiter.android"
-  },
-  {
-   "id": "kamino_fees",
-   "category": "Lending",
-   "app": "Kamino",
-   "kind": "defillama_daily",
-   "path": "summary/fees/kamino-lend",
-   "lagDays": 2,
-   "tier": "hourly",
-   "noun": "Kamino Lend fees",
-   "level": "Kamino Lend fees",
-   "unit": "USD",
-   "scale": 1,
-   "digits": 0,
-   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Interest and fees paid by Kamino Lend borrowers in one UTC day, as reported by DefiLlama."
+   "package": "ag.jup.jupiter.android",
+   "inStore": true
   },
   {
    "id": "phantom_rev",
@@ -213,71 +117,27 @@
    "scale": 1,
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Revenue Phantom Wallet earns from swaps and other fees in one UTC day, as reported by DefiLlama."
+   "how": "Revenue Phantom Wallet earns from swaps and other fees in one UTC day, as reported by DefiLlama.",
+   "package": "app.phantom",
+   "inStore": true
   },
   {
    "id": "pump_rev",
    "category": "Launchpads",
    "app": "pump.fun",
    "kind": "defillama_daily",
-   "path": "summary/fees/pump.fun?dataType=dailyRevenue",
+   "path": "summary/fees/pump.fun-mobile-app?dataType=dailyRevenue",
    "lagDays": 2,
    "tier": "hourly",
-   "noun": "pump.fun revenue",
-   "level": "pump.fun revenue",
+   "noun": "pump.fun app revenue",
+   "level": "pump.fun app revenue",
    "unit": "USD",
    "scale": 1,
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Revenue pump.fun earns from token launches and trading in one UTC day, as reported by DefiLlama."
-  },
-  {
-   "id": "dexscreener_rev",
-   "category": "Tools",
-   "app": "DEX Screener",
-   "kind": "defillama_daily",
-   "path": "summary/fees/dex-screener?dataType=dailyRevenue",
-   "lagDays": 2,
-   "tier": "hourly",
-   "noun": "DEX Screener revenue",
-   "level": "DEX Screener revenue",
-   "unit": "USD",
-   "scale": 1,
-   "digits": 0,
-   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Revenue DEX Screener earns (token info boosts and ads) in one UTC day, as reported by DefiLlama."
-  },
-  {
-   "id": "raydium_fees",
-   "category": "DEX",
-   "app": "Raydium",
-   "kind": "defillama_daily",
-   "path": "summary/fees/raydium-amm",
-   "lagDays": 2,
-   "tier": "hourly",
-   "noun": "Raydium AMM fees",
-   "level": "Raydium AMM fees",
-   "unit": "USD",
-   "scale": 1,
-   "digits": 0,
-   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Swap fees paid on Raydium's AMM in one UTC day, as reported by DefiLlama."
-  },
-  {
-   "id": "meteora_fees",
-   "category": "DEX",
-   "app": "Meteora",
-   "kind": "defillama_daily",
-   "path": "summary/fees/meteora-dlmm",
-   "lagDays": 2,
-   "tier": "hourly",
-   "noun": "Meteora DLMM fees",
-   "level": "Meteora DLMM fees",
-   "unit": "USD",
-   "scale": 1,
-   "digits": 0,
-   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Swap fees paid on Meteora's DLMM pools in one UTC day, as reported by DefiLlama."
+   "how": "Revenue pump.fun earns through its mobile app (the one in the Solana dApp Store) in one UTC day, as reported by DefiLlama.",
+   "package": "com.batonresearch.pump",
+   "inStore": true
   },
   {
    "id": "sanctum_fees",
@@ -293,7 +153,9 @@
    "scale": 1,
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Fees and staking rewards flowing through Sanctum's validator LSTs in one UTC day, as reported by DefiLlama."
+   "how": "Fees and staking rewards flowing through Sanctum's validator LSTs in one UTC day, as reported by DefiLlama.",
+   "package": "so.sanctum.app",
+   "inStore": true
   },
   {
    "id": "solana_fees",
@@ -309,7 +171,59 @@
    "scale": 1,
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Transaction fees (base + priority) paid on Solana in one UTC day, as reported by DefiLlama."
+   "how": "Transaction fees (base + priority) paid on Solana in one UTC day, as reported by DefiLlama.",
+   "inStore": false
+  },
+  {
+   "id": "jito_tips",
+   "category": "Staking",
+   "app": "Jito",
+   "package": "network.jito.www.twa",
+   "kind": "defillama_daily",
+   "path": "summary/fees/jito",
+   "lagDays": 2,
+   "tier": "hourly",
+   "noun": "Jito tips",
+   "level": "Jito tips",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
+   "how": "Tips searchers and traders pay through Jito's block engine in one UTC day, as reported by DefiLlama.",
+   "inStore": true
+  },
+  {
+   "id": "jup_rev",
+   "category": "DeFi",
+   "app": "Jupiter",
+   "package": "ag.jup.jupiter.android",
+   "kind": "defillama_daily",
+   "path": "summary/fees/jupiter?dataType=dailyRevenue",
+   "lagDays": 3,
+   "tier": "hourly",
+   "noun": "Jupiter revenue",
+   "level": "Jupiter revenue",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
+   "how": "Revenue Jupiter earns across its products in one UTC day, as reported by DefiLlama.",
+   "inStore": true
+  },
+  {
+   "id": "backpack_reserves",
+   "category": "Wallets",
+   "app": "Backpack",
+   "package": "app.backpack.mobile.standalone",
+   "kind": "defillama_tvl",
+   "slug": "backpack",
+   "tier": "hourly",
+   "noun": "Backpack reserves",
+   "level": "Backpack exchange reserves",
+   "unit": "USD",
+   "pushCost": "expensive: 1% of reserves is over $6M deposited for half a day",
+   "how": "USD held in Backpack Exchange's published reserve wallets, as tracked by DefiLlama (third-party aggregator; every hourly reading is in the snapshot).",
+   "inStore": true
   }
  ]
 }
