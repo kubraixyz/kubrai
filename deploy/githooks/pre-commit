@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Runs before every commit (git config core.hooksPath deploy/githooks): the mechanical security checks must pass.
+if [ -x /root/kubrai/security-check.sh ]; then
+  /root/kubrai/security-check.sh; rc=$?
+  [ "$rc" = 0 ] || { echo "commit refused: security checks failed (see above)"; exit "$rc"; }
+fi
+exit 0

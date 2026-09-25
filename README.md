@@ -82,6 +82,25 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
   shows its full timeline (bets open → close → closing snapshot → proposal → dispute window → payout) with a countdown
   to the next step, and My bets carries the next step per position.
 
+## Operations: two hosts, one of them cold-ish
+
+- **App host (Germany)** runs the site, the API, the hourly snapshot (memo on-chain), the market opener, the resolver
+  and the referral payout, all under `flock`. It holds the proposer key (proposes values, settles, sweeps) and, on
+  devnet, the admin/deployer key for payouts and top-ups. It serves no admin UI.
+- **Tokyo** takes its own hourly snapshots and runs `server/verify-proposals.mjs` every 10 minutes: every proposed
+  value is re-derived from Tokyo's snapshots; a different range voids the market (full refunds) and pages; a result
+  Tokyo watched but cannot verify is voided 45 min before the window closes; a market Tokyo was not watching yet is
+  left to the proposal. Tokyo also runs the operator dashboard (read-only rsync of the app host's data every 5 min;
+  the only action is *void*, typed out to confirm) and pushes a heartbeat the app host checks (`heartbeat-check.mjs`).
+- **Guardrails without hands**: a market still without a proposal a day after it could have had one is voided on-chain
+  (`void_stale_market`, proposer may); a position that fails to settle three rounds in a row pages once; hot wallets
+  are refilled from a funding wallet to fixed targets (`sol-topup.mjs`); referral rebates are paid only for settlement
+  rows the chain confirms and never twice; every commit passes `security-check.sh` (unit tests, secret scan); a weekly
+  read-only Claude audit files a report and pages only on critical/high findings.
+- **Languages**: en, zh-TW, zh-CN, ja, ko, es. The API picks the language per request (`?lang=` → cookie →
+  Accept-Language), translates the static HTML and embeds the market list as `window.__BOOT__`, so the first paint
+  needs no API round trip.
+
 ## Layout
 
 ```
@@ -124,6 +143,9 @@ ANCHOR_PROVIDER_URL=... ANCHOR_WALLET=... npx ts-node scripts/devnet-setup.ts
 CLOSE_AT=2026-09-19T00:00:00Z npx ts-node scripts/create-market.ts skr_ids_week 77,93,113 "How many new .skr IDs this week?" 0 0 500   # manual one-off
 node server/open-markets.mjs            # scheduled: daily markets every day, weekly ones on Mondays (cron 00:00 UTC; markets open/close exactly on the hour)
 node scripts/update-config.mjs disputeWindowSecs=21600
+CLUSTER=devnet SNAPSHOT_DIR=./verify-snapshots ADMIN_KEYPAIR=... node server/verify-proposals.mjs   # second host, every 10 min
+CLUSTER=devnet FUNDING_KEYPAIR=... node server/sol-topup.mjs                                       # daily
+node examples/automate.mjs markets                                                                  # scripted use
 node --test server/referrals.test.mjs      # points + referral rules
 CLUSTER=devnet REBATE_KEYPAIR=~/.config/solana/id.json DRY_RUN=1 node server/referral-payout.mjs   # weekly cron on the app host
 
