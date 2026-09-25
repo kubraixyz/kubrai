@@ -1,0 +1,36 @@
+{
+ "_doc": "Per-app metrics (server/app-metrics.mjs). id = snapshot field and market base (<id>_day for counters, <id>_dmed for levels). kind = how it is read. tier = hourly|daily. scale/unit/digits = display. pushCost = what one player must spend to move a day's value by ~10% (cheap < $100, medium, expensive > $10k): only medium/expensive numbers get markets. how = the sentence shown on the market page.",
+ "metrics": [
+  {
+   "id": "jito_sol",
+   "app": "Jito",
+   "package": "network.jito.www.twa",
+   "kind": "token_supply",
+   "mint": "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
+   "tier": "hourly",
+   "noun": "SOL staked with Jito",
+   "level": "JitoSOL supply",
+   "unit": "JitoSOL",
+   "scale": 1000000000,
+   "digits": 0,
+   "pushCost": "expensive: ~10% of the pool is millions of SOL parked for the whole window",
+   "how": "Total JitoSOL in circulation (the liquid-staking token Jito mints for every SOL staked with it), read from the mint's supply on-chain."
+  },
+  {
+   "id": "jup_volume",
+   "app": "Jupiter",
+   "package": "ag.jup.jupiter.android",
+   "kind": "defillama_dex",
+   "slug": "jupiter-aggregator",
+   "tier": "hourly",
+   "noun": "Jupiter 24-hour volume",
+   "level": "Jupiter 24-hour volume",
+   "unit": "USD",
+   "scale": 1,
+   "digits": 0,
+   "pushCost": "medium: every $1M of extra volume costs the swapper fees and slippage",
+   "how": "USD volume routed through the Jupiter aggregator in the last 24 hours, as reported by DefiLlama (third-party aggregator; every hourly reading is in the snapshot).",
+   "category": "aggregators"
+  }
+ ]
+}

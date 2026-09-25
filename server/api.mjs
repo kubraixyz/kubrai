@@ -13,6 +13,7 @@ import { notify } from "./notify.mjs";
 import { parseMetric, loadSlots, valueIn, median } from "./history.mjs";
 import { leaderboard, readSettlements } from "./points.mjs";
 import { resolveLang, translateHtml, langScript, LANGS } from "./i18n.mjs";
+import { APP_METRIC_CATALOG } from "./app-metrics.mjs";
 import * as referrals from "./referrals.mjs";
 import anchor from "@coral-xyz/anchor";
 
@@ -78,7 +79,7 @@ async function servePage(req, res, url) {
   const raw = readPage(name); if (!raw) return false;
   const { lang } = resolveLang(req, url);
   let boot = "";
-  try { const st = await chainState(); boot = `<script>window.__BOOT__=${JSON.stringify({ at: st.at, markets: st.markets, config: st.config }).replace(/</g, "\\u003c")};</script>`; } catch {}
+  try { const st = await chainState(); boot = `<script>window.__BOOT__=${JSON.stringify({ at: st.at, markets: st.markets, config: st.config, metricCatalog: APP_METRIC_CATALOG }).replace(/</g, "\\u003c")};</script>`; } catch {}
   const html = translateHtml(raw, lang).replace("</head>", () => boot + "</head>");
   res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "private, max-age=0, must-revalidate", vary: "Cookie, Accept-Language", "content-language": lang, "x-frame-options": "DENY", "content-security-policy": "frame-ancestors 'none'" });
   res.end(html); return true;
@@ -211,6 +212,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   if (req.method === "OPTIONS") return json(res, 204, {});
   try {
+    if (url.pathname === "/metrics") return json(res, 200, { metrics: APP_METRIC_CATALOG }, { "cache-control": "public, max-age=300" });
     if (url.pathname === "/health") return json(res, 200, { ok: true, cluster: CLUSTER, programId: state.programId, mint: state.mint, faucet: FAUCET_ENABLED, langs: LANGS });
     const li = url.pathname.match(/^\/i18n\/([A-Za-z-]{2,10})\.js$/);
     if (li) { const body = langScript(li[1]); if (body == null) return json(res, 404, { error: "no such language" }); res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "public, max-age=31536000, immutable", "access-control-allow-origin": "*" }); return res.end(body); }

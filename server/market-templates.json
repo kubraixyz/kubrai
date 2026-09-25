@@ -82,6 +82,22 @@
     30
    ],
    "seedSkr": 0
+  },
+  {
+   "metric": "jito_sol_dmed",
+   "cadence": "day",
+   "question": "SOL staked with Jito, 24-hour median: at or above today's opening level?",
+   "buckets": 2,
+   "seed": "baseline",
+   "seedSkr": 0
+  },
+  {
+   "metric": "jup_volume_dmed",
+   "cadence": "day",
+   "question": "Jupiter 24-hour volume, median over the day: at or above the opening reading?",
+   "buckets": 2,
+   "seed": "baseline",
+   "seedSkr": 0
   }
  ],
  "minWindows": 8,

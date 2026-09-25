@@ -2,6 +2,8 @@
 // bundle carries the evidence, not just the number.
 import { Connection, PublicKey } from "@solana/web3.js";
 import { findAllDomainsForTld } from "@onsol/tldparser";
+import { appMetricFetchers } from "./app-metrics.mjs";
+const APP = appMetricFetchers();
 
 const UA = "kubrai-snapshot/0.1 (+https://kubrai.xyz)";
 const SKR_MINT = new PublicKey("SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3");
@@ -254,9 +256,11 @@ export const HOURLY_METRICS = {
   ore_cost_ema: oreCostEma,
   ore_deployed_cum: oreDeployedCum,
   ore_motherlode_cum: oreMotherlodeCum,
+  ...APP.hourly,
 };
 export const DAILY_METRICS = {
   reviewers_7d: storeReviewers7d,   // per-app review scan, minutes
   // skr_ids_onchain (skrIdsOnchain, ~20 s getProgramAccounts) is kept in the code but not recorded: no .skr markets since 2026-09-12.
+  ...APP.daily,
 };
 export const METRICS = { ...HOURLY_METRICS, ...DAILY_METRICS };

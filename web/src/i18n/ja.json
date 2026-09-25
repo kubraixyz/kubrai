@@ -337,5 +337,9 @@
  "u.reviews": "件",
  "u.SKR": "SKR",
  "u.IDs": "件",
- "u.USD": "USD"
+ "u.USD": "USD",
+ "m.appChange": "{noun}の変化量",
+ "m.appCumHow": "開始時と締切時の毎時スナップショットの差で決まります（{w}）。",
+ "m.appMedHow": "期間内のすべての毎時読み取り値の{w}で決まります。",
+ "m.pushCost": "動かすためのコスト：{cost}。"
 }

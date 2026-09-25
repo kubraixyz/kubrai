@@ -337,5 +337,9 @@
  "u.reviews": "개 리뷰",
  "u.SKR": "SKR",
  "u.IDs": "개",
- "u.USD": "USD"
+ "u.USD": "USD",
+ "m.appChange": "{noun} 변화량",
+ "m.appCumHow": "오픈 시각 스냅샷과 마감 시각 스냅샷의 차이로 결정돼요({w}).",
+ "m.appMedHow": "창 안의 모든 시간별 값의 {w}로 결정돼요.",
+ "m.pushCost": "움직이는 데 드는 비용: {cost}."
 }

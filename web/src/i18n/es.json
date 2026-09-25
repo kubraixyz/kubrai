@@ -337,5 +337,9 @@
  "u.reviews": "reseñas",
  "u.SKR": "SKR",
  "u.IDs": "IDs",
- "u.USD": "USD"
+ "u.USD": "USD",
+ "m.appChange": "Cambio en {noun}",
+ "m.appCumHow": "Se liquida con el cambio entre la instantánea de apertura y la de cierre ({w}).",
+ "m.appMedHow": "Se liquida con la {w} de todas las lecturas horarias de la ventana.",
+ "m.pushCost": "Coste de moverlo: {cost}."
 }

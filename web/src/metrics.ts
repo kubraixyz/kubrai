@@ -32,8 +32,20 @@ const LEGACY: Record<string, MetricInfo> = {
   das_med7: { title: t("m.das_med7.title"), unit: t("u.IDs"), source: "thirdparty", cadence: "week", how: t("m.das_med7.how") },
   skr_price_close: { title: t("m.skr_price_close.title"), unit: t("u.USD"), scale: 100_000_000, source: "thirdparty", cadence: "other", how: t("m.skr_price_close.how") },
 };
+// Per-app metrics are configured on the server (server/app-metrics.json) and described by /metrics; the page gets that
+// catalog embedded (window.__BOOT__.metricCatalog). Unknown ids resolve through it, so a new app market needs no web build.
+type CatalogEntry = { id: string; app: string; noun: string; level: string; unit: string; scale: number; digits: number; source: SourceKind; how: string; pushCost?: string | null };
+const catalog: Record<string, CatalogEntry> = ((globalThis as any).__BOOT__?.metricCatalog as Record<string, CatalogEntry>) ?? {};
+export const catalogEntry = (id: string) => catalog[id];
 export function metricInfo(id: string): MetricInfo | undefined {
   if (LEGACY[id]) return LEGACY[id];
+  const cm = id.match(/^(.+)_(day|week|dmed|wmed)$/);
+  if (cm && catalog[cm[1]]) {
+    const c = catalog[cm[1]], k = cm[2];
+    if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: t("m.appChange", { noun: c.noun }), w: WINDOW[k] }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cumulative: true, cadence: k, key: c.id, how: `${c.how} ${t("m.appCumHow", { w: WINDOW[k] })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
+    const w = MEDIAN_WINDOW[k as "dmed" | "wmed"];
+    return { title: t("m.medTitle", { level: c.level, w }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: k === "dmed" ? "day" : "week", key: c.id, how: `${c.how} ${t("m.appMedHow", { w })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
+  }
   let m = id.match(/^rev_(week|day):(.+)$/);
   if (m) { const app = APP_NAMES[m[2]] ?? m[2]; const w = WINDOW[m[1] as "day" | "week"]; return { title: t("m.rev.title", { app, w }), unit: t("u.reviews"), cumulative: true, source: "store", cadence: m[1] as Cadence, key: "rev:" + m[2], how: t("m.rev.how", { app, w }) }; }
   m = id.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASES[m[1]]) return undefined;

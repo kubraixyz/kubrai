@@ -337,5 +337,9 @@
  "u.reviews": "則評論",
  "u.SKR": "SKR",
  "u.IDs": "個",
- "u.USD": "USD"
+ "u.USD": "USD",
+ "m.appChange": "{noun}變化量",
+ "m.appCumHow": "以開盤整點快照與截止整點快照之間的變化量判定（{w}）。",
+ "m.appMedHow": "以時窗內所有整點讀數的{w}判定。",
+ "m.pushCost": "操縱成本：{cost}。"
 }
