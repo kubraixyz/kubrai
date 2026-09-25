@@ -8,16 +8,21 @@ import {
   NavigationContainer,
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import React from "react";
-import { Appearance, useColorScheme } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Appearance, BackHandler, useColorScheme } from "react-native";
 import * as Screens from "../screens";
 import { HomeNavigator } from "./HomeNavigator";
 import { StatusBar } from "expo-status-bar";
 import {
+  Button,
+  Dialog,
   MD3DarkTheme,
   MD3LightTheme,
+  Portal,
+  Text,
   adaptNavigationTheme,
 } from "react-native-paper";
+import { NavigationContainerRef } from "@react-navigation/native";
 
 /**
  * This type allows TypeScript to know what routes are defined in this navigator
@@ -68,10 +73,30 @@ export interface NavigationProps
 
 export const AppNavigator = (props: NavigationProps) => {
   const colorScheme = useColorScheme();
+  const navRef = useRef<NavigationContainerRef<any>>(null);
+  // Android back at the root of the app used to drop straight to the launcher; ask first.
+  const [askExit, setAskExit] = useState(false);
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (navRef.current?.canGoBack()) return false;
+      setAskExit(true); return true;
+    });
+    return () => sub.remove();
+  }, []);
   return (
-    <NavigationContainer {...props}>
+    <NavigationContainer ref={navRef} {...props}>
       <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
       <AppStack />
+      <Portal>
+        <Dialog visible={askExit} onDismiss={() => setAskExit(false)}>
+          <Dialog.Title>Leave Kubrai?</Dialog.Title>
+          <Dialog.Content><Text variant="bodyMedium">Your bets stay where they are; payouts arrive in your wallet whether the app is open or not.</Text></Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setAskExit(false)}>Stay</Button>
+            <Button onPress={() => { setAskExit(false); BackHandler.exitApp(); }}>Exit</Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </NavigationContainer>
   );
 };
