@@ -4,8 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { APP_SLUGS } from "./metrics.mjs";
-import { BASE } from "./history.mjs";
+import { parseMetric, dailyDayStart } from "./history.mjs";
 
 export function makeEvaluator({ snapDir, conn }) {
   const SNAP = snapDir;
@@ -13,13 +12,8 @@ export function makeEvaluator({ snapDir, conn }) {
   // metric base → snapshot field. One source per metric — never fall back between counting bases inside a market.
   // One metric table for the whole system (history.mjs): the API, the market opener and the resolver must agree on
   // what a tag means, or a market opens that can never resolve (the ORE markets of 2026-09-24 did exactly that).
-  const LEGACY = { skr_staked_med7: { kind: "med7", src: "skr_staked" }, das_med7: { kind: "med7", src: "das" }, skr_price_close: { kind: "close", src: "skr_price_usd_e8" } };
-  function parseMetric(metric) {
-    if (LEGACY[metric]) return LEGACY[metric];
-    let m = metric.match(/^rev_(week|day):(.+)$/); if (m) return APP_SLUGS[m[2]] ? { kind: "cum", src: "rev:" + m[2] } : null;
-    m = metric.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASE[m[1]]) return null;
-    return { kind: m[2] === "day" || m[2] === "week" ? "cum" : "med", src: BASE[m[1]] };
-  }
+  // (2026-09-26: this file kept its own copy of the grammar without the DefiLlama "_next" tags, so every such market
+  // would have come back "unknown metric" at resolution. It now uses the shared parser.)
   const slotOf = (ts) => new Date(ts * 1000).toISOString().slice(0, 13);          // hour containing ts (UTC)
   const slotFile = (slot) => { const h = path.join(SNAP, slot + ".json"); if (fs.existsSync(h)) return h; if (slot.endsWith("T00")) { const d = path.join(SNAP, slot.slice(0, 10) + ".json"); if (fs.existsSync(d)) return d; } return null; };
   // A slot's bundle is only trusted if its bytes hash to the sidecar AND to the hash published on-chain.
@@ -60,9 +54,9 @@ export function makeEvaluator({ snapDir, conn }) {
       return { ok: true, value: b - base, used, detail: { baseline: base, baselineSlot: baseSlot ?? "on-chain", close: b, closeSlot: sClose } };
     }
     if (kind === "daily") {
-      // the number reported for day D (the UTC day starting at close), read from the first snapshot at or after
-      // resolve_after (close + (1 + lag) days) that carries D; later revisions by the source do not count
-      const D = new Date(closeTs * 1000).toISOString().slice(0, 10); const from = slotOf(closeTs + 86400 * (1 + spec.lagDays));
+      // the number reported for day D (the betting day for _today, the day after close for _next), read from the first
+      // snapshot at or after resolve_after (start of D + (1 + lag) days) that carries D; later revisions do not count
+      const d0 = dailyDayStart(spec, openTs, closeTs); const D = new Date(d0 * 1000).toISOString().slice(0, 10); const from = slotOf(d0 + 86400 * (1 + spec.lagDays));
       for (let i = 0; i < 48; i++) {
         const sl = addHours(from, i); const b = readSlot(sl); const ser = b?.metrics?.[src]?.raw?.series; if (!ser) continue;
         const hit = ser.find(([d]) => d === D); /* a 0 is a source gap, not a result: keep waiting */ if (hit && hit[1] > 0) { used.push(sl); return { ok: true, value: hit[1], used, detail: { day: D, slot: sl, source: b.metrics[src].source, neighbours: ser.filter(([d]) => d >= D).slice(0, 3) } }; }

@@ -6,8 +6,12 @@ import path from "node:path";
 import { APP_SLUGS } from "./metrics.mjs";
 import { APP_METRICS } from "./app-metrics.mjs";
 const DAILY = Object.fromEntries(APP_METRICS.filter((m) => m.kind === "defillama_daily").map((m) => [m.id, m.lagDays ?? 2]));
-/** DefiLlama-style daily metrics: <id>_next = the number reported for the UTC day that starts at the market close. */
+/** DefiLlama-style daily metrics, one number per UTC day:
+ *   <id>_today = the day the market is open for bets (the same 24 hours as every other daily market; from 2026-09-27)
+ *   <id>_next  = the day that starts at the market close (retired: bettors found "today vs tomorrow" confusing) */
 export const dailyLag = (id) => DAILY[id];
+/** Start (unix s) of the UTC day a daily market is about; the day's number is read (1 + lag) days after that. */
+export const dailyDayStart = (spec, openTs, closeTs) => (spec.dayFrom === "open" ? openTs : closeTs);
 export const seriesIn = (b, src) => b?.metrics?.[src]?.raw?.series ?? null;
 
 export const BASE = { ...Object.fromEntries(APP_METRICS.map((m) => [m.id, m.id])), sgt: "sgt_total", skr_ids: "skr_ids_onchain", dapps: "dapp_store_active_apps", reviews: "store_reviews_total", reviewers: "reviewers_7d", skr_staked: "skr_staked", das: "das", skr_price: "skr_price_usd_e8", ore_sol: "ore_deployed_cum", ore_hits: "ore_motherlode_cum", ore_cost: "ore_cost_ema" };
@@ -15,7 +19,7 @@ const LEGACY = { skr_staked_med7: { kind: "med7", src: "skr_staked", hours: 168 
 export function parseMetric(metric) {
   if (LEGACY[metric]) return LEGACY[metric];
   let m = metric.match(/^rev_(week|day):(.+)$/); if (m) return APP_SLUGS[m[2]] ? { kind: "cum", src: "rev:" + m[2], hours: m[1] === "day" ? 24 : 168 } : null;
-  const n = metric.match(/^(.+)_next$/); if (n && DAILY[n[1]] != null) return { kind: "daily", src: n[1], hours: 24, lagDays: DAILY[n[1]] };
+  const n = metric.match(/^(.+)_(next|today)$/); if (n && DAILY[n[1]] != null) return { kind: "daily", src: n[1], hours: 24, lagDays: DAILY[n[1]], dayFrom: n[2] === "today" ? "open" : "close" };
   m = metric.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASE[m[1]]) return null;
   return { kind: m[2] === "day" || m[2] === "week" ? "cum" : "med", src: BASE[m[1]], hours: m[2] === "day" || m[2] === "dmed" ? 24 : 168 };
 }

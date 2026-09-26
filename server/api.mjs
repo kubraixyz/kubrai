@@ -10,7 +10,7 @@ import { createInitializeMemberInstruction } from "@solana/spl-token-group";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
 import { notify } from "./notify.mjs";
-import { parseMetric, loadSlots, valueIn, median } from "./history.mjs";
+import { parseMetric, loadSlots, valueIn, median, dailyDayStart } from "./history.mjs";
 import { leaderboard, readSettlements } from "./points.mjs";
 import { resolveLang, translateHtml, langScript, LANGS } from "./i18n.mjs";
 import { APP_METRIC_CATALOG } from "./app-metrics.mjs";
@@ -351,7 +351,7 @@ reason=${reason}`;
       const spec = parseMetric(metric); if (!spec || !openTs || !closeTs) return json(res, 400, { error: "unknown metric or missing open/close" });
       if (spec.kind === "daily") {
         // one number per UTC day from the source: show what it has reported so far for the days around the market's day
-        const D = new Date(closeTs * 1000).toISOString().slice(0, 10), slots = loadSlots(SNAP), last = [...slots.keys()].sort().reverse().find((k) => slots.get(k)?.metrics?.[spec.src]?.raw?.series);
+        const D = new Date(dailyDayStart(spec, openTs, closeTs) * 1000).toISOString().slice(0, 10), slots = loadSlots(SNAP), last = [...slots.keys()].sort().reverse().find((k) => slots.get(k)?.metrics?.[spec.src]?.raw?.series);
         const ser = last ? slots.get(last).metrics[spec.src].raw.series : [], src = last ? slots.get(last).metrics[spec.src].source : null;
         let resolution = null; const rf = id && /^\d+$/.test(id) ? path.join(SNAP, `resolution-${id}.json`) : null;
         if (rf && fs.existsSync(rf)) { const r = JSON.parse(fs.readFileSync(rf, "utf8")); resolution = { observed: r.observed, bucket: r.bucket, detail: r.detail, evidenceHash: r.evidenceHash, at: r.at, slot: (r.slots ?? [])[0] ?? null }; }

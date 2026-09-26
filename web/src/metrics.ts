@@ -41,7 +41,9 @@ export const catalogEntry = (id: string) => catalog[id];
 /** closeTs (when known) lets a "tomorrow" market name its day as the viewer's own clock shows it, not as a UTC date. */
 export function metricInfo(id: string, closeTs?: number): MetricInfo | undefined {
   if (LEGACY[id]) return LEGACY[id];
-  const nx = id.match(/^(.+)_next$/);
+  const td = id.match(/^(.+)_today$/);
+  if (td && catalog[td[1]]) { const c = catalog[td[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: "day", key: c.id, how: `${c.how} ${t("m.todayHow", { lag: c.lagDays ?? 2 })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
+  const nx = id.match(/^(.+)_next$/);   // retired 2026-09-27 (the day after close); kept for the markets opened before
   if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: "day", key: c.id, how: `${c.how} ${t("m.nextHow", { lag: c.lagDays ?? 2, window: closeTs ? fmtRange(closeTs, closeTs + 86400) : t("m.nextWindowGeneric") })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
   const cm = id.match(/^(.+)_(day|week|dmed|wmed)$/);
   if (cm && catalog[cm[1]]) {

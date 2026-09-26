@@ -37,8 +37,10 @@ let catalog: Record<string, CatalogEntry> = {};
 export async function loadMetricCatalog(apiBase: string) { try { const r = await fetch(apiBase + "/metrics"); if (r.ok) catalog = (await r.json()).metrics ?? {}; } catch {} }
 export function metricInfo(id: string): MetricInfo | undefined {
   if (LEGACY[id]) return LEGACY[id];
-  const nx = id.match(/^(.+)_next$/);
-  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: `${c.app}: ${c.noun}, tomorrow (UTC)`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: "day", key: c.id, how: `${c.how} You bet on the number for the UTC day that starts when betting closes; it is read ${(c as any).lagDays ?? 2} days after that day ends, later revisions do not count.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` }; }
+  const td = id.match(/^(.+)_today$/);
+  if (td && catalog[td[1]]) { const c = catalog[td[1]]; return { title: `${c.app}: ${c.noun}`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: "day", key: c.id, how: `${c.how} Counts the 24 hours the market is open. The source publishes a day's number about ${(c as any).lagDays ?? 2} days after it ends; the first figure settles the market, later revisions do not count.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` }; }
+  const nx = id.match(/^(.+)_next$/);   // retired 2026-09-27; the markets opened before still use it
+  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: `${c.app}: ${c.noun} (24 h after close)`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: "day", key: c.id, how: `${c.how} Counts the 24 hours that start when betting closes; it is read ${(c as any).lagDays ?? 2} days after that day ends, later revisions do not count.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` }; }
   const cm = id.match(/^(.+)_(day|week|dmed|wmed)$/);
   if (cm && catalog[cm[1]]) {
     const c = catalog[cm[1]], k = cm[2];

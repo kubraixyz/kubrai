@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import anchor from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { windowValues, quantileThresholds, parseMetric, valueIn, loadSlots } from "./history.mjs";
+import { windowValues, quantileThresholds, parseMetric, valueIn, loadSlots, dailyDayStart } from "./history.mjs";
 
 const { BN } = anchor;
 const SNAP = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots");
@@ -69,7 +69,7 @@ for (const t of tpl.templates) {
   log(`${DRY ? "would open" : "opening"} #${id} ${t.metric} (${cadence}) thresholds ${thresholds.join("/")} [${how}] open ${new Date(openTs * 1000).toISOString()} close ${new Date(closeTs * 1000).toISOString()} seed ${t.seedSkr} SKR`);
   if (DRY) { opened.push({ id: id.toNumber(), metric: t.metric, dry: true }); continue; }
   try {
-    await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, thresholds: thrArr, nBuckets, openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(spec.kind === "daily" ? closeTs + 86400 * (1 + spec.lagDays) : closeTs), baseline: new BN(baseline) })
+    await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, thresholds: thrArr, nBuckets, openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(spec.kind === "daily" ? dailyDayStart(spec, openTs, closeTs) + 86400 * (1 + spec.lagDays) : closeTs), baseline: new BN(baseline) })
       .accounts({ config: configPda, market, vault, mint: cfg.mint, signer, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).rpc();
     nextId = id.addn(1);
     // No house prize unless SEED_MARKETS=1 (a test network can still show one): pools are only what bettors put in.
