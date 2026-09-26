@@ -1,17 +1,16 @@
-// Opens the scheduled markets (server/market-templates.json) at 00:00 UTC.
-//   daily templates every day, weekly templates on Mondays; closes at the next 00:00 UTC / next Monday 00:00 UTC.
+// Opens the scheduled daily markets (server/market-templates.json) for tomorrow's UTC day D. Runs from cron at 11:00 UTC.
+//   Each market: bets from D−1 11:00 UTC to D 12:00 UTC, counts the whole of D (see the schedule note below).
 // Thresholds = quantiles of the metric's own history when enough windows exist,
-// else the template's seed ("baseline" = yes/no at the opening value). Idempotent: skips a metric that already has
-// an open market with the same close time. Signs with the admin wallet (devnet); on mainnet this becomes a Squads proposal.
-//   Runs from cron at 00:00 UTC; markets open at exactly 00:00 and close at 00:00 (daily) / Monday 00:00 (weekly).
-//   env: ANCHOR_PROVIDER_URL, ANCHOR_WALLET, SNAPSHOT_DIR, DRY_RUN=1, FORCE_DAY=YYYY-MM-DD (testing), TEMPLATES=path
+// else the template's seed ("baseline" = yes/no at the level when the market opens). Idempotent: skips a metric that
+// already has a market with the same close time. Signs with the admin wallet (devnet); on mainnet this becomes a Squads proposal.
+//   env: ANCHOR_PROVIDER_URL, ANCHOR_WALLET, SNAPSHOT_DIR, DRY_RUN=1, FORCE_DAY=YYYY-MM-DD (the counted day D), TEMPLATES=path
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import anchor from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { windowValues, quantileThresholds, parseMetric, valueIn, loadSlots, dailyDayStart } from "./history.mjs";
+import { windowValues, quantileThresholds, parseMetric, valueIn, loadSlots, DAY_LOCK_SECS, DAY_OPEN_LEAD_SECS } from "./history.mjs";
 
 const { BN } = anchor;
 const SNAP = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots");
@@ -25,13 +24,14 @@ const [configPda] = PublicKey.findProgramAddressSync([Buffer.from("config")], pr
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const tag = (b) => Buffer.from(b).toString("utf8").replace(/\0+$/, "");
 
-const today = process.env.FORCE_DAY ?? new Date().toISOString().slice(0, 10);
-const t0 = Date.parse(today + "T00:00:00Z");
-const isMonday = new Date(t0).getUTCDay() === 1;
-const closeFor = (cadence) => Math.floor((cadence === "day" ? t0 + 864e5 : t0 + ((8 - new Date(t0).getUTCDay()) % 7 || 7) * 864e5) / 1000);
-// Cumulative markets carry baseline 0 on-chain: the resolver takes the opening value from the T00 snapshot of the
-// opening day (the same reading that closes the previous market). Level yes/no markets need a
-// threshold now, so they use the latest snapshot available (usually 23:00 the day before).
+// Schedule (SharePot's, since 2026-09-26): the market for UTC day D opens at D−1 11:00 UTC, stops taking bets at D 12:00
+// UTC (halfway through D, so nobody bets having seen more than half of it) and counts the whole of D (history.mjs
+// countedWindow). It is created by the 11:00 UTC run the day before, so tomorrow's pool is up an hour before today's
+// locks. Cumulative markets carry baseline 0 on-chain: the resolver reads the T00 snapshots at both ends of D. Level
+// yes/no markets need a threshold now, so they take the latest snapshot at opening.
+const day = process.env.FORCE_DAY ?? new Date(Date.now() + 864e5).toISOString().slice(0, 10);   // D: tomorrow (UTC)
+const dStart = Date.parse(day + "T00:00:00Z") / 1000;
+const openTs = dStart - DAY_OPEN_LEAD_SECS, closeTs = dStart + DAY_LOCK_SECS;
 const slots = loadSlots(SNAP); const latestSlot = [...slots.keys()].sort().at(-1);
 const latestValue = (src) => (latestSlot ? valueIn(slots.get(latestSlot), src) : null);
 
@@ -40,9 +40,8 @@ const existing = (await program.account.market.all([{ dataSize: program.account.
 const opened = [], skipped = [];
 let nextId = null;   // market_count we expect after our last successful create
 for (const t of tpl.templates) {
-  const cadence = t.cadence; if (cadence === "week" && !isMonday && process.env.FORCE_WEEKLY !== "1") continue;
+  const cadence = t.cadence; if (cadence !== "day") { skipped.push(`${t.metric}: only daily markets run on this schedule`); continue; }
   const spec = parseMetric(t.metric); if (!spec) { skipped.push(`${t.metric}: unknown metric`); continue; }
-  const closeTs = closeFor(cadence);
   if (existing.some((m) => m.metric === t.metric && m.closeTs === closeTs)) { skipped.push(`${t.metric}: already open for ${new Date(closeTs * 1000).toISOString()}`); continue; }
   const opening = latestValue(spec.src);
   // thresholds
@@ -62,14 +61,14 @@ for (const t of tpl.templates) {
   if (nextId != null && id.lt(nextId)) { skipped.push(`${t.metric}: config still reads market_count ${id} < ${nextId} after 10 s`); continue; }
   const [market] = PublicKey.findProgramAddressSync([Buffer.from("market"), id.toArrayLike(Buffer, "le", 8)], program.programId);
   const [vault] = PublicKey.findProgramAddressSync([Buffer.from("vault"), market.toBuffer()], program.programId);
-  const openTs = Math.floor(t0 / 1000); const baseline = 0;   // opens on the hour; baseline resolved from the opening slot's snapshot
+  const baseline = 0;   // cumulative: the resolver reads the T00 snapshot at the start of D
   const thrArr = Array.from({ length: 7 }, (_, i) => new BN(thresholds[i] ?? 0));
   const metricBytes = Array.from(Buffer.from(t.metric.padEnd(32, "\0").slice(0, 32)));
   const qhash = Array.from(createHash("sha256").update(t.question).digest());
   log(`${DRY ? "would open" : "opening"} #${id} ${t.metric} (${cadence}) thresholds ${thresholds.join("/")} [${how}] open ${new Date(openTs * 1000).toISOString()} close ${new Date(closeTs * 1000).toISOString()} seed ${t.seedSkr} SKR`);
   if (DRY) { opened.push({ id: id.toNumber(), metric: t.metric, dry: true }); continue; }
   try {
-    await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, thresholds: thrArr, nBuckets, openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(spec.kind === "daily" ? dailyDayStart(spec, openTs, closeTs) + 86400 * (1 + spec.lagDays) : closeTs), baseline: new BN(baseline) })
+    await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, thresholds: thrArr, nBuckets, openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(spec.kind === "daily" ? dStart + 86400 * (1 + spec.lagDays) : dStart + 86400), baseline: new BN(baseline) })
       .accounts({ config: configPda, market, vault, mint: cfg.mint, signer, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).rpc();
     nextId = id.addn(1);
     // No house prize unless SEED_MARKETS=1 (a test network can still show one): pools are only what bettors put in.
@@ -77,10 +76,10 @@ for (const t of tpl.templates) {
       const funderToken = getAssociatedTokenAddressSync(new PublicKey(cfg.mint), signer);
       await program.methods.seedMarket(new BN(Math.round(t.seedSkr * 1_000_000))).accounts({ market, vault, funderToken, funder: signer, tokenProgram: TOKEN_PROGRAM_ID }).rpc();
     }
-    fs.appendFileSync(path.join(SNAP, "markets-opened.jsonl"), JSON.stringify({ at: new Date().toISOString(), id: id.toNumber(), market: market.toBase58(), metric: t.metric, cadence, question: t.question, thresholds, nBuckets, baselineSlot: today + "T00", openTs, closeTs, seedSkr: t.seedSkr, how }) + "\n");
+    fs.appendFileSync(path.join(SNAP, "markets-opened.jsonl"), JSON.stringify({ at: new Date().toISOString(), id: id.toNumber(), market: market.toBase58(), metric: t.metric, cadence, question: t.question, thresholds, nBuckets, baselineSlot: day + "T00", countedDay: day, openTs, closeTs, seedSkr: t.seedSkr, how }) + "\n");
     opened.push({ id: id.toNumber(), metric: t.metric });
   } catch (e) { const logs = (e?.logs ?? e?.transactionLogs ?? []).filter((l) => /Error|failed/i.test(l)).slice(-2).join(" | "); skipped.push(`${t.metric}: create failed: ${String(e?.message ?? e).split("\n")[0]}${logs ? " — " + logs : ""}`); }
 }
 log(`opened ${opened.length}: ${opened.map((o) => `#${o.id} ${o.metric}`).join(", ") || "-"}`);
 for (const s of skipped) log("skipped", s);
-if (!DRY) { try { const { notify } = await import("./notify.mjs"); await notify(`Markets opened ${today}: ${opened.length}`, [...opened.map((o) => `#${o.id} ${o.metric}`), ...skipped.map((s) => "skip " + s)].join("\n").slice(0, 1500), "open-markets", 0); } catch {} }
+if (!DRY) { try { const { notify } = await import("./notify.mjs"); await notify(`Markets opened for ${day}: ${opened.length}`, [...opened.map((o) => `#${o.id} ${o.metric}`), ...skipped.map((s) => "skip " + s)].join("\n").slice(0, 1500), "open-markets", 0); } catch {} }

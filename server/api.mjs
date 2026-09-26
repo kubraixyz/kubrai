@@ -10,7 +10,7 @@ import { createInitializeMemberInstruction } from "@solana/spl-token-group";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
 import { notify } from "./notify.mjs";
-import { parseMetric, loadSlots, valueIn, median, dailyDayStart } from "./history.mjs";
+import { parseMetric, loadSlots, valueIn, median, dailyDayStart, countedWindow } from "./history.mjs";
 import { leaderboard, readSettlements } from "./points.mjs";
 import { resolveLang, translateHtml, langScript, LANGS } from "./i18n.mjs";
 import { APP_METRIC_CATALOG } from "./app-metrics.mjs";
@@ -346,7 +346,7 @@ reason=${reason}`;
       const m = st.markets.find((x) => x.id === Number(url.pathname.slice(9))); return m ? json(res, 200, { at: st.at, market: m, config: st.config }, hdr) : json(res, 404, { error: "no such market" });
     }
     if (url.pathname === "/evidence") {
-      const metric = url.searchParams.get("metric") ?? "", openTs = Number(url.searchParams.get("open")), closeTs = Number(url.searchParams.get("close"));
+      const metric = url.searchParams.get("metric") ?? ""; let openTs = Number(url.searchParams.get("open")), closeTs = Number(url.searchParams.get("close"));
       const baseline = Number(url.searchParams.get("baseline") ?? 0), id = url.searchParams.get("id");
       const spec = parseMetric(metric); if (!spec || !openTs || !closeTs) return json(res, 400, { error: "unknown metric or missing open/close" });
       if (spec.kind === "daily") {
@@ -358,6 +358,7 @@ reason=${reason}`;
         return json(res, 200, { metric, kind: "daily", day: D, lagDays: spec.lagDays, source: src, latestSlot: last ?? null, recent: ser.slice(-7), reported: ser.find(([d]) => d === D)?.[1] ?? null, resolution }, { "cache-control": "public, max-age=60" });
       }
       const slots = loadSlots(SNAP); const slotOf = (ts) => new Date(ts * 1000).toISOString().slice(0, 13);
+      if (spec.kind !== "med7" && spec.kind !== "close") { const w = countedWindow(spec, openTs, closeTs); openTs = w.from; closeTs = w.to; }   // the counted period, not the betting window
       const sOpen = slotOf(openTs), sClose = slotOf(closeTs);
       const side = (slot) => { const f = [path.join(SNAP, slot + ".json"), slot.endsWith("T00") ? path.join(SNAP, slot.slice(0, 10) + ".json") : null].find((x) => x && fs.existsSync(x)); if (!f) return null; return { slot, value: valueIn(slots.get(slot), spec.src), sha256: fs.existsSync(f + ".sha256") ? fs.readFileSync(f + ".sha256", "utf8").trim() : null, memo: fs.existsSync(f + ".memo") ? JSON.parse(fs.readFileSync(f + ".memo", "utf8")).signature : null }; };
       // legacy weekly medians use the seven daily T00 readings ending at close; everything else uses every hourly slot in the window

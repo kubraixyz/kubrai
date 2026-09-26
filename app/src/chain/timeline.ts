@@ -4,6 +4,7 @@
 // Same rules as web/src/timeline.ts.
 import type { MarketView } from "./kubrai";
 import { fmtTs, inWords } from "./format";
+import { countedWindow } from "./metrics";
 
 export type Step = { key: string; label: string; ts: number; note?: string; estimate?: boolean; state: "done" | "next" | "later" };
 const SNAPSHOT_LAG = 60, RESOLVER_MINUTE = 20 * 60;
@@ -14,15 +15,18 @@ export function timelineSteps(m: MarketView, disputeWindowSecs: number | null): 
   const steps: Omit<Step, "state">[] = [
     { key: "open", label: "Betting opens", ts: m.openTs },
     { key: "close", label: "Betting closes", ts: m.closeTs },
-    { key: "snapshot", label: "Closing snapshot", ts: m.closeTs + SNAPSHOT_LAG, note: "the hourly snapshot taken right after close; its hash goes on-chain" },
   ];
+  // the counted day: on the current schedule it starts after betting opens and ends after betting closes
+  const [countStart, countEnd] = countedWindow(m);
+  if (countStart > m.openTs && countStart < m.closeTs) steps.splice(1, 0, { key: "start", label: "Counting starts", ts: countStart, note: "the day being counted begins; bets stay open until halfway through it" });
+  steps.push({ key: "snapshot", label: "Counting ends", ts: countEnd + SNAPSHOT_LAG, note: "the hourly snapshot right after the day ends closes the count; its hash goes on-chain" });
   if (m.status === 3) {
     const at = m.proposedAt || m.resolveAfterTs;
     steps.push({ key: "void", label: "Voided", ts: at, note: "no result; every stake is refunded in full, no fee" });
     steps.push({ key: "payout", label: "Refunds", ts: nextResolverRun(at + 1), note: "pushed to each wallet by the crank; nothing to claim", estimate: true });
   } else {
     const proposedAt = m.proposedAt || null;
-    const estProposal = nextResolverRun(Math.max(m.resolveAfterTs, m.closeTs + SNAPSHOT_LAG));
+    const estProposal = nextResolverRun(Math.max(m.resolveAfterTs, countEnd + SNAPSHOT_LAG));
     steps.push(proposedAt
       ? { key: "propose", label: "Result proposed", ts: proposedAt, note: "the observed value and the evidence hash are on-chain; the winning range follows from the value" }
       : { key: "propose", label: "Result proposed", ts: estProposal, note: "the resolver runs hourly; proposes once the closing snapshot is verified against its on-chain hash", estimate: true });

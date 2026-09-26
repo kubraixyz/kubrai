@@ -57,6 +57,12 @@ export function metricInfo(id: string): MetricInfo | undefined {
   return { title: `${b.level[0].toUpperCase()}${b.level.slice(1)} (${w})`, unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
 }
 export const metricLabel = (id: string) => metricInfo(id)?.title ?? id;
+/** The period a market counts (mirrors server/history.mjs countedWindow): betting closes at 12:00 UTC (the schedule
+ *  since 2026-09-26) → the whole UTC day it closes in; an older "_next" market → the 24 h after close; else open → close. */
+export function countedWindow(m: { metric: string; openTs: number; closeTs: number }): [number, number] {
+  if (m.closeTs % 86400 === 12 * 3600) { const d = m.closeTs - 12 * 3600; return [d, d + 86400]; }
+  return /_next$/.test(m.metric) ? [m.closeTs, m.closeTs + 86400] : [m.openTs, m.closeTs];
+}
 export const metricCadence = (id: string): Cadence => metricInfo(id)?.cadence ?? "other";
 export const fmtValue = (id: string, v: number) => {
   const c = metricInfo(id); const x = c?.scale ? v / c.scale : v;

@@ -14,6 +14,7 @@ import anchor from "@coral-xyz/anchor";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import idlJson from "../idl/kubrai.json" with { type: "json" };
 import { makeEvaluator } from "./evaluate.mjs";
+import { parseMetric, countedWindow } from "./history.mjs";
 import { notify } from "./notify.mjs";
 
 const { AnchorProvider, Program, Wallet } = anchor;
@@ -83,7 +84,7 @@ for (const { publicKey, account: m } of markets) {
   // was not watching yet (first day, or an outage here): that is not evidence against the proposal, so only tell.
   // If it was watching and still cannot verify, a result nobody could check must not pay out.
   const left = closesAt - now;
-  const covered = earliestSlot != null && earliestSlot <= slotOf(m.openTs.toNumber());
+  const covered = earliestSlot != null && earliestSlot <= slotOf(countedWindow(parseMetric(metric), m.openTs.toNumber(), m.closeTs.toNumber()).from);
   if (left <= UNVERIFIED_GRACE_SECS && VOID_UNVERIFIED && covered) {
     log(`market #${m.id} (${metric}): still unverified ${Math.round(left / 60)} min before the window closes (${reason}) — voiding`);
     const sig = await voidMarket(publicKey, m, "could not be verified independently before the window closed");

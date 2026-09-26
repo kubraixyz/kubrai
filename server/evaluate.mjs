@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { parseMetric, dailyDayStart } from "./history.mjs";
+import { parseMetric, dailyDayStart, countedWindow } from "./history.mjs";
 
 export function makeEvaluator({ snapDir, conn }) {
   const SNAP = snapDir;
@@ -45,6 +45,8 @@ export function makeEvaluator({ snapDir, conn }) {
 
   function evaluate(metric, openTs, closeTs, baseline) {
     const spec = parseMetric(metric); if (!spec) return { ok: false, reason: `unknown metric ${metric}` };
+    // everything below reads the counted period (history.mjs countedWindow), which is open→close only for older markets
+    if (spec.kind !== "med7" && spec.kind !== "close" && spec.kind !== "daily") { const w = countedWindow(spec, openTs, closeTs); openTs = w.from; closeTs = w.to; }
     const { kind, src } = spec; const sClose = slotOf(closeTs), sOpen = slotOf(openTs); const used = [];
     if (kind === "cum") {
       const b = valueAt(sClose, src); if (b == null) return { ok: false, reason: `missing snapshot ${sClose}` };

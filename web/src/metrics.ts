@@ -60,8 +60,13 @@ export function metricInfo(id: string, closeTs?: number): MetricInfo | undefined
   const w = MEDIAN_WINDOW[k as "dmed" | "wmed"]; const cadence: Cadence = k === "dmed" ? "day" : "week";
   return { title: t("m.medTitle", { level: b.level[0].toUpperCase() + b.level.slice(1), w }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
 }
-/** The period whose number decides the market: the betting window itself, or for a "_next" market the 24 hours after it. */
-export const countedWindow = (m: { metric: string; openTs: number; closeTs: number }): [number, number] => (/_next$/.test(m.metric) ? [m.closeTs, m.closeTs + 86400] : [m.openTs, m.closeTs]);
+/** The period whose number decides the market (mirrors server/history.mjs countedWindow):
+ *  betting closes at 12:00 UTC (the schedule since 2026-09-26) → the whole UTC day it closes in; an older "_next" market →
+ *  the 24 hours after close; any other older market → the betting window itself. */
+export const countedWindow = (m: { metric: string; openTs: number; closeTs: number }): [number, number] => {
+  if (m.closeTs % 86400 === 12 * 3600) { const d = m.closeTs - 12 * 3600; return [d, d + 86400]; }
+  return /_next$/.test(m.metric) ? [m.closeTs, m.closeTs + 86400] : [m.openTs, m.closeTs];
+};
 /** The question as SharePot asks it: the period on the viewer's clock, never "today"/"tomorrow".
  *  "Jupiter swap volume, 27 Sept, 08:00 – 28 Sept, 08:00 GMT+8: which range?" (value/threshold HTML is the caller's) */
 export function question(m: { metric: string; openTs: number; closeTs: number; nBuckets: number }, vHtml: string) {

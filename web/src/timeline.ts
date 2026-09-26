@@ -5,6 +5,7 @@ import type { MarketView } from "./kubrai";
 import { fmtTs, fmtTsShort, inWords } from "./time";
 import { esc } from "./ui";
 import { t } from "./i18n";
+import { countedWindow } from "./metrics";
 
 export type Step = { key: string; label: string; ts: number; note?: string; estimate?: boolean };
 const SNAPSHOT_LAG = 60, RESOLVER_MINUTE = 20 * 60;
@@ -16,15 +17,18 @@ export function timelineSteps(m: MarketView, cfg: { disputeWindowSecs: { toNumbe
   const steps: Step[] = [
     { key: "open", label: t("tl.open"), ts: m.openTs },
     { key: "close", label: t("tl.close"), ts: m.closeTs },
-    { key: "snapshot", label: t("tl.snapshot"), ts: m.closeTs + SNAPSHOT_LAG, note: t("tl.snapshotNote") },
   ];
+  // the counted period: on the current schedule it starts after betting opens and ends after betting closes
+  const [countStart, countEnd] = countedWindow(m);
+  if (countStart > m.openTs && countStart < m.closeTs) steps.splice(1, 0, { key: "start", label: t("tl.start"), ts: countStart, note: t("tl.startNote") });
+  steps.push({ key: "snapshot", label: t("tl.snapshot"), ts: countEnd + SNAPSHOT_LAG, note: t("tl.snapshotNote") });
   if (m.status === 3) {
     steps.push({ key: "void", label: t("tl.void"), ts: m.proposedAt || m.resolveAfterTs, note: t("tl.voidNote") });
     steps.push({ key: "payout", label: t("tl.refunds"), ts: nextResolverRun((m.proposedAt || m.resolveAfterTs) + 1), note: t("tl.refundsNote"), estimate: true });
     return steps;
   }
   const proposedAt = m.proposedAt || null;
-  const estProposal = nextResolverRun(Math.max(m.resolveAfterTs, m.closeTs + SNAPSHOT_LAG));
+  const estProposal = nextResolverRun(Math.max(m.resolveAfterTs, countEnd + SNAPSHOT_LAG));
   steps.push(proposedAt
     ? { key: "propose", label: t("tl.propose"), ts: proposedAt, note: t("tl.proposeNote") }
     : { key: "propose", label: t("tl.propose"), ts: estProposal, note: t("tl.proposeEst"), estimate: true });

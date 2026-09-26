@@ -25,7 +25,7 @@ export function MarketsScreen() {
   const cats = CATEGORY_ORDER.filter((c) => inStage.some((m) => metricCategory(m.metric) === c)).concat([...new Set(inStage.map((m) => metricCategory(m.metric)))].filter((c) => !CATEGORY_ORDER.includes(c)));
   const curCat = cats.includes(cat) ? cat : cats[0] ?? "";
   const live = inStage.filter((m) => metricCategory(m.metric) === curCat).sort((a, b) => (stage === "settled" ? b.closeTs - a.closeTs || b.id - a.id : a.closeTs - b.closeTs || a.id - b.id));
-  const EMPTY: Record<Stage, string> = { open: "No market is open for bets right now; new ones open daily at 00:00 UTC (" + fmtTsShort(Math.ceil(now / 86400) * 86400).replace(/^\S+ \S+, /, "") + " your time).", awaiting: "No market is waiting for its result.", proposed: "No result is under dispute review right now.", settled: "Nothing has settled yet." };
+  const EMPTY: Record<Stage, string> = { open: "No market is open for bets right now; new ones open daily at 11:00 UTC (" + fmtTsShort(Math.floor(now / 86400) * 86400 + (now % 86400 < 39600 ? 39600 : 126000)).replace(/^\S+ \S+, /, "") + " your time).", awaiting: "No market is waiting for its result.", proposed: "No result is under dispute review right now.", settled: "Nothing has settled yet." };
   const when = (m: MarketView) => (stage === "open" ? timeLeft(m.closeTs) : stage === "awaiting" ? `closed ${fmtTsShort(m.closeTs)} · result soon` : stage === "proposed" ? `proposed ${fmtTsShort(m.proposedAt)}` : `closed ${fmtTsShort(m.closeTs)}`);
   const highlight = (m: MarketView) => (m.status === 2 || m.status === 4 ? m.outcome : m.status === 1 ? m.proposedOutcome : -1);
   const card = ({ item: m }: { item: MarketView }) => {

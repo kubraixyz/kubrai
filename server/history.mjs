@@ -10,8 +10,19 @@ const DAILY = Object.fromEntries(APP_METRICS.filter((m) => m.kind === "defillama
  *   <id>_today = the day the market is open for bets (the same 24 hours as every other daily market; from 2026-09-27)
  *   <id>_next  = the day that starts at the market close (retired: bettors found "today vs tomorrow" confusing) */
 export const dailyLag = (id) => DAILY[id];
-/** Start (unix s) of the UTC day a daily market is about; the day's number is read (1 + lag) days after that. */
-export const dailyDayStart = (spec, openTs, closeTs) => (spec.dayFrom === "open" ? openTs : closeTs);
+/** The period a market counts, [from, to) in unix seconds. One rule for the opener, resolver, verifier, API and pages:
+ *   - betting closes at 12:00 UTC (the schedule since 2026-09-26, SharePot's): the whole UTC day it closes in. Bets
+ *     open 13 h before that day starts and stop halfway through it, so nobody bets with more than half the day seen;
+ *   - DefiLlama "_next" markets opened before that: the UTC day that starts at close;
+ *   - every other earlier market: betting open → close. */
+export const DAY_LOCK_SECS = 12 * 3600, DAY_OPEN_LEAD_SECS = 13 * 3600;
+export function countedWindow(spec, openTs, closeTs) {
+  if (closeTs % 86400 === DAY_LOCK_SECS) { const d = closeTs - DAY_LOCK_SECS; return { from: d, to: d + 86400 }; }
+  if (spec?.kind === "daily" && spec.dayFrom === "close") return { from: closeTs, to: closeTs + 86400 };
+  return { from: openTs, to: closeTs };
+}
+/** Start (unix s) of the UTC day a daily (DefiLlama) market is about; the day's number is read (1 + lag) days after that. */
+export const dailyDayStart = (spec, openTs, closeTs) => countedWindow(spec, openTs, closeTs).from;
 export const seriesIn = (b, src) => b?.metrics?.[src]?.raw?.series ?? null;
 
 export const BASE = { ...Object.fromEntries(APP_METRICS.map((m) => [m.id, m.id])), sgt: "sgt_total", skr_ids: "skr_ids_onchain", dapps: "dapp_store_active_apps", reviews: "store_reviews_total", reviewers: "reviewers_7d", skr_staked: "skr_staked", das: "das", skr_price: "skr_price_usd_e8", ore_sol: "ore_deployed_cum", ore_hits: "ore_motherlode_cum", ore_cost: "ore_cost_ema" };
