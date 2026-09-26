@@ -38,6 +38,7 @@ const latestValue = (src) => (latestSlot ? valueIn(slots.get(latestSlot), src) :
 const cfg = await program.account.config.fetch(configPda);
 const existing = (await program.account.market.all([{ dataSize: program.account.market.size }])).map(({ account: m }) => ({ metric: tag(m.metric), closeTs: m.closeTs.toNumber(), status: m.status, id: m.id.toNumber() }));
 const opened = [], skipped = [];
+let nextId = null;   // market_count we expect after our last successful create
 for (const t of tpl.templates) {
   const cadence = t.cadence; if (cadence === "week" && !isMonday && process.env.FORCE_WEEKLY !== "1") continue;
   const spec = parseMetric(t.metric); if (!spec) { skipped.push(`${t.metric}: unknown metric`); continue; }
@@ -53,7 +54,12 @@ for (const t of tpl.templates) {
   else { thresholds = t.seed; how = `seed (${hist.length} windows of history so far)`; }
   if (spec.kind === "med" && t.seed !== "baseline" && thresholds === t.seed) { skipped.push(`${t.metric}: level metric needs 'baseline' seed`); continue; }
   const nBuckets = thresholds.length + 1; if (nBuckets < 2 || nBuckets > 8) { skipped.push(`${t.metric}: bad bucket count`); continue; }
-  const id = (await program.account.config.fetch(configPda)).marketCount;
+  // The RPC behind a load balancer can serve a config read from a node a few slots behind the create we just
+  // confirmed, handing back the same market_count twice (2026-09-26: three creates hit ConstraintSeeds). Never go
+  // below the id after our last success, and wait until the node we read from has caught up to it.
+  let id = (await program.account.config.fetch(configPda, "confirmed")).marketCount;
+  for (let i = 0; nextId != null && id.lt(nextId) && i < 20; i++) { await new Promise((r) => setTimeout(r, 500)); id = (await program.account.config.fetch(configPda, "confirmed")).marketCount; }
+  if (nextId != null && id.lt(nextId)) { skipped.push(`${t.metric}: config still reads market_count ${id} < ${nextId} after 10 s`); continue; }
   const [market] = PublicKey.findProgramAddressSync([Buffer.from("market"), id.toArrayLike(Buffer, "le", 8)], program.programId);
   const [vault] = PublicKey.findProgramAddressSync([Buffer.from("vault"), market.toBuffer()], program.programId);
   const openTs = Math.floor(t0 / 1000); const baseline = 0;   // opens on the hour; baseline resolved from the opening slot's snapshot
@@ -65,6 +71,7 @@ for (const t of tpl.templates) {
   try {
     await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, thresholds: thrArr, nBuckets, openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(spec.kind === "daily" ? closeTs + 86400 * (1 + spec.lagDays) : closeTs), baseline: new BN(baseline) })
       .accounts({ config: configPda, market, vault, mint: cfg.mint, signer, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).rpc();
+    nextId = id.addn(1);
     // No house prize unless SEED_MARKETS=1 (a test network can still show one): pools are only what bettors put in.
     if (t.seedSkr > 0 && process.env.SEED_MARKETS === "1") {
       const funderToken = getAssociatedTokenAddressSync(new PublicKey(cfg.mint), signer);
@@ -72,7 +79,7 @@ for (const t of tpl.templates) {
     }
     fs.appendFileSync(path.join(SNAP, "markets-opened.jsonl"), JSON.stringify({ at: new Date().toISOString(), id: id.toNumber(), market: market.toBase58(), metric: t.metric, cadence, question: t.question, thresholds, nBuckets, baselineSlot: today + "T00", openTs, closeTs, seedSkr: t.seedSkr, how }) + "\n");
     opened.push({ id: id.toNumber(), metric: t.metric });
-  } catch (e) { skipped.push(`${t.metric}: create failed: ${String(e?.message ?? e).split("\n")[0]}`); }
+  } catch (e) { const logs = (e?.logs ?? e?.transactionLogs ?? []).filter((l) => /Error|failed/i.test(l)).slice(-2).join(" | "); skipped.push(`${t.metric}: create failed: ${String(e?.message ?? e).split("\n")[0]}${logs ? " — " + logs : ""}`); }
 }
 log(`opened ${opened.length}: ${opened.map((o) => `#${o.id} ${o.metric}`).join(", ") || "-"}`);
 for (const s of skipped) log("skipped", s);
