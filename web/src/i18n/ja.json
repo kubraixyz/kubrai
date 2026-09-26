@@ -250,7 +250,7 @@
  "win.wmed": "7 日間中央値",
  "m.sgt.noun": "Seeker アクティベーション数",
  "m.sgt.level": "Seeker Genesis Token 数",
- "m.sgt.cum": "開始時のベースラインと締切スナップショットの間の Seeker Genesis Token 数の増加分（{w}）。Genesis Token ミント GT22…99Te のトークングループサイズから読み取ります。アクティベートされた Seeker 1 台につきソウルバウンドトークンが 1 つ発行されるため、1 単位は $500 の端末に相当します。",
+ "m.sgt.cum": "その日の Seeker Genesis Token 数の増加分（その日の開始時と終了時の毎時スナップショットの差）。Genesis Token ミント GT22…99Te のトークングループサイズから読み取ります。アクティベートされた Seeker 1 台につきソウルバウンドトークンが 1 つ発行されるため、1 単位は $500 の端末に相当します。",
  "m.sgt.med": "Genesis Token 数の {w}。",
  "m.skr_staked.noun": "SKR ステーキング量",
  "m.skr_staked.level": "SKR ステーキング量",
@@ -378,5 +378,7 @@
  "q.yesnoAt": "{range} の{q}は {v} 以上？",
  "m.todayHow": "ソースはその日の終了から約 {lag} 日後に数字を公表します。最初に公表された数字で決済し、以後の修正は反映しません。レンジはソースの過去 28 日の分位点で区切ります。",
  "tl.start": "集計開始",
- "tl.startNote": "集計する日が始まります。ベットはその日の半ばまで受け付けます"
+ "tl.startNote": "集計する日が始まります。ベットはその日の半ばまで受け付けます",
+ "mkt.zoneShort": "時刻は {z}",
+ "mkt.headNext": "{in}に{step}"
 }

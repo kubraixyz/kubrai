@@ -250,7 +250,7 @@
  "win.wmed": "7일 중앙값",
  "m.sgt.noun": "활성화된 Seeker",
  "m.sgt.level": "Seeker Genesis Token 수",
- "m.sgt.cum": "오픈 기준값과 마감 스냅샷 사이의 Seeker Genesis Token 수 증가분 ({w}). Genesis Token 민트 GT22…99Te의 토큰 그룹 크기에서 읽어요. 활성화된 Seeker 한 대당 소울바운드 토큰 하나가 발행되므로, 1단위는 곧 $500짜리 폰 한 대예요.",
+ "m.sgt.cum": "그날의 Seeker Genesis Token 수 증가분(그날 시작과 끝의 매시 스냅샷 차이). Genesis Token 민트 GT22…99Te의 토큰 그룹 크기에서 읽어요. 활성화된 Seeker 한 대당 소울바운드 토큰 하나가 발행되므로, 1단위는 곧 $500짜리 폰 한 대예요.",
  "m.sgt.med": "Genesis Token 수의 {w}.",
  "m.skr_staked.noun": "스테이킹된 SKR",
  "m.skr_staked.level": "스테이킹된 SKR",
@@ -378,5 +378,7 @@
  "q.yesnoAt": "{range} {q} ≥&nbsp;{v}?",
  "m.todayHow": "소스는 그날이 끝나고 약 {lag}일 뒤에 숫자를 발표해요. 처음 발표된 숫자로 정산하고 이후 수정은 반영하지 않아요. 구간은 소스의 최근 28일 분위수로 나눠요.",
  "tl.start": "집계 시작",
- "tl.startNote": "집계하는 날이 시작돼요. 베팅은 그날의 절반까지 열려 있어요"
+ "tl.startNote": "집계하는 날이 시작돼요. 베팅은 그날의 절반까지 열려 있어요",
+ "mkt.zoneShort": "시간: {z}",
+ "mkt.headNext": "{in} {step}"
 }

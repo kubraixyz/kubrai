@@ -2,7 +2,7 @@
 // dispute window ends → payout. Past steps are dated, the next one carries a countdown, later ones are estimates.
 // Estimates follow the crons on the server: the snapshot lands one minute after the hour, the resolver runs at :20.
 import type { MarketView } from "./kubrai";
-import { fmtTs, fmtTsShort, inWords } from "./time";
+import { fmtStamp, fmtTs, inWords } from "./time";
 import { esc } from "./ui";
 import { t } from "./i18n";
 import { countedWindow } from "./metrics";
@@ -63,8 +63,14 @@ export function timelineGrid(m: MarketView, cfg: Parameters<typeof timelineSteps
   return `<ol class="tgrid">${steps.map((s, i) => {
     const state = i < done ? "done" : i === done ? "next" : "later";
     const left = state === "next" ? inWords(s.ts) : "";
-    return `<li class="${state}"${s.note ? ` title="${esc(s.note)}"` : ""}><b>${esc(s.label)}</b><span class="mono">${s.estimate && state !== "done" ? "~ " : ""}${esc(fmtTsShort(s.ts))}</span>${left ? `<em>${esc(left)}</em>` : ""}</li>`;
+    return `<li class="${state}"${s.note ? ` title="${esc(s.note)}"` : ""}><b>${esc(s.label)}</b><span>${s.estimate && state !== "done" ? "~ " : ""}${esc(fmtStamp(s.ts))}</span>${left ? `<em>${esc(left)}</em>` : ""}</li>`;
   }).join("")}</ol>`;
+}
+
+/** The market page headline once betting is over: "Dispute window ends in 1h 31m"; "Settled" once paid. */
+export function nextStepHead(m: MarketView, cfg: Parameters<typeof timelineSteps>[1]) {
+  const s = nextStep(m, cfg); if (!s) return t("tl.settled");
+  return t("mkt.headNext", { step: s.label, in: `${s.estimate ? "~ " : ""}${inWords(s.ts)}` });
 }
 
 /** One line for lists: "Next: result proposed ~ 25 Sept, 01:20 GMT+8 (in 2h 10m)". */

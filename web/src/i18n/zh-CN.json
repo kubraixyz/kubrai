@@ -250,7 +250,7 @@
  "win.wmed": "7 天中位数",
  "m.sgt.noun": "Seeker 激活数",
  "m.sgt.level": "Seeker Genesis Token 数量",
- "m.sgt.cum": "开盘基准与截止快照之间 Seeker Genesis Token 数量的增量（{w}）。读取自 Genesis Token 铸币地址 GT22…99Te 的 token group 规模。每激活一台 Seeker 就铸造一枚灵魂绑定代币，所以每一单位都是一部 $500 的手机。",
+ "m.sgt.cum": "这一天内 Seeker Genesis Token 数量的增量（当天开始与结束时的整点快照相减）。读取自 Genesis Token 铸币地址 GT22…99Te 的 token group 规模。每激活一台 Seeker 就铸造一枚灵魂绑定代币，所以每一单位都是一部 $500 的手机。",
  "m.sgt.med": "Genesis Token 数量的{w}。",
  "m.skr_staked.noun": "SKR 质押量",
  "m.skr_staked.level": "SKR 质押量",
@@ -378,5 +378,7 @@
  "q.yesnoAt": "{q} 在 {range} 会 ≥&nbsp;{v} 吗？",
  "m.todayHow": "来源会在该日结束约 {lag} 天后公布数字，以第一次公布的数字结算，之后的修订不算。区间按来源过去 28 天的分位数切。",
  "tl.start": "开始计算",
- "tl.startNote": "要计算的那一天开始了；下注开放到这一天过一半为止"
+ "tl.startNote": "要计算的那一天开始了；下注开放到这一天过一半为止",
+ "mkt.zoneShort": "时间为 {z}",
+ "mkt.headNext": "{in}{step}"
 }

@@ -4,7 +4,7 @@
 //       rev_day:<app> / rev_week:<app> (per-app store reviews, cumulative), plus a few legacy ids.
 // `scale` divides the on-chain integer threshold/observed value for display.
 import { t } from "./i18n";
-import { fmtRange } from "./time";
+import { fmtRange, fmtRangeHtml } from "./time";
 export type SourceKind = "onchain" | "store" | "thirdparty";
 export type Cadence = "day" | "week" | "other";
 export const SOURCE_LABEL: Record<SourceKind, string> = { onchain: t("srcl.onchain"), store: t("srcl.store"), thirdparty: t("srcl.thirdparty") };
@@ -71,7 +71,7 @@ export const countedWindow = (m: { metric: string; openTs: number; closeTs: numb
  *  "Jupiter swap volume, 27 Sept, 08:00 – 28 Sept, 08:00 GMT+8: which range?" (value/threshold HTML is the caller's) */
 export function question(m: { metric: string; openTs: number; closeTs: number; nBuckets: number }, vHtml: string) {
   const bare = (metricInfo(m.metric, m.closeTs)?.title ?? t("m.unknown")).split(WINDOW.day).join("").split(WINDOW.week).join("").replace(/[（(]\s*[）)]/g, "").replace(/\s+/g, " ").trim();
-  const range = fmtRange(...countedWindow(m));
+  const range = fmtRangeHtml(...countedWindow(m));
   return m.nBuckets === 2 ? t("q.yesnoAt", { q: bare, range, v: vHtml }) : t("q.rangeAt", { q: bare, range });
 }
 export const metricLabel = (id: string) => metricInfo(id)?.title ?? t("m.unknown");

@@ -18,7 +18,7 @@ export const short = (pk: PublicKey | string) => { const s = pk.toString(); retu
 export function statusPill(m: MarketView) {
   const now = Date.now() / 1000;
   const label = m.status === 0 ? (now < m.openTs ? t("status.upcoming") : now < m.closeTs ? t("status.open") : t("status.awaiting")) : t("status." + STATUS[m.status].toLowerCase());
-  const cls = m.status === 0 ? "open" : STATUS[m.status].toLowerCase();
+  const cls = m.status === 0 ? (now < m.openTs ? "upcoming" : now < m.closeTs ? "open" : "awaiting") : STATUS[m.status].toLowerCase();
   return `<span class="pill ${cls}">${label}</span>`;
 }
 export const timeLeft = timeLeftLocal;

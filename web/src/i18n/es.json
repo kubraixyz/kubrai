@@ -250,7 +250,7 @@
  "win.wmed": "mediana de 7 días",
  "m.sgt.noun": "Seekers activados",
  "m.sgt.level": "Seeker Genesis Tokens",
- "m.sgt.cum": "Aumento del número de Seeker Genesis Tokens entre la referencia de apertura y la instantánea de cierre ({w}). Se lee del tamaño del grupo de tokens del mint del Genesis Token GT22…99Te. Se acuña un token soulbound por cada Seeker activado, así que cada unidad es un teléfono de $500.",
+ "m.sgt.cum": "Aumento del número de Seeker Genesis Tokens durante el día, de la instantánea horaria de su inicio a la de su fin. Se lee del tamaño del grupo de tokens del mint del Genesis Token GT22…99Te. Se acuña un token soulbound por cada Seeker activado, así que cada unidad es un teléfono de $500.",
  "m.sgt.med": "{w} del recuento de Genesis Tokens.",
  "m.skr_staked.noun": "SKR en staking",
  "m.skr_staked.level": "SKR en staking",
@@ -378,5 +378,7 @@
  "q.yesnoAt": "¿{q}, {range}: ≥&nbsp;{v}?",
  "m.todayHow": "La fuente publica el número de un día unos {lag} días después de que termine; el mercado se liquida con esa primera cifra y las revisiones posteriores no cuentan. Los rangos se cortan en los cuantiles de los últimos 28 días de la fuente.",
  "tl.start": "Empieza el conteo",
- "tl.startNote": "empieza el día que se cuenta; las apuestas siguen abiertas hasta la mitad del día"
+ "tl.startNote": "empieza el día que se cuenta; las apuestas siguen abiertas hasta la mitad del día",
+ "mkt.zoneShort": "Horas en {z}",
+ "mkt.headNext": "{step} {in}"
 }

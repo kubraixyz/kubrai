@@ -6,9 +6,9 @@ import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mou
 import { API_BASE, CLUSTER, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type HolderProof } from "./holder";
 import { connection, programId } from "./kubrai";
-import { nextStepText, timelineGrid } from "./timeline";
+import { nextStepHead, timelineGrid } from "./timeline";
 import { bindReferralAfterBet } from "./referral";
-import { fmtRange, fmtTsShort, inWords, zoneName } from "./time";
+import { fmtRange, fmtTsShort, inWords, zoneName, zoneShort } from "./time";
 import { t } from "./i18n";
 
 mountNetBadge(); mountWallet();
@@ -39,9 +39,8 @@ function render() {
   root.innerHTML = `
     <div class="mtop">${statusPill(m)}<span>${t("mkt.n", { id: m.id })}</span></div>
     <h1>${question(m, `<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>`)}</h1>
-    <div class="mnow"><b>${esc(open ? t("mkt.headOpen", { in: inWords(m.closeTs) }) : nextStepText(m, cfg))}</b><span>${t("card.inPot", { amt: fmtAmt(totalPool(m), 0), tok: TOKEN_SYMBOL })}</span><span>${t("card.bettors", { n: m.positions })}</span></div>
+    <div class="mnow"><b>${esc(open ? t("mkt.headOpen", { in: inWords(m.closeTs) }) : nextStepHead(m, cfg))}</b><span>${t("card.inPot", { amt: fmtAmt(totalPool(m), 0), tok: TOKEN_SYMBOL })}</span><span>${t("card.bettors", { n: m.positions })}</span><span class="zone" title="${esc(zoneName())}">${t("mkt.zoneShort", { z: esc(zoneShort()) })}</span></div>
     ${timelineGrid(m, cfg)}
-    <p class="note">${t("mkt.zone", { z: esc(zoneName()) })}</p>
     <p class="lead">${copy?.how ?? ""}</p>
     <div class="kv" style="margin-bottom:16px"><b>${t("mkt.source")}</b><span>${SOURCE_LABEL[copy?.source ?? "thirdparty"]}</span></div>
     ${poolsHtml(m, m.status >= 1 && m.proposedOutcome !== NO_OUTCOME ? m.proposedOutcome : -1)}

@@ -12,6 +12,12 @@ export const fmtTs = (ts: number) => tidy(at(ts).toLocaleString(LOCALE, { day: "
 export const fmtTsShort = (ts: number) => tidy(at(ts).toLocaleString(LOCALE, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 }));
 /** "27 Sept, 08:00 – 28 Sept, 08:00 GMT+8": a window, zone named once */
 export const fmtRange = (from: number, to: number) => `${at(from).toLocaleString(LOCALE, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", ...H23 })} – ${fmtTsShort(to)}`;
+/** "Sun 27 Sept, 08:00" without the zone: for places that name the zone once (the market timeline) */
+export const fmtStamp = (ts: number) => at(ts).toLocaleString(LOCALE, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", ...H23 });
+/** The viewer's zone as the site writes it: "GMT+8" */
+export const zoneShort = () => tidy(at(Date.now() / 1000).toLocaleTimeString(LOCALE, { timeZoneName: "shortOffset", ...H23 })).replace(/^.*?(GMT[^\s]*|UTC[^\s]*)$/, "$1");
+/** fmtRange as HTML whose two ends never wrap inside themselves (a title must not break "26 Sept" apart) */
+export const fmtRangeHtml = (from: number, to: number) => { const [a, b] = fmtRange(from, to).split(" – "); return `<span class="nw">${a}</span> – <span class="nw">${b}</span>`; };
 /** "14:10 GMT+8" */
 export const fmtHm = (ts: number) => tidy(at(ts).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 }));
 /** "Fri 25 Sept", the viewer's calendar day */
