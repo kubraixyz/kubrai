@@ -1,7 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { bs58 } from "./wallet";
 import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, earlyBirdUntil, fetchConfig, fetchMarket, fetchPosition, impliedPayout, totalPool, type MarketView } from "./kubrai";
-import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel, windowLine } from "./metrics";
+import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel, question } from "./metrics";
 import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill } from "./ui";
 import { API_BASE, CLUSTER, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type HolderProof } from "./holder";
@@ -38,8 +38,7 @@ function render() {
   document.title = `Kubrai · ${metricLabel(m.metric)}`;
   root.innerHTML = `
     <div class="mtop">${statusPill(m)}<span>${t("mkt.n", { id: m.id })}</span></div>
-    <h1>${m.nBuckets === 2 ? t("q.yesno", { q: metricLabel(m.metric), v: `<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>` }) : t("q.range", { q: metricLabel(m.metric) })}</h1>
-    <div class="mwin">${esc(windowLine(m))}</div>
+    <h1>${question(m, `<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>`)}</h1>
     <div class="mnow"><b>${esc(open ? t("mkt.headOpen", { in: inWords(m.closeTs) }) : nextStepText(m, cfg))}</b><span>${t("card.inPot", { amt: fmtAmt(totalPool(m), 0), tok: TOKEN_SYMBOL })}</span><span>${t("card.bettors", { n: m.positions })}</span></div>
     ${timelineGrid(m, cfg)}
     <p class="note">${t("mkt.zone", { z: esc(zoneName()) })}</p>

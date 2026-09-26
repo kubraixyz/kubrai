@@ -60,10 +60,12 @@ export function metricInfo(id: string, closeTs?: number): MetricInfo | undefined
 }
 /** The period whose number decides the market: the betting window itself, or for a "_next" market the 24 hours after it. */
 export const countedWindow = (m: { metric: string; openTs: number; closeTs: number }): [number, number] => (/_next$/.test(m.metric) ? [m.closeTs, m.closeTs + 86400] : [m.openTs, m.closeTs]);
-/** "Counts 27 Sept, 08:00 – 28 Sept, 08:00 GMT+8 · not started yet" */
-export function windowLine(m: { metric: string; openTs: number; closeTs: number }) {
-  const [a, b] = countedWindow(m), now = Date.now() / 1000;
-  return `${t("mkt.window", { range: fmtRange(a, b) })} · ${t(now < a ? "win.notYet" : now < b ? "win.running" : "win.done")}`;
+/** The question as SharePot asks it: the period on the viewer's clock, never "today"/"tomorrow".
+ *  "Jupiter swap volume, 27 Sept, 08:00 – 28 Sept, 08:00 GMT+8: which range?" (value/threshold HTML is the caller's) */
+export function question(m: { metric: string; openTs: number; closeTs: number; nBuckets: number }, vHtml: string) {
+  const bare = (metricInfo(m.metric, m.closeTs)?.title ?? t("m.unknown")).split(WINDOW.day).join("").split(WINDOW.week).join("").replace(/[（(]\s*[）)]/g, "").replace(/\s+/g, " ").trim();
+  const range = fmtRange(...countedWindow(m));
+  return m.nBuckets === 2 ? t("q.yesnoAt", { q: bare, range, v: vHtml }) : t("q.rangeAt", { q: bare, range });
 }
 export const metricLabel = (id: string) => metricInfo(id)?.title ?? t("m.unknown");
 export const metricCadence = (id: string): Cadence => metricInfo(id)?.cadence ?? "other";

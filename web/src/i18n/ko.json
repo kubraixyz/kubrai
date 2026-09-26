@@ -20,7 +20,7 @@
  "empty.proposed": "지금 이의 제기 검토 중인 결과가 없어요.",
  "empty.settled": "아직 정산된 마켓이 없어요.",
  "group.day": "일간 마켓",
- "group.dayBlurb": "매일 <span data-utc=\"00:00\">00:00 UTC</span>(현지 시간)에 새 마켓이 열리고 24시간 동안 베팅할 수 있어요. '매일' 마켓은 그 24시간을 집계하고, '다음 24시간' 마켓은 마감 후 24시간을 집계해서 베팅할 때는 아무도 숫자를 볼 수 없어요. 카드마다 집계 기간이 적혀 있어요.",
+ "group.dayBlurb": "매일 <span data-utc=\"00:00\">00:00 UTC</span>(현지 시간)에 새 마켓이 열리고 24시간 동안 베팅할 수 있어요. 문제마다 집계 기간이 현지 시간으로 적혀 있어요. 베팅하는 24시간을 집계하는 것도 있고, 마감 직후 24시간을 집계해서 아직 아무도 숫자를 볼 수 없는 것도 있어요.",
  "group.week": "주간 마켓",
  "group.weekBlurb": "일주일 동안 진행되며, 매주 월요일 <span data-utc=\"00:00\">00:00 UTC</span>(현지 시간)에 새로 열려요.",
  "group.other": "기타 마켓",
@@ -373,5 +373,7 @@
  "win.notYet": "시작 전",
  "win.running": "진행 중",
  "win.done": "종료",
- "mkt.headOpen": "{in} 베팅 마감"
+ "mkt.headOpen": "{in} 베팅 마감",
+ "q.rangeAt": "{range} {q}: 어느 구간일까요?",
+ "q.yesnoAt": "{range} {q} ≥&nbsp;{v}?"
 }

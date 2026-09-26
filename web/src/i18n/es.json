@@ -20,7 +20,7 @@
  "empty.proposed": "Ningún resultado está en revisión de disputa ahora mismo.",
  "empty.settled": "Aún no se ha liquidado nada.",
  "group.day": "Mercados diarios",
- "group.dayBlurb": "Cada día a las <span data-utc=\"00:00\">00:00 UTC</span> (tu hora) abren mercados nuevos que aceptan apuestas 24 horas. Un mercado «diario» cuenta esas mismas 24 horas; uno de «próximas 24 h» cuenta las 24 horas después del cierre, así que nadie puede ver el número todavía. Cada tarjeta indica el periodo exacto que cuenta.",
+ "group.dayBlurb": "Cada día a las <span data-utc=\"00:00\">00:00 UTC</span> (tu hora) abren mercados nuevos que aceptan apuestas 24 horas. Cada pregunta indica el periodo exacto que cuenta, en tu hora. Unos cuentan las 24 horas en que se puede apostar; otros, las 24 horas justo después del cierre, así que nadie puede ver el número todavía.",
  "group.week": "Mercados semanales",
  "group.weekBlurb": "Duran una semana; los nuevos abren cada lunes a las <span data-utc=\"00:00\">00:00 UTC</span> (tu hora).",
  "group.other": "Otros mercados",
@@ -373,5 +373,7 @@
  "win.notYet": "aún no empieza",
  "win.running": "en curso",
  "win.done": "terminado",
- "mkt.headOpen": "Las apuestas cierran {in}"
+ "mkt.headOpen": "Las apuestas cierran {in}",
+ "q.rangeAt": "{q}, {range}: ¿qué rango?",
+ "q.yesnoAt": "¿{q}, {range}: ≥&nbsp;{v}?"
 }

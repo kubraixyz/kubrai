@@ -20,7 +20,7 @@
  "empty.proposed": "目前沒有結果處於異議審查中。",
  "empty.settled": "還沒有任何市場結算。",
  "group.day": "每日市場",
- "group.dayBlurb": "每天 <span data-utc=\"00:00\">00:00 UTC</span>（你的當地時間）開新盤，開放下注 24 小時。「每日」盤算的就是這 24 小時；「未來 24 小時」盤算的是截止之後的 24 小時，下注時還沒有人看得到數字。每張卡片都寫著它計算的時段。",
+ "group.dayBlurb": "每天 <span data-utc=\"00:00\">00:00 UTC</span>（你的當地時間）開新盤，開放下注 24 小時。每個題目都寫明它計算的時段（你的當地時間）；有些算的是可以下注的這 24 小時，有些算的是截止後的 24 小時，下注時還沒有人看得到數字。",
  "group.week": "每週市場",
  "group.weekBlurb": "為期一週；每週一 <span data-utc=\"00:00\">00:00 UTC</span>（你的當地時間）開新盤。",
  "group.other": "其他市場",
@@ -373,5 +373,7 @@
  "win.notYet": "還沒開始",
  "win.running": "進行中",
  "win.done": "已結束",
- "mkt.headOpen": "{in}截止下注"
+ "mkt.headOpen": "{in}截止下注",
+ "q.rangeAt": "{q} 在 {range} 會落在哪個區間？",
+ "q.yesnoAt": "{q} 在 {range} 會 ≥&nbsp;{v} 嗎？"
 }

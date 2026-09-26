@@ -20,7 +20,7 @@
  "empty.proposed": "No result is under dispute review right now.",
  "empty.settled": "Nothing has settled yet.",
  "group.day": "Daily markets",
- "group.dayBlurb": "New markets open every day at <span data-utc=\"00:00\">00:00 UTC</span> (your time) and take bets for 24 hours. A “daily” market counts those same 24 hours; a “next 24 h” market counts the 24 hours after betting closes, so nobody can see the number yet. Every card shows the exact period it counts.",
+ "group.dayBlurb": "New markets open every day at <span data-utc=\"00:00\">00:00 UTC</span> (your time) and take bets for 24 hours. Each question names the exact period it counts, in your time. Some count the 24 hours you can bet in; others count the 24 hours right after betting closes, so nobody can see the number yet.",
  "group.week": "Weekly markets",
  "group.weekBlurb": "Run for a week; new ones open every Monday at <span data-utc=\"00:00\">00:00 UTC</span> (your time).",
  "group.other": "Other markets",
@@ -373,5 +373,7 @@
  "win.notYet": "not started yet",
  "win.running": "in progress",
  "win.done": "ended",
- "mkt.headOpen": "Betting closes {in}"
+ "mkt.headOpen": "Betting closes {in}",
+ "q.rangeAt": "{q}, {range}: which range?",
+ "q.yesnoAt": "{q}, {range}: ≥&nbsp;{v}?"
 }

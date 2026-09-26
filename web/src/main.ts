@@ -1,5 +1,5 @@
 import { fetchMarkets, totalPool, type MarketView } from "./kubrai";
-import { CATEGORY_ORDER, fmtValue, metricCategory, metricInfo, metricLabel, windowLine } from "./metrics";
+import { CATEGORY_ORDER, fmtValue, metricCategory, metricInfo, metricLabel, question } from "./metrics";
 import { bucketColor, bucketLabel, esc, fmtAmt, mountNetBadge, mountWallet, timeLeft } from "./ui";
 import { TOKEN_SYMBOL } from "./config";
 import { fmtTsShort, localizeUtc } from "./time";
@@ -7,17 +7,15 @@ import { t } from "./i18n";
 
 mountNetBadge(); mountWallet();
 const root = document.getElementById("markets")!;
-const metricCadence2 = (id: string) => (/_next$/.test(id) ? "cad.next" : /_(week|wmed)$/.test(id) ? "cad.week" : "cad.day");
 // Home cards stay minimal: what the question is, how the pool leans, when it closes. Everything else is on the market page.
 function card(m: MarketView) {
-  const q = metricLabel(m.metric), tot = totalPool(m);
+  const tot = totalPool(m);
   const hi = m.status === 2 || m.status === 4 ? m.outcome : m.status === 1 ? m.proposedOutcome : -1;
   const when = m.status === 0 && Date.now() / 1000 < m.closeTs ? timeLeft(m.closeTs) : m.status === 0 ? t("card.closedSoon", { ts: fmtTsShort(m.closeTs) }) : m.status === 1 ? t("card.proposed", { ts: fmtTsShort(m.proposedAt) }) : t("card.closed", { ts: fmtTsShort(m.closeTs) });
   const rows = m.pools.map((p, i) => { const pct = tot ? Math.round((p / tot) * 100) : 0; return `<div class="orow${hi === i ? " win" : ""}" style="--c:${bucketColor(m, i)}"><i style="width:${tot ? pct : 0}%"></i><span>${bucketLabel(m, i)}</span><b>${tot ? pct + "%" : "–"}</b></div>`; }).join("");
   return `<a class="card mini" href="/market.html?id=${m.id}">
-    <div class="meta"><span>${esc(t(metricCadence2(m.metric)))}</span><span>${when}</span></div>
-    <div class="title">${m.nBuckets === 2 ? t("q.yesno", { q, v: `<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>` }) : t("q.range", { q })}</div>
-    <div class="win">${esc(windowLine(m))}</div>
+    <div class="meta"><span>${when}</span></div>
+    <div class="title">${question(m, `<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>`)}</div>
     <div class="orows">${rows}</div>
     <div class="meta"><span>${t("card.inPot", { amt: fmtAmt(tot, 0), tok: TOKEN_SYMBOL })}</span><span>${t("card.bettors", { n: m.positions })}</span></div>
   </a>`;
