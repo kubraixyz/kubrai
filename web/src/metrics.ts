@@ -58,6 +58,13 @@ export function metricInfo(id: string, closeTs?: number): MetricInfo | undefined
   const w = MEDIAN_WINDOW[k as "dmed" | "wmed"]; const cadence: Cadence = k === "dmed" ? "day" : "week";
   return { title: t("m.medTitle", { level: b.level[0].toUpperCase() + b.level.slice(1), w }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
 }
+/** The period whose number decides the market: the betting window itself, or for a "_next" market the 24 hours after it. */
+export const countedWindow = (m: { metric: string; openTs: number; closeTs: number }): [number, number] => (/_next$/.test(m.metric) ? [m.closeTs, m.closeTs + 86400] : [m.openTs, m.closeTs]);
+/** "Counts 27 Sept, 08:00 – 28 Sept, 08:00 GMT+8 · not started yet" */
+export function windowLine(m: { metric: string; openTs: number; closeTs: number }) {
+  const [a, b] = countedWindow(m), now = Date.now() / 1000;
+  return `${t("mkt.window", { range: fmtRange(a, b) })} · ${t(now < a ? "win.notYet" : now < b ? "win.running" : "win.done")}`;
+}
 export const metricLabel = (id: string) => metricInfo(id)?.title ?? t("m.unknown");
 export const metricCadence = (id: string): Cadence => metricInfo(id)?.cadence ?? "other";
 /** Store-style category of a market: per-app metrics carry one in the catalog; the built-in ones are Seeker / Store / ORE. */

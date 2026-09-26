@@ -20,7 +20,7 @@
  "empty.proposed": "No result is under dispute review right now.",
  "empty.settled": "Nothing has settled yet.",
  "group.day": "Daily markets",
- "group.dayBlurb": "Markets open every day at <span data-utc=\"00:00\">00:00 UTC</span> (your time). “Daily” markets close 24 h later; “tomorrow” markets are on the 24 hours right after betting closes, which nobody has seen yet.",
+ "group.dayBlurb": "New markets open every day at <span data-utc=\"00:00\">00:00 UTC</span> (your time) and take bets for 24 hours. A “daily” market counts those same 24 hours; a “next 24 h” market counts the 24 hours after betting closes, so nobody can see the number yet. Every card shows the exact period it counts.",
  "group.week": "Weekly markets",
  "group.weekBlurb": "Run for a week; new ones open every Monday at <span data-utc=\"00:00\">00:00 UTC</span> (your time).",
  "group.other": "Other markets",
@@ -359,8 +359,8 @@
  "cat.Other": "Other",
  "cad.day": "daily",
  "cad.week": "weekly",
- "cad.next": "tomorrow",
- "m.nextTitle": "{app}: {noun}, tomorrow",
+ "cad.next": "next 24 h",
+ "m.nextTitle": "{app}: {noun}",
  "m.nextHow": "You bet on the number for {window}: the 24 hours that start the moment betting closes, so nobody has seen any of it yet. It is read {lag} days after that; later revisions do not count. Ranges are cut at the quantiles of the source's last 28 days.",
  "ev.dailyDay": "Counted period",
  "ev.dailyReported": "Reported so far",
@@ -368,5 +368,10 @@
  "ev.dailyRecent": "the source's last 7 days",
  "cat.ORE": "ORE",
  "m.nextWindowGeneric": "the next 24 hours",
- "ev.rawSnapshot": "Open the raw snapshot file"
+ "ev.rawSnapshot": "Open the raw snapshot file",
+ "mkt.window": "Counts {range}",
+ "win.notYet": "not started yet",
+ "win.running": "in progress",
+ "win.done": "ended",
+ "mkt.headOpen": "Betting closes {in}"
 }

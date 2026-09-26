@@ -1,5 +1,5 @@
 import { fetchMarkets, totalPool, type MarketView } from "./kubrai";
-import { CATEGORY_ORDER, fmtValue, metricCategory, metricInfo, metricLabel } from "./metrics";
+import { CATEGORY_ORDER, fmtValue, metricCategory, metricInfo, metricLabel, windowLine } from "./metrics";
 import { bucketColor, bucketLabel, esc, fmtAmt, mountNetBadge, mountWallet, timeLeft } from "./ui";
 import { TOKEN_SYMBOL } from "./config";
 import { fmtTsShort, localizeUtc } from "./time";
@@ -17,6 +17,7 @@ function card(m: MarketView) {
   return `<a class="card mini" href="/market.html?id=${m.id}">
     <div class="meta"><span>${esc(t(metricCadence2(m.metric)))}</span><span>${when}</span></div>
     <div class="title">${m.nBuckets === 2 ? t("q.yesno", { q, v: `<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>` }) : t("q.range", { q })}</div>
+    <div class="win">${esc(windowLine(m))}</div>
     <div class="orows">${rows}</div>
     <div class="meta"><span>${t("card.inPot", { amt: fmtAmt(tot, 0), tok: TOKEN_SYMBOL })}</span><span>${t("card.bettors", { n: m.positions })}</span></div>
   </a>`;

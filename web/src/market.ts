@@ -1,14 +1,14 @@
 import { PublicKey } from "@solana/web3.js";
 import { bs58 } from "./wallet";
-import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, earlyBirdUntil, fetchConfig, fetchMarket, fetchPosition, impliedPayout, type MarketView } from "./kubrai";
-import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel } from "./metrics";
-import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill, timeLeft } from "./ui";
+import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, earlyBirdUntil, fetchConfig, fetchMarket, fetchPosition, impliedPayout, totalPool, type MarketView } from "./kubrai";
+import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel, windowLine } from "./metrics";
+import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill } from "./ui";
 import { API_BASE, CLUSTER, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type HolderProof } from "./holder";
 import { connection, programId } from "./kubrai";
-import { timelineHtml } from "./timeline";
+import { nextStepText, timelineGrid } from "./timeline";
 import { bindReferralAfterBet } from "./referral";
-import { fmtRange, fmtTsShort, zoneName } from "./time";
+import { fmtRange, fmtTsShort, inWords, zoneName } from "./time";
 import { t } from "./i18n";
 
 mountNetBadge(); mountWallet();
@@ -16,10 +16,19 @@ const root = document.getElementById("market")!;
 const id = Number(new URLSearchParams(location.search).get("id"));
 let m: MarketView, cfg: any, bucket = 0;
 let proof: HolderProof = { accounts: [], sgt: false, stake: false, sgtDiscountBps: 0, stakeDiscountBps: 0, minFeeBps: 0, stakeLabel: "" };
-async function refreshProof() { proof = await holderProof(connection, programId, getSession()?.publicKey ?? null, cfg?.feeTiers ?? null); }
+// The holder-discount lookup goes to the public RPC, which can leave a request hanging for good (2026-09-26: every
+// market page with a wallet connected sat on "Loading…"). The page never waits for it: it renders at the full fee
+// and re-renders once the lookup answers; after 8 s it gives up (no discount shown, the bet still goes through).
+let proofJob: Promise<void> | null = null;
+function refreshProof(rerender = true) {
+  const owner = getSession()?.publicKey ?? null;
+  const job = proofJob = Promise.race([holderProof(connection, programId, owner, cfg?.feeTiers ?? null), new Promise<null>((r) => setTimeout(() => r(null), 8000))])
+    .then((p) => { if (!p || proofJob !== job) return; const changed = p.sgt !== proof.sgt || p.stake !== proof.stake; proof = p; if (changed && rerender && m) render(); });
+  return job;
+}
 
-async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); await refreshProof(); render(); }
-onSession(async () => { if (!cfg) return; await refreshProof(); render(); });
+async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); render(); void refreshProof(); }
+onSession(() => { if (!cfg) return; proof = { ...proof, accounts: [], sgt: false, stake: false }; render(); void refreshProof(); });
 function render() {
   const copy = metricInfo(m.metric, m.closeTs);
   const now = Date.now() / 1000, open = m.status === 0 && now >= m.openTs && now < m.closeTs;
@@ -28,15 +37,17 @@ function render() {
   const tiers = cfg.feeTiers;
   document.title = `Kubrai · ${metricLabel(m.metric)}`;
   root.innerHTML = `
-    <div class="meta" style="display:flex;gap:10px;color:var(--dim);font-size:13px">${statusPill(m)}<span>${t("mkt.n", { id: m.id })}</span><span>${m.status === 0 ? timeLeft(m.closeTs) : ""}</span></div>
+    <div class="mtop">${statusPill(m)}<span>${t("mkt.n", { id: m.id })}</span></div>
     <h1>${m.nBuckets === 2 ? t("q.yesno", { q: metricLabel(m.metric), v: `<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>` }) : t("q.range", { q: metricLabel(m.metric) })}</h1>
+    <div class="mwin">${esc(windowLine(m))}</div>
+    <div class="mnow"><b>${esc(open ? t("mkt.headOpen", { in: inWords(m.closeTs) }) : nextStepText(m, cfg))}</b><span>${t("card.inPot", { amt: fmtAmt(totalPool(m), 0), tok: TOKEN_SYMBOL })}</span><span>${t("card.bettors", { n: m.positions })}</span></div>
+    ${timelineGrid(m, cfg)}
+    <p class="note">${t("mkt.zone", { z: esc(zoneName()) })}</p>
     <p class="lead">${copy?.how ?? ""}</p>
     <div class="kv" style="margin-bottom:16px"><b>${t("mkt.source")}</b><span>${SOURCE_LABEL[copy?.source ?? "thirdparty"]}</span></div>
     ${poolsHtml(m, m.status >= 1 && m.proposedOutcome !== NO_OUTCOME ? m.proposedOutcome : -1)}
     <h2>${t("mkt.bet")}</h2>
     <div id="bet"></div>
-    <h2>${t("mkt.timeline")} <span class="note" style="text-transform:none;letter-spacing:0;font-family:var(--sans)">· ${t("mkt.zone", { z: esc(zoneName()) })}</span></h2>
-    ${timelineHtml(m, cfg)}
     <h2>${t("mkt.rules")}</h2>
     <div class="kv">
       <b>${t("mkt.earlyBird")}</b><span>${t("mkt.earlyBirdV", { a: (cfg.feeBps - cfg.earlyBirdDiscountBps) / 100, ts: fmtTs(earlyUntil), b: cfg.feeBps / 100 })}</span>
@@ -100,7 +111,7 @@ function renderBet(open: boolean, fee: number) {
     if (a < cfg.minBet.toNumber()) { msg.innerHTML = `<div class="msg err">${t("bet.min", { amt: fmtAmt(cfg.minBet.toNumber()), tok: TOKEN_SYMBOL })}</div>`; return; }
     go.disabled = true; msg.innerHTML = `<div class="msg">${t("bet.confirm")}</div>`;
     try {
-      await refreshProof();
+      await refreshProof(false);
       // A wallet funded seconds ago can hit an RPC node that has not seen the credit yet; one retry covers it.
       const send = async () => sess.signAndSend(await buildPlaceBetTx(sess.publicKey, m, bucket, a, new PublicKey(cfg.mint), proof.accounts));
       const sig = await send().catch(async (e) => { if (!/prior credit|Blockhash not found/i.test(String(e?.message ?? e))) throw e; msg.innerHTML = `<div class="msg">${t("bet.retry")}</div>`; await new Promise((r) => setTimeout(r, 4000)); return send(); });

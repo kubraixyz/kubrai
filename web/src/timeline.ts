@@ -2,7 +2,7 @@
 // dispute window ends → payout. Past steps are dated, the next one carries a countdown, later ones are estimates.
 // Estimates follow the crons on the server: the snapshot lands one minute after the hour, the resolver runs at :20.
 import type { MarketView } from "./kubrai";
-import { fmtTs, inWords } from "./time";
+import { fmtTs, fmtTsShort, inWords } from "./time";
 import { esc } from "./ui";
 import { t } from "./i18n";
 
@@ -49,6 +49,17 @@ export function timelineHtml(m: MarketView, cfg: Parameters<typeof timelineSteps
     const when = `${s.estimate && state !== "done" ? "~ " : ""}${fmtTs(s.ts)}`;
     const left = state === "next" ? inWords(s.ts) : "";
     return `<li class="${state}"><i></i><div><b>${esc(s.label)}</b><span class="when mono">${esc(when)}${left ? ` · <em>${esc(left)}</em>` : ""}</span>${s.note ? `<span class="note">${esc(s.note)}</span>` : ""}</div></li>`;
+  }).join("")}</ol>`;
+}
+
+/** Compact two-column grid for the top of a market page: every step with its time, the next one with its countdown. */
+export function timelineGrid(m: MarketView, cfg: Parameters<typeof timelineSteps>[1]) {
+  const now = Date.now() / 1000; const steps = timelineSteps(m, cfg);
+  const done = m.status === 4 ? steps.length : steps.filter((s) => s.ts <= now).length;
+  return `<ol class="tgrid">${steps.map((s, i) => {
+    const state = i < done ? "done" : i === done ? "next" : "later";
+    const left = state === "next" ? inWords(s.ts) : "";
+    return `<li class="${state}"${s.note ? ` title="${esc(s.note)}"` : ""}><b>${esc(s.label)}</b><span class="mono">${s.estimate && state !== "done" ? "~ " : ""}${esc(fmtTsShort(s.ts))}</span>${left ? `<em>${esc(left)}</em>` : ""}</li>`;
   }).join("")}</ol>`;
 }
 

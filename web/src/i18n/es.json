@@ -20,7 +20,7 @@
  "empty.proposed": "Ningún resultado está en revisión de disputa ahora mismo.",
  "empty.settled": "Aún no se ha liquidado nada.",
  "group.day": "Mercados diarios",
- "group.dayBlurb": "Los mercados abren cada día a las <span data-utc=\"00:00\">00:00 UTC</span> (tu hora). Los «diarios» cierran 24 h después; los de «mañana» son sobre las 24 h justo después del cierre, que nadie ha visto aún.",
+ "group.dayBlurb": "Cada día a las <span data-utc=\"00:00\">00:00 UTC</span> (tu hora) abren mercados nuevos que aceptan apuestas 24 horas. Un mercado «diario» cuenta esas mismas 24 horas; uno de «próximas 24 h» cuenta las 24 horas después del cierre, así que nadie puede ver el número todavía. Cada tarjeta indica el periodo exacto que cuenta.",
  "group.week": "Mercados semanales",
  "group.weekBlurb": "Duran una semana; los nuevos abren cada lunes a las <span data-utc=\"00:00\">00:00 UTC</span> (tu hora).",
  "group.other": "Otros mercados",
@@ -359,8 +359,8 @@
  "cat.Other": "Otros",
  "cad.day": "diario",
  "cad.week": "semanal",
- "cad.next": "mañana",
- "m.nextTitle": "{app}: {noun}, mañana",
+ "cad.next": "próximas 24 h",
+ "m.nextTitle": "{app}: {noun}",
  "m.nextHow": "Apuestas al número de {window}: las 24 h que empiezan en el momento en que cierran las apuestas, así que nadie ha visto nada todavía. Se lee {lag} días después; las revisiones posteriores no cuentan. Los rangos se cortan en los cuantiles de los últimos 28 días de la fuente.",
  "ev.dailyDay": "Periodo contado",
  "ev.dailyReported": "Reportado hasta ahora",
@@ -368,5 +368,10 @@
  "ev.dailyRecent": "últimos 7 días de la fuente",
  "cat.ORE": "ORE",
  "m.nextWindowGeneric": "las próximas 24 h",
- "ev.rawSnapshot": "Abrir la instantánea original"
+ "ev.rawSnapshot": "Abrir la instantánea original",
+ "mkt.window": "Cuenta {range}",
+ "win.notYet": "aún no empieza",
+ "win.running": "en curso",
+ "win.done": "terminado",
+ "mkt.headOpen": "Las apuestas cierran {in}"
 }
