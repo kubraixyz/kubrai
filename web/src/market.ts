@@ -8,7 +8,7 @@ import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type Holde
 import { connection, programId } from "./kubrai";
 import { timelineHtml } from "./timeline";
 import { bindReferralAfterBet } from "./referral";
-import { fmtTsShort, zoneName } from "./time";
+import { fmtRange, fmtTsShort, zoneName } from "./time";
 import { t } from "./i18n";
 
 mountNetBadge(); mountWallet();
@@ -21,7 +21,7 @@ async function refreshProof() { proof = await holderProof(connection, programId,
 async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); await refreshProof(); render(); }
 onSession(async () => { if (!cfg) return; await refreshProof(); render(); });
 function render() {
-  const copy = metricInfo(m.metric);
+  const copy = metricInfo(m.metric, m.closeTs);
   const now = Date.now() / 1000, open = m.status === 0 && now >= m.openTs && now < m.closeTs;
   const earlyUntil = earlyBirdUntil(cfg, m), early = now < earlyUntil;
   const fee = feeWithDiscounts(cfg.feeBps, early, cfg.earlyBirdDiscountBps, proof);
@@ -135,15 +135,16 @@ async function loadEvidence() {
     const r = await fetch(`${API_BASE}/evidence?metric=${encodeURIComponent(m.metric)}&open=${m.openTs}&close=${m.closeTs}&baseline=${m.baseline}&id=${m.id}`);
     if (!r.ok) { el.textContent = t("ev.none"); return; }
     const e = await r.json(); const fv = (v: number | null | undefined) => (v == null ? "—" : fmtValue(m.metric, v));
-    const when = (slot?: string | null) => !slot ? "" : slot === "on-chain" ? t("ev.onchainBaseline") : `<a href="${API_BASE}/snapshots/${slot}" target="_blank" rel="noopener" title="snapshot slot ${esc(slot)} UTC">${esc(fmtTsShort(Date.parse(slot + ":00:00Z") / 1000))}</a>`;
+    const when = (slot?: string | null) => !slot ? "" : slot === "on-chain" ? t("ev.onchainBaseline") : `<a href="${API_BASE}/snapshots/${slot}" target="_blank" rel="noopener" title="${esc(t("ev.rawSnapshot"))}">${esc(fmtTsShort(Date.parse(slot + ":00:00Z") / 1000))}</a>`;
     const proof = (x: any) => x?.sha256 ? ` · sha256 <span class="hash">${esc(x.sha256.slice(0, 12))}…</span>${x.memo ? ` · <a href="https://explorer.solana.com/tx/${x.memo}?cluster=devnet" target="_blank" rel="noopener">${t("ev.memo")}</a>` : ""}` : "";
     const row = (label: string, value: string, x: any) => `<div><b>${label}</b> <span class="mono">${value}</span>${x?.slot ? ` · ${when(x.slot)}` : ""}${proof(x)}</div>`;
     const rows: string[] = [];
     if (e.kind === "daily") {
-      rows.push(row(t("ev.dailyDay"), `${esc(e.day)} (UTC)`, null));
+      const dayWin = (d: string) => { const s = Date.parse(d + "T00:00:00Z") / 1000; return esc(fmtRange(s, s + 86400)); };
+      rows.push(row(t("ev.dailyDay"), dayWin(e.day), null));
       if (e.resolution) rows.push(row(t("ev.result"), fv(e.resolution.observed), e.resolution.slot ? { slot: e.resolution.slot } : null));
       else rows.push(row(t("ev.dailyReported"), e.reported != null ? fv(e.reported) : t("ev.dailyNotYet", { lag: e.lagDays }), null));
-      if (e.recent?.length) rows.push(`<details><summary>${t("ev.dailyRecent")}</summary>${e.recent.map(([d, v]: [string, number]) => row(esc(d), fv(v), null)).join("")}</details>`);
+      if (e.recent?.length) rows.push(`<details><summary>${t("ev.dailyRecent")}</summary>${e.recent.map(([d, v]: [string, number]) => row(dayWin(d), fv(v), null)).join("")}</details>`);
       if (e.source) rows.push(`<div class="note">${esc(e.source)}</div>`);
       el.innerHTML = rows.join(""); return;
     }

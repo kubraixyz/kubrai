@@ -20,7 +20,7 @@
  "empty.proposed": "現在、異議申し立て期間中の結果はありません。",
  "empty.settled": "まだ決済されたマーケットはありません。",
  "group.day": "デイリーマーケット",
- "group.dayBlurb": "毎日 <span data-utc=\"00:00\">00:00 UTC</span>(現地時間)に開始。「日次」は 24 時間後に締切、「明日」は次の丸 1 日(UTC)の数字で、まだ誰も見ていません。",
+ "group.dayBlurb": "毎日 <span data-utc=\"00:00\">00:00 UTC</span>(現地時間)に開始。「日次」は 24 時間後に締切、「明日」は締切直後の 24 時間の数字で、まだ誰も見ていません。",
  "group.week": "ウィークリーマーケット",
  "group.weekBlurb": "1 週間続くマーケット。毎週月曜 <span data-utc=\"00:00\">00:00 UTC</span>（現地時間）に新しいものが開始します。",
  "group.other": "その他のマーケット",
@@ -360,11 +360,13 @@
  "cad.day": "日次",
  "cad.week": "週次",
  "cad.next": "明日",
- "m.nextTitle": "{app}:{noun}、明日(UTC)",
- "m.nextHow": "ベット締切後に始まる UTC の 1 日の数字にベットします。まだ誰も見ていない数字です。その日の終了から {lag} 日後に読み取り、以後の修正は反映しません。レンジはソースの過去 28 日の分位点で区切ります。",
- "ev.dailyDay": "日付",
+ "m.nextTitle": "{app}：{noun}、明日",
+ "m.nextHow": "{window} の 24 時間（ベット締切の瞬間から）の数字にベットします。まだ誰も見ていない数字です。終了から {lag} 日後に読み取り、以後の修正は反映しません。レンジはソースの過去 28 日の分位点で区切ります。",
+ "ev.dailyDay": "集計期間",
  "ev.dailyReported": "現時点の報告値",
  "ev.dailyNotYet": "未公開(その日の終了から {lag} 日後に読み取り)",
  "ev.dailyRecent": "ソースの直近 7 日",
- "cat.ORE": "ORE"
+ "cat.ORE": "ORE",
+ "m.nextWindowGeneric": "締切後",
+ "ev.rawSnapshot": "元のスナップショットを開く"
 }

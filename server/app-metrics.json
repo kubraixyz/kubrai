@@ -81,7 +81,7 @@
    "scale": 1,
    "digits": 0,
    "pushCost": "expensive: every extra $1M of volume pays swap fees and slippage",
-   "how": "USD routed through the Jupiter aggregator in one UTC day, as reported by DefiLlama.",
+   "how": "USD routed through the Jupiter aggregator per day, as reported by DefiLlama.",
    "package": "ag.jup.jupiter.android",
    "inStore": true
   },
@@ -99,7 +99,7 @@
    "scale": 1,
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Fees paid by traders on Jupiter Perpetuals in one UTC day, as reported by DefiLlama.",
+   "how": "Fees paid by traders on Jupiter Perpetuals per day, as reported by DefiLlama.",
    "package": "ag.jup.jupiter.android",
    "inStore": true
   },
@@ -117,7 +117,7 @@
    "scale": 1,
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Revenue Phantom Wallet earns from swaps and other fees in one UTC day, as reported by DefiLlama.",
+   "how": "Revenue Phantom Wallet earns from swaps and other fees per day, as reported by DefiLlama.",
    "package": "app.phantom",
    "inStore": true
   },
@@ -135,7 +135,7 @@
    "scale": 1,
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Revenue pump.fun earns through its mobile app (the one in the Solana dApp Store) in one UTC day, as reported by DefiLlama.",
+   "how": "Revenue pump.fun earns through its mobile app (the one in the Solana dApp Store) per day, as reported by DefiLlama.",
    "package": "com.batonresearch.pump",
    "inStore": true
   },
@@ -153,7 +153,7 @@
    "scale": 1,
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Fees and staking rewards flowing through Sanctum's validator LSTs in one UTC day, as reported by DefiLlama.",
+   "how": "Fees and staking rewards flowing through Sanctum's validator LSTs per day, as reported by DefiLlama.",
    "package": "so.sanctum.app",
    "inStore": true
   },
@@ -171,7 +171,7 @@
    "scale": 1,
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Transaction fees (base + priority) paid on Solana in one UTC day, as reported by DefiLlama.",
+   "how": "Transaction fees (base + priority) paid on Solana per day, as reported by DefiLlama.",
    "inStore": false
   },
   {
@@ -189,7 +189,7 @@
    "scale": 1,
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Tips searchers and traders pay through Jito's block engine in one UTC day, as reported by DefiLlama.",
+   "how": "Tips searchers and traders pay through Jito's block engine per day, as reported by DefiLlama.",
    "inStore": true
   },
   {
@@ -207,7 +207,7 @@
    "scale": 1,
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Revenue Jupiter earns across its products in one UTC day, as reported by DefiLlama.",
+   "how": "Revenue Jupiter earns across its products per day, as reported by DefiLlama.",
    "inStore": true
   },
   {

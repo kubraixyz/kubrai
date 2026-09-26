@@ -10,6 +10,8 @@ const LOCALE = DATE_LOCALE;
 export const fmtTs = (ts: number) => tidy(at(ts).toLocaleString(LOCALE, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 }));
 /** "25 Sept, 14:10 GMT+8": for tight spots where the year is obvious */
 export const fmtTsShort = (ts: number) => tidy(at(ts).toLocaleString(LOCALE, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 }));
+/** "27 Sept, 08:00 – 28 Sept, 08:00 GMT+8": a window, zone named once */
+export const fmtRange = (from: number, to: number) => `${at(from).toLocaleString(LOCALE, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", ...H23 })} – ${fmtTsShort(to)}`;
 /** "14:10 GMT+8" */
 export const fmtHm = (ts: number) => tidy(at(ts).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 }));
 /** "Fri 25 Sept", the viewer's calendar day */

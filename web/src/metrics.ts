@@ -4,6 +4,7 @@
 //       rev_day:<app> / rev_week:<app> (per-app store reviews, cumulative), plus a few legacy ids.
 // `scale` divides the on-chain integer threshold/observed value for display.
 import { t } from "./i18n";
+import { fmtRange } from "./time";
 export type SourceKind = "onchain" | "store" | "thirdparty";
 export type Cadence = "day" | "week" | "other";
 export const SOURCE_LABEL: Record<SourceKind, string> = { onchain: t("srcl.onchain"), store: t("srcl.store"), thirdparty: t("srcl.thirdparty") };
@@ -37,10 +38,11 @@ const LEGACY: Record<string, MetricInfo> = {
 type CatalogEntry = { id: string; category?: string; lagDays?: number; app: string; noun: string; level: string; unit: string; scale: number; digits: number; source: SourceKind; how: string; pushCost?: string | null };
 const catalog: Record<string, CatalogEntry> = ((globalThis as any).__BOOT__?.metricCatalog as Record<string, CatalogEntry>) ?? {};
 export const catalogEntry = (id: string) => catalog[id];
-export function metricInfo(id: string): MetricInfo | undefined {
+/** closeTs (when known) lets a "tomorrow" market name its day as the viewer's own clock shows it, not as a UTC date. */
+export function metricInfo(id: string, closeTs?: number): MetricInfo | undefined {
   if (LEGACY[id]) return LEGACY[id];
   const nx = id.match(/^(.+)_next$/);
-  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: "day", key: c.id, how: `${c.how} ${t("m.nextHow", { lag: c.lagDays ?? 2 })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
+  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: "day", key: c.id, how: `${c.how} ${t("m.nextHow", { lag: c.lagDays ?? 2, window: closeTs ? fmtRange(closeTs, closeTs + 86400) : t("m.nextWindowGeneric") })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
   const cm = id.match(/^(.+)_(day|week|dmed|wmed)$/);
   if (cm && catalog[cm[1]]) {
     const c = catalog[cm[1]], k = cm[2];
