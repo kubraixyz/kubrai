@@ -84,7 +84,7 @@ export async function openingValue(apiBase: string, id: string, openTs: number, 
 
 /** Store-style category of a market (same rules as the web). */
 export function metricCategory(id: string): string {
-  const base = id.replace(/_(next|day|week|dmed|wmed|med7)$/, "");
+  const base = id.replace(/_(next|today|day|week|dmed|wmed|med7)$/, "");
   if (catalog[base]?.category) return catalog[base].category!;
   if (/^ore_/.test(base)) return "ORE";
   if (/^(dapps|reviews|reviewers|rev)/.test(base)) return "Store";

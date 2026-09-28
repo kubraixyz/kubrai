@@ -78,7 +78,7 @@ export const metricLabel = (id: string) => metricInfo(id)?.title ?? t("m.unknown
 export const metricCadence = (id: string): Cadence => metricInfo(id)?.cadence ?? "other";
 /** Store-style category of a market: per-app metrics carry one in the catalog; the built-in ones are Seeker / Store / ORE. */
 export function metricCategory(id: string): string {
-  const base = id.replace(/_(next|day|week|dmed|wmed|med7)$/, "");
+  const base = id.replace(/_(next|today|day|week|dmed|wmed|med7)$/, "");
   if (catalog[base]?.category) return catalog[base].category!;
   if (/^ore_/.test(base)) return "ORE";
   if (/^(dapps|reviews|reviewers|rev)/.test(base)) return "Store";
