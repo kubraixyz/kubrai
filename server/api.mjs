@@ -154,10 +154,15 @@ function referralView(wallet) {
 }
 
 // rate limits: one faucet call per address per day, 20 per IP per day, a global daily cap; maps pruned daily
-const seenAddr = new Map(), seenIp = new Map(); let seenDay = "", faucetToday = 0;
+const seenAddr = new Map(), seenIp = new Map(), seenDisputeSig = new Set(); let seenDay = "", faucetToday = 0, feedbackToday = 0, feedbackBytesToday = 0, disputesToday = 0;
+// Global daily caps: per-IP limits alone do not bound anything (one IPv6 /64 is endless addresses), and every feedback
+// report is a file on the app host — a full disk would stop snapshots and resolution.
+const FEEDBACK_DAILY_GLOBAL = Number(process.env.FEEDBACK_DAILY_GLOBAL ?? 200), FEEDBACK_BYTES_DAILY = Number(process.env.FEEDBACK_BYTES_DAILY ?? 300 * 1024 * 1024), DISPUTES_DAILY_GLOBAL = Number(process.env.DISPUTES_DAILY_GLOBAL ?? 100);
 const dayKey = () => new Date().toISOString().slice(0, 10);
-function rollDay() { const d = dayKey(); if (d !== seenDay) { seenDay = d; seenAddr.clear(); seenIp.clear(); seenFb.clear(); seenLookup.clear(); betCache.clear(); faucetToday = 0; } }
-// Only Caddy talks to this socket; Caddy replaces X-Forwarded-For for untrusted clients, so its first hop is the real client.
+function rollDay() { const d = dayKey(); if (d !== seenDay) { seenDay = d; seenAddr.clear(); seenIp.clear(); seenFb.clear(); seenDisputeSig.clear(); seenLookup.clear(); betCache.clear(); faucetToday = 0; feedbackToday = 0; feedbackBytesToday = 0; disputesToday = 0; } }
+// Only Caddy talks to this socket; Caddy replaces X-Forwarded-For for untrusted clients, so its first hop is the real client
+// (checked 2026-09-28 against Caddy 2.11: a spoofed X-Forwarded-For comes through as the peer address). Do NOT switch to
+// CF-Connecting-IP here: kubrai.xyz is not behind Cloudflare, and Caddy passes that header through untouched.
 const clientIp = (req) => String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "?").split(",")[0].trim();
 
 // Devnet only: the faucet also hands out a stand-in Seeker Genesis Token (a member of the mock Token-2022 group whose
@@ -294,8 +299,12 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/feedback" && req.method === "POST") {
       rollDay();
       const ip = clientIp(req);
+      if (feedbackToday >= FEEDBACK_DAILY_GLOBAL || feedbackBytesToday >= FEEDBACK_BYTES_DAILY) return json(res, 429, { error: "too many reports today; try again tomorrow" });
       const ipk = ip; seenFb.set(ipk, (seenFb.get(ipk) ?? 0) + 1); if (seenFb.get(ipk) > 40) return json(res, 429, { error: "too many reports today" });
-      let body; try { body = JSON.parse(await readBody(req, 9 * 1024 * 1024)); } catch (e) { return json(res, e?.status ?? 400, { error: e?.status === 413 ? "report too large" : "body must be JSON {note, diagnostics, image?, imageType?}" }); }
+      feedbackToday++;
+      let raw; try { raw = await readBody(req, 9 * 1024 * 1024); } catch (e) { return json(res, e?.status ?? 400, { error: e?.status === 413 ? "report too large" : "bad body" }); }
+      feedbackBytesToday += raw.length;
+      let body; try { body = JSON.parse(raw); } catch { return json(res, 400, { error: "body must be JSON {note, diagnostics, image?, imageType?}" }); }
       const id = new Date().toISOString().replace(/[:.]/g, "-") + "-" + Math.random().toString(36).slice(2, 7);
       let diagnostics = null; try { const dj = JSON.stringify(body.diagnostics ?? null); diagnostics = dj.length > DIAG_MAX ? { truncated: true, head: dj.slice(0, DIAG_MAX) } : body.diagnostics ?? null; } catch { diagnostics = null; }
       const wallet = typeof body.wallet === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(body.wallet) ? body.wallet : null;
@@ -314,6 +323,7 @@ const server = http.createServer(async (req, res) => {
     // is attributable; the server stores it and pages the operator. Resolution happens on-chain (re-propose / void).
     if (url.pathname === "/dispute" && req.method === "POST") {
       rollDay(); const ip = clientIp(req);
+      if (disputesToday >= DISPUTES_DAILY_GLOBAL) return json(res, 429, { error: "too many disputes today; try again tomorrow" });
       const k = "dispute|" + ip; seenFb.set(k, (seenFb.get(k) ?? 0) + 1); if (seenFb.get(k) > 20) return json(res, 429, { error: "too many disputes from this network today" });
       let b; try { b = JSON.parse(await readBody(req, 64 * 1024)); } catch { return json(res, 400, { error: "bad body" }); }
       const market = String(b.market ?? ""), wallet = String(b.wallet ?? ""), reason = String(b.reason ?? "").slice(0, 2000), claimed = b.claimedValue == null ? null : String(b.claimedValue).slice(0, 40);
@@ -325,6 +335,17 @@ claimed=${claimed ?? ""}
 reason=${reason}`;
       let ok = false; try { ok = nacl.sign.detached.verify(new TextEncoder().encode(msg), bs58.decode(String(b.signature ?? "")), bs58.decode(wallet)); } catch {}
       if (!ok) return json(res, 401, { error: "signature does not match the wallet" });
+      // The signed message has no timestamp, so the same signature could be replayed forever: each filing is accepted
+      // once, only on a market with a proposal on it, only from a wallet with a stake in it, one open dispute each —
+      // anything else is noise, and each noise line would page the operator.
+      const sigKey = String(b.signature).slice(0, 120); if (seenDisputeSig.has(sigKey)) return json(res, 409, { error: "this dispute was already filed" });
+      const mk = await roProgram.account.market.fetchNullable(new PublicKey(market)).catch(() => null);
+      if (!mk || mk.status !== 1) return json(res, 404, { error: "no proposed result to dispute on that market" });
+      const posPda = PublicKey.findProgramAddressSync([Buffer.from("position"), new PublicKey(market).toBuffer(), new PublicKey(wallet).toBuffer()], roProgram.programId)[0];
+      if (!(await conn.getAccountInfo(posPda, "confirmed"))) return json(res, 403, { error: "only a wallet with a stake in this market can dispute its result" });
+      const open = fs.existsSync(DISPUTES) ? fs.readFileSync(DISPUTES, "utf8").split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((d) => d && d.market === market && d.wallet === wallet && d.status === "open") : [];
+      if (open.length) return json(res, 409, { error: "you already have an open dispute on this market", id: open[0].id });
+      seenDisputeSig.add(sigKey); disputesToday++;
       const rec = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: new Date().toISOString(), market, wallet, reason, claimedValue: claimed, status: "open" };
       fs.appendFileSync(DISPUTES, JSON.stringify(rec) + "\n");
       notify("⚠️ 有人對結算提出異議", `market ${market.slice(0, 8)}… · ${wallet.slice(0, 6)}…\n${reason.slice(0, 300)}\n→ 東京後台「結算裁決」分頁`, "dispute:" + market, 5);

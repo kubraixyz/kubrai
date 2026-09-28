@@ -8,8 +8,10 @@ export async function notify(title, body, key = title, throttleMin = 30) {
     if (!fs.existsSync(CFG)) return false;
     const { bot_token, chat_id } = JSON.parse(fs.readFileSync(CFG, "utf8"));
     const now = Date.now(); if (key && last.has(key) && now - last.get(key) < throttleMin * 60_000) return false; if (key) last.set(key, now);
-    const text = `*Kubrai* · ${title}\n${body}`.slice(0, 3900);
-    const r = await fetch(`https://api.telegram.org/bot${bot_token}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id, text, parse_mode: "Markdown", disable_web_page_preview: true }) });
+    // plain text: body carries user-written text (dispute reasons, feedback), and one stray _ or [ under Markdown makes
+    // Telegram reject the whole message — the alert would vanish silently
+    const text = `Kubrai · ${title}\n${body}`.slice(0, 3900);
+    const r = await fetch(`https://api.telegram.org/bot${bot_token}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id, text, disable_web_page_preview: true }), signal: AbortSignal.timeout(10_000) });
     return r.ok;
   } catch { return false; }
 }
