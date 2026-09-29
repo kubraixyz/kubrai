@@ -1,5 +1,5 @@
 import { fetchMarkets, totalPool, type MarketView } from "./kubrai";
-import { CATEGORY_ORDER, fmtValue, metricCategory, metricInfo, metricLabel, question } from "./metrics";
+import { CATEGORY_ORDER, fmtExact, metricCategory, metricInfo, metricLabel, question } from "./metrics";
 import { bucketColor, bucketLabel, esc, fmtAmt, mountNetBadge, mountWallet, timeLeft } from "./ui";
 import { TOKEN_SYMBOL } from "./config";
 import { fmtTsShort, localizeUtc } from "./time";
@@ -15,7 +15,7 @@ function card(m: MarketView) {
   const rows = m.pools.map((p, i) => { const pct = tot ? Math.round((p / tot) * 100) : 0; return `<div class="orow${hi === i ? " win" : ""}" style="--c:${bucketColor(m, i)}"><i style="width:${tot ? pct : 0}%"></i><span>${bucketLabel(m, i)}</span><b>${tot ? pct + "%" : "–"}</b></div>`; }).join("");
   return `<a class="card mini" href="/market.html?id=${m.id}">
     <div class="meta"><span>${when}</span></div>
-    <div class="title">${question(m, `<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>`)}</div>
+    <div class="title">${question(m, `<span class="mono">${fmtExact(m.metric, m.thresholds[0])}</span>`)}</div>
     <div class="orows">${rows}</div>
     <div class="meta"><span>${t("card.inPot", { amt: fmtAmt(tot, 0), tok: TOKEN_SYMBOL })}</span><span>${t("card.bettors", { n: m.positions })}</span></div>
   </a>`;

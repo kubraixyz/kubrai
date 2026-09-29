@@ -7,7 +7,7 @@ import { useMarkets, usePositions } from "../hooks/useKubrai";
 import { useAuthorization } from "../utils/useAuthorization";
 import { useMobileWallet } from "../utils/useMobileWallet";
 import { fetchSettled } from "../chain/api";
-import { metricLabel, fmtValue } from "../chain/metrics";
+import { metricLabel, fmtExact } from "../chain/metrics";
 import { bucketColor, bucketLabel, fmtAmt, fmtTs, statusLabel, timeLeft } from "../chain/format";
 import { NO_OUTCOME, payoutIfBucket, totalPool, type MarketView } from "../chain/kubrai";
 import { PoolBar } from "../components/PoolBar";
@@ -41,7 +41,7 @@ export function MyBetsScreen() {
   const card = (children: React.ReactNode, onPress?: () => void, key?: string) => (
     <Pressable key={key} onPress={onPress} style={({ pressed }) => [styles.card, { backgroundColor: theme.colors.elevation.level1, borderColor: pressed ? theme.colors.primary : theme.colors.outlineVariant }]}>{children}</Pressable>
   );
-  const title = (m: MarketView) => (m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥ ${fmtValue(m.metric, m.thresholds[0])}?` : `${metricLabel(m.metric)}: which range?`);
+  const title = (m: MarketView) => (m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥ ${fmtExact(m.metric, m.thresholds[0])}?` : `${metricLabel(m.metric)}: which range?`);
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>

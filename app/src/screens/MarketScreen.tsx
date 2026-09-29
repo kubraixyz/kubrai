@@ -4,7 +4,7 @@ import { ActivityIndicator, Button, Chip, Divider, Text, TextInput, useTheme } f
 import { useRoute } from "@react-navigation/native";
 import { PublicKey } from "@solana/web3.js";
 import { useBalances, useConfig, useInvalidateAll, useMarket, usePositions } from "../hooks/useKubrai";
-import { metricInfo, metricLabel, fmtValue, SOURCE_LABEL } from "../chain/metrics";
+import { metricInfo, metricLabel, fmtExact, fmtValue, SOURCE_LABEL } from "../chain/metrics";
 import { PoolBar } from "../components/PoolBar";
 import { Timeline } from "../components/Timeline";
 import { bucketColor, bucketLabel, fmtAmt, fmtTs, fmtTsShort, statusLabel, timeLeft } from "../chain/format";
@@ -87,7 +87,7 @@ export function MarketScreen() {
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <View style={styles.row}><Chip compact mode="outlined">{statusLabel(m)}</Chip><Text variant="labelSmall" style={styles.dim}>Market #{m.id} · {m.status === 0 ? timeLeft(m.closeTs) : ""}</Text></View>
-      <Text variant="headlineSmall" style={{ marginVertical: 8 }}>{m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥ ${fmtValue(m.metric, m.thresholds[0])}?` : `${metricLabel(m.metric)}: which range?`}</Text>
+      <Text variant="headlineSmall" style={{ marginVertical: 8 }}>{m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥ ${fmtExact(m.metric, m.thresholds[0])}?` : `${metricLabel(m.metric)}: which range?`}</Text>
       <Text variant="bodyMedium" style={[styles.dim, { marginBottom: 10 }]}>{info?.how}</Text>
       <KV k="Data source" v={SOURCE_LABEL[info?.source ?? "thirdparty"]} />
       <View style={{ marginVertical: 12 }}><PoolBar m={m} highlight={highlight} /></View>
@@ -123,12 +123,12 @@ export function MarketScreen() {
       <Text variant="titleMedium" style={[styles.h2, { marginTop: 8 }]}>RULES</Text>
       {cfg && <KV k="Early-bird fee" v={`${(cfg.feeBps - cfg.earlyBirdDiscountBps) / 100}% on winnings until ${fmtTs(earlyBirdUntil(cfg, m))}, then ${cfg.feeBps / 100}%`} />}
       {cfg?.feeTiers && <KV k="Holder discounts" v={`${[cfg.feeTiers.sgtDiscountBps ? `Seeker Genesis Token −${cfg.feeTiers.sgtDiscountBps / 100}%` : "", stakeRuleText(cfg.feeTiers)].filter(Boolean).join(" · ")}${cfg.feeTiers.minFeeBps ? ` · never below ${cfg.feeTiers.minFeeBps / 100}%` : ""}. Proven on-chain from your wallet when you bet.${IS_TEST ? " Devnet note: the test faucet gives every wallet a stand-in Genesis Token and registers it as a stand-in ORE miner so anyone can try both discounts; on mainnet only a real Seeker's token and a real ORE Miner account qualify." : ""}`} />}
-      <KV k="Result proposed" v={m.proposedAt ? `${fmtTs(m.proposedAt)} · observed ${fmtValue(m.metric, m.proposedValue)} → ${bucketLabel(m, m.proposedOutcome)}` : "after close (see the timeline above)"} />
+      <KV k="Result proposed" v={m.proposedAt ? `${fmtTs(m.proposedAt)} · observed ${fmtValue(m.metric, m.proposedValue, m.thresholds)} → ${bucketLabel(m, m.proposedOutcome)}` : "after close (see the timeline above)"} />
       {m.nBuckets > 2 && <KV k="How ranges are set" v="Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely." />}
       {cfg && <KV k="Dispute window" v={`${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize`} />}
       {ev ? (ev.kind === "cum"
-        ? <KV k="Snapshots" v={[`Opening ${ev.opening ? fmtValue(m.metric, ev.opening.value) : "—"}${ev.opening?.slot && ev.opening.slot !== "on-chain" ? ` · ${slotLabel(ev.opening.slot)}` : ev.opening ? " · fixed on-chain at creation" : ""}`, ev.resolution ? `Closing ${ev.closing?.value != null ? fmtValue(m.metric, ev.closing.value) : "—"} · ${slotLabel(ev.closeSlot)}` : ev.latest ? `Latest ${fmtValue(m.metric, ev.latest.value)} · ${slotLabel(ev.latest.slot)}` : null, ev.resolution ? `Result ${fmtValue(m.metric, ev.resolution.observed)}` : ev.soFar != null ? `So far ${fmtValue(m.metric, ev.soFar)}` : null].filter(Boolean).join("\n")} />
-        : <KV k="Snapshots" v={[`Samples ${ev.samples} of ${ev.expected} hourly snapshots`, ev.resolution ? `Result (median) ${fmtValue(m.metric, ev.resolution.observed)}` : ev.soFar != null ? `Median so far ${fmtValue(m.metric, ev.soFar)}` : null].filter(Boolean).join("\n")} />) : null}
+        ? <KV k="Snapshots" v={[`Opening ${ev.opening ? fmtValue(m.metric, ev.opening.value, m.thresholds) : "—"}${ev.opening?.slot && ev.opening.slot !== "on-chain" ? ` · ${slotLabel(ev.opening.slot)}` : ev.opening ? " · fixed on-chain at creation" : ""}`, ev.resolution ? `Closing ${ev.closing?.value != null ? fmtValue(m.metric, ev.closing.value, m.thresholds) : "—"} · ${slotLabel(ev.closeSlot)}` : ev.latest ? `Latest ${fmtValue(m.metric, ev.latest.value, m.thresholds)} · ${slotLabel(ev.latest.slot)}` : null, ev.resolution ? `Result ${fmtValue(m.metric, ev.resolution.observed, m.thresholds)}` : ev.soFar != null ? `So far ${fmtValue(m.metric, ev.soFar, m.thresholds)}` : null].filter(Boolean).join("\n")} />
+        : <KV k="Snapshots" v={[`Samples ${ev.samples} of ${ev.expected} hourly snapshots`, ev.resolution ? `Result (median) ${fmtValue(m.metric, ev.resolution.observed, m.thresholds)}` : ev.soFar != null ? `Median so far ${fmtValue(m.metric, ev.soFar, m.thresholds)}` : null].filter(Boolean).join("\n")} />) : null}
       <KV k="Evidence hash" v={m.proposedAt ? m.snapshotHash : "written on-chain with the result"} mono />
       {m.status === 1 && cfg && (
         <View style={[styles.quote, { backgroundColor: theme.colors.elevation.level2, marginTop: 12 }]}>

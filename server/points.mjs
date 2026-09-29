@@ -46,8 +46,11 @@ export function leaderboard(rows, since = 0) {
 }
 
 /** Settlement rows from disk, oldest first. A torn line is skipped (the crank appends one JSON object per line). */
+const rowsCache = new Map();   // file → { stamp, rows }; the crank only appends, so size + mtime identify the contents
 export function readSettlements(dataDir) {
   const f = path.join(dataDir, "settlements.jsonl");
-  if (!fs.existsSync(f)) return [];
-  return fs.readFileSync(f, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
+  let st; try { st = fs.statSync(f); } catch { return []; }
+  const stamp = `${st.size}:${st.mtimeMs}`; const hit = rowsCache.get(f); if (hit && hit.stamp === stamp) return hit.rows;
+  const rows = fs.readFileSync(f, "utf8").split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
+  rowsCache.set(f, { stamp, rows }); return rows;
 }

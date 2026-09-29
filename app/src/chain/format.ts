@@ -1,5 +1,5 @@
 import { TOKEN_DECIMALS } from "../config";
-import { fmtValue } from "./metrics";
+import { fmtExact, metricInfo } from "./metrics";
 import type { MarketView } from "./kubrai";
 export const fmtAmt = (base: number, digits = 2) => (base / 10 ** TOKEN_DECIMALS).toLocaleString("en-US", { maximumFractionDigits: digits });
 // Every time the app shows is the phone's own clock with its zone named ("25 Sept 2026, 14:10 GMT+8"). Hermes' Intl
@@ -26,13 +26,15 @@ export function inWords(ts: number) {
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
   return d > 0 ? `in ${d}d ${h}h` : h > 0 ? `in ${h}h ${m}m` : `in ${Math.max(1, m)}m`;
 }
+/** Edges are printed exactly (fmtExact, never rounded): the program compares the on-chain integer, so must the label.
+ *  A middle range of a whole-number metric ends at the last whole number inside it; a scaled one is written "A – <B". */
 export function bucketLabel(m: MarketView, i: number) {
-  const f = (v: number) => fmtValue(m.metric, v).replace(/ [^ ]+$/, "");
-  const t = m.thresholds, n = m.nBuckets;
+  const f = (v: number) => fmtExact(m.metric, v).replace(/ [^ ]+$/, "");
+  const t = m.thresholds, n = m.nBuckets, scaled = !!metricInfo(m.metric)?.scale;
   if (n === 2) return i === 1 ? `Yes · ≥ ${f(t[0])}` : `No · < ${f(t[0])}`;
   if (i === 0) return `< ${f(t[0])}`;
   if (i === n - 1) return `≥ ${f(t[n - 2])}`;
-  return `${f(t[i - 1])} – ${f(t[i] - 1)}`;
+  return scaled ? `${f(t[i - 1])} – <${f(t[i])}` : `${f(t[i - 1])} – ${f(t[i] - 1)}`;
 }
 const COLORS = ["#c4553f", "#c98a3a", "#a3a03a", "#5f9f4a", "#0f8f7c", "#2f7fb8", "#6a5fb8", "#9a4f9a"];
 export const bucketColor = (m: MarketView, i: number) => (m.nBuckets === 2 ? (i === 1 ? "#0f8f7c" : "#c4553f") : COLORS[Math.round((i * (COLORS.length - 1)) / Math.max(1, m.nBuckets - 1))]);

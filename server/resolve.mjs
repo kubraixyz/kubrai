@@ -46,18 +46,9 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 import { makeEvaluator } from "./evaluate.mjs";
 const { evaluate, verifySlot, evidenceHash } = makeEvaluator({ snapDir: SNAP, conn });
 
-// Off-chain replica of compute_payout (same integer math) so we can record what each settlement paid.
-function payoutFor(m, p) {
-  const amounts = p.amounts.map((x) => BigInt(x.toString())), feeW = p.feeW.map((x) => BigInt(x.toString()));
-  const total = amounts.reduce((a, b) => a + b, 0n);
-  if (m.status === 3) return { payout: total, fee: 0n, kind: "refund" };
-  const w = m.outcome; const pools = m.pools.map((x) => BigInt(x.toString()));
-  const winPool = pools[w], losePool = pools.reduce((a, b) => a + b, 0n) - winPool, stake = amounts[w];
-  if (winPool === 0n) return { payout: total, fee: 0n, kind: "refund" };
-  if (stake === 0n) return { payout: 0n, fee: 0n, kind: "lost" };
-  const gross = (losePool * stake) / winPool, fee = (gross * feeW[w]) / (stake * 10000n), seed = (BigInt(m.seedAmount.toString()) * stake) / winPool;
-  return { payout: stake + gross - fee + seed, fee, kind: "won" };
-}
+// Off-chain replica of compute_payout (payout.mjs: the program's integer math, step for step) so the settlement row
+// records exactly what the PositionSettled event says — settlement-proof.mjs compares the two before any rebate is paid.
+import { payoutFor } from "./payout.mjs";
 const SETTLEMENTS = path.join(SNAP, "settlements.jsonl");
 // A payout that fails once is usually the RPC (429, simulation on a lagging node) and lands next round. Only a position
 // that fails three rounds in a row is worth a page; the counter file is cleared when it pays.

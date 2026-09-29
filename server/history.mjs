@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { APP_SLUGS } from "./metrics.mjs";
-import { APP_METRICS } from "./app-metrics.mjs";
+import { APP_METRICS, APP_METRIC_CATALOG } from "./app-metrics.mjs";
 const DAILY = Object.fromEntries(APP_METRICS.filter((m) => m.kind === "defillama_daily").map((m) => [m.id, m.lagDays ?? 2]));
 /** DefiLlama-style daily metrics, one number per UTC day:
  *   <id>_today = the day the market is open for bets (the same 24 hours as every other daily market; from 2026-09-27)
@@ -34,14 +34,19 @@ export function parseMetric(metric) {
   m = metric.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASE[m[1]]) return null;
   return { kind: m[2] === "day" || m[2] === "week" ? "cum" : "med", src: BASE[m[1]], hours: m[2] === "day" || m[2] === "dmed" ? 24 : 168 };
 }
+// Parsed bundles are cached per directory: a slot file is written once and never edited (its hash is on-chain), so the
+// directory's mtime — which moves when a file is added — is the whole cache key. Before this every /evidence request
+// re-read and re-parsed every bundle (422 files, 24 MB, ~0.4 s of CPU each; 2026-09-29).
+const slotsCache = new Map();   // dir → { stamp, slots }
 export function loadSlots(dir) {
+  if (!fs.existsSync(dir)) return new Map();
+  const stamp = fs.statSync(dir).mtimeMs; const hit = slotsCache.get(dir); if (hit && hit.stamp === stamp) return hit.slots;
   const out = new Map();
-  if (!fs.existsSync(dir)) return out;
   for (const f of fs.readdirSync(dir)) {
     const m = f.match(/^(\d{4}-\d{2}-\d{2})(T\d{2})?\.json$/); if (!m) continue;
     try { out.set(m[1] + (m[2] ?? "T00"), JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"))); } catch {}
   }
-  return out;
+  slotsCache.set(dir, { stamp, slots: out }); return out;
 }
 export const valueIn = (b, src) => { if (!b) return null; if (src.startsWith("rev:")) { const v = b.metrics?.dapp_reviews?.raw?.[src.slice(4)]?.reviews; return typeof v === "number" ? v : null; } const v = b.metrics?.[src]?.value; return typeof v === "number" ? v : null; };
 export const addHours = (slot, n) => new Date(Date.parse(slot + ":00:00Z") + n * 3600e3).toISOString().slice(0, 13);
@@ -65,3 +70,16 @@ export function quantileThresholds(values, buckets) {
   for (let i = 1; i < t.length; i++) if (t[i] <= t[i - 1]) t[i] = t[i - 1] + 1;   // keep strictly increasing even when history is flat
   return t;
 }
+
+/** Display precision of a metric — base units per shown unit and the decimals the pages print — mirroring
+ *  web/src/metrics.ts (BASES) and the app-metric catalog. A yes/no threshold is rounded to this when the market opens, so
+ *  the number on the page IS the number the program compares (2026-09-29: #139 carried 82.71735795 on-chain and the page
+ *  said "≥ 82.72"; a reading of 82.7150 would have shown as "82.72 → No · < 82.72"). Metrics without a scale are whole numbers. */
+const BUILTIN_DISPLAY = { skr_staked: { scale: 1e6 }, skr_price: { scale: 1e8 }, ore_sol: { scale: 1e9, digits: 0 }, ore_cost: { scale: 1e9, digits: 4 } };
+export function displayUnit(metric) {
+  const base = metric.replace(/_(next|today|day|week|dmed|wmed|med7|close)$/, "");
+  const c = APP_METRIC_CATALOG[base] ?? BUILTIN_DISPLAY[base]; if (!c?.scale) return 1;
+  const digits = c.digits ?? (c.scale > 1e6 ? 4 : 0);   // the pages' default (web/src/metrics.ts fmtValue)
+  return Math.max(1, c.scale / 10 ** digits);
+}
+export const roundToDisplay = (metric, v) => { const u = displayUnit(metric); return Math.round(v / u) * u; };

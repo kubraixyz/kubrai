@@ -3,7 +3,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, View, RefreshControl } fro
 import { ActivityIndicator, Chip, Text, useTheme } from "react-native-paper";
 import { useNavigation } from "@react-navigation/native";
 import { useMarkets } from "../hooks/useKubrai";
-import { metricCategory, CATEGORY_ORDER, metricInfo, metricLabel, fmtValue } from "../chain/metrics";
+import { metricCategory, CATEGORY_ORDER, metricInfo, metricLabel, fmtExact } from "../chain/metrics";
 import { PoolBar } from "../components/PoolBar";
 import { fmtAmt, fmtTsShort, statusLabel, timeLeft } from "../chain/format";
 import { totalPool, type MarketView } from "../chain/kubrai";
@@ -33,7 +33,7 @@ export function MarketsScreen() {
     return (
       <Pressable onPress={() => nav.navigate("Market", { id: m.id })} style={({ pressed }) => [styles.card, { backgroundColor: theme.colors.elevation.level1, borderColor: pressed ? theme.colors.primary : theme.colors.outlineVariant }]}>
         <Text variant="labelSmall" style={styles.dim}>{/_next$/.test(m.metric) ? "tomorrow" : /_(week|wmed)$/.test(m.metric) ? "weekly" : "daily"} · {when(m)}</Text>
-        <Text variant="titleMedium" style={{ marginVertical: 6 }}>{m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥ ${fmtValue(m.metric, m.thresholds[0])}?` : `${metricLabel(m.metric)}: which range?`}</Text>
+        <Text variant="titleMedium" style={{ marginVertical: 6 }}>{m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥ ${fmtExact(m.metric, m.thresholds[0])}?` : `${metricLabel(m.metric)}: which range?`}</Text>
         <View style={{ marginTop: 8 }}><PoolBar m={m} compact highlight={highlight(m)} /></View>
         <Text variant="labelSmall" style={[styles.dim, { marginTop: 6 }]}>{m.positions} bettors · {fmtAmt(totalPool(m) + m.seed, 0)} {TOKEN_SYMBOL} in pot</Text>
       </Pressable>

@@ -85,9 +85,24 @@ export function metricCategory(id: string): string {
   return "Seeker";
 }
 export const CATEGORY_ORDER = ["Seeker", "DeFi", "Trading", "DEX", "Lending", "Staking", "Wallets", "Launchpads", "Tools", "ORE", "Chain", "DePIN", "Memes", "Store", "Other"];
-export const fmtValue = (id: string, v: number) => {
-  const c = metricInfo(id); const x = c?.scale ? v / c.scale : v;
-  return x.toLocaleString("en-US", { maximumFractionDigits: c?.digits ?? (c?.scale && c.scale > 1_000_000 ? 4 : 0) }) + (c?.unit ? " " + c.unit : "");
+/** Decimals the pages print for a metric: `digits` when set, else 4 for prices and lamport-scaled numbers (scale > 1e6), else none. */
+export const displayDigits = (id: string) => { const c = metricInfo(id); return c?.digits ?? (c?.scale && c.scale > 1_000_000 ? 4 : 0); };
+/** A range edge exactly as the program compares it: the on-chain integer over `scale` with every decimal kept (trailing
+ *  zeros dropped) and no rounding at all — the program does not round, so a label must not either (2026-09-29: #139 had
+ *  82.71735795 on-chain and "≥ 82.72" on the page; a reading of 82.7150 would have shown as "82.72 → No · < 82.72"). */
+export function fmtExact(id: string, v: number) {
+  const c = metricInfo(id); const scale = c?.scale ?? 1; const dec = Math.max(0, Math.round(Math.log10(scale)));
+  const neg = v < 0; let s = String(Math.round(Math.abs(v))).padStart(dec + 1, "0");
+  const cut = s.length - dec; let int = s.slice(0, cut); const frac = dec ? s.slice(cut).replace(/0+$/, "") : "";
+  int = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (neg ? "-" : "") + int + (frac ? "." + frac : "") + (c?.unit ? " " + c.unit : "");
+}
+/** A reading, rounded for display — unless rounding would put it on the other side of one of `edges` (the market's
+ *  thresholds) than the program sees it; then it is printed exactly, so "observed X → range" never contradicts itself. */
+export const fmtValue = (id: string, v: number, edges?: number[]) => {
+  const c = metricInfo(id); const scale = c?.scale ?? 1; const d = displayDigits(id);
+  if (edges?.length) { const unit = scale / 10 ** d; const r = Math.round(v / unit) * unit; if (edges.some((t) => (v >= t) !== (r >= t))) return fmtExact(id, v); }
+  return (v / scale).toLocaleString("en-US", { maximumFractionDigits: d }) + (c?.unit ? " " + c.unit : "");
 };
 /** Opening value of a cumulative market. Markets opened since 2026-09-12 carry baseline 0 on-chain: the value is the
  *  T00 snapshot of the opening day (taken right after the hour), fetched from the public API. Returns null until that snapshot exists. */

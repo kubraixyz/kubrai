@@ -1,7 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { bs58 } from "./wallet";
 import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, earlyBirdUntil, fetchConfig, fetchMarket, fetchPosition, impliedPayout, totalPool, type MarketView } from "./kubrai";
-import { SOURCE_LABEL, fmtValue, metricInfo, metricLabel, question } from "./metrics";
+import { SOURCE_LABEL, fmtExact, fmtValue, metricInfo, metricLabel, question } from "./metrics";
 import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill } from "./ui";
 import { API_BASE, CLUSTER, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type HolderProof } from "./holder";
@@ -38,7 +38,7 @@ function render() {
   document.title = `Kubrai · ${metricLabel(m.metric)}`;
   root.innerHTML = `
     <div class="mtop">${statusPill(m)}<span>${t("mkt.n", { id: m.id })}</span></div>
-    <h1>${question(m, `<span class="mono">${fmtValue(m.metric, m.thresholds[0])}</span>`)}</h1>
+    <h1>${question(m, `<span class="mono">${fmtExact(m.metric, m.thresholds[0])}</span>`)}</h1>
     <div class="mnow"><b>${esc(open ? t("mkt.headOpen", { in: inWords(m.closeTs) }) : nextStepHead(m, cfg))}</b><span>${t("card.inPot", { amt: fmtAmt(totalPool(m), 0), tok: TOKEN_SYMBOL })}</span><span>${t("card.bettors", { n: m.positions })}</span><span class="zone" title="${esc(zoneName())}">${t("mkt.zoneShort", { z: esc(zoneShort()) })}</span></div>
     ${timelineGrid(m, cfg)}
     <p class="lead">${copy?.how ?? ""}</p>
@@ -50,7 +50,7 @@ function render() {
     <div class="kv">
       <b>${t("mkt.earlyBird")}</b><span>${t("mkt.earlyBirdV", { a: (cfg.feeBps - cfg.earlyBirdDiscountBps) / 100, ts: fmtTs(earlyUntil), b: cfg.feeBps / 100 })}</span>
       ${tiers ? `<b>${t("mkt.discounts")}</b><span>${[tiers.sgtDiscountBps ? t("mkt.sgtDisc", { pct: tiers.sgtDiscountBps / 100 }) : "", stakeRuleText(tiers)].filter(Boolean).join(" · ")}${tiers.minFeeBps ? ` · ${t("mkt.floor", { pct: tiers.minFeeBps / 100 })}` : ""}. ${t("mkt.proven")}${CLUSTER === "devnet" ? ` <span class="warn">${t("mkt.devnetNote")}</span>` : ""}</span>` : ""}
-      <b>${t("mkt.proposed")}</b><span>${m.proposedAt ? t("mkt.proposedV", { ts: fmtTs(m.proposedAt), v: `<span class="mono">${fmtValue(m.metric, m.proposedValue)}</span>`, b: `<b>${bucketLabel(m, m.proposedOutcome)}</b>` }) : t("mkt.afterClose")}</span>
+      <b>${t("mkt.proposed")}</b><span>${m.proposedAt ? t("mkt.proposedV", { ts: fmtTs(m.proposedAt), v: `<span class="mono">${fmtValue(m.metric, m.proposedValue, m.thresholds)}</span>`, b: `<b>${bucketLabel(m, m.proposedOutcome)}</b>` }) : t("mkt.afterClose")}</span>
       ${m.nBuckets > 2 ? `<b>${t("mkt.ranges")}</b><span>${t("mkt.rangesV")}</span>` : ""}
       <b>${t("mkt.dispute")}</b><span>${t("mkt.disputeV", { h: cfg.disputeWindowSecs.toNumber() / 3600 })}</span>
       <b>${t("mkt.snapshots")}</b><span id="evidence" class="note">${t("common.loading")}</span>
@@ -143,7 +143,7 @@ async function loadEvidence() {
   try {
     const r = await fetch(`${API_BASE}/evidence?metric=${encodeURIComponent(m.metric)}&open=${m.openTs}&close=${m.closeTs}&baseline=${m.baseline}&id=${m.id}`);
     if (!r.ok) { el.textContent = t("ev.none"); return; }
-    const e = await r.json(); const fv = (v: number | null | undefined) => (v == null ? "—" : fmtValue(m.metric, v));
+    const e = await r.json(); const fv = (v: number | null | undefined) => (v == null ? "—" : fmtValue(m.metric, v, m.thresholds));
     const when = (slot?: string | null) => !slot ? "" : slot === "on-chain" ? t("ev.onchainBaseline") : `<a href="${API_BASE}/snapshots/${slot}" target="_blank" rel="noopener" title="${esc(t("ev.rawSnapshot"))}">${esc(fmtTsShort(Date.parse(slot + ":00:00Z") / 1000))}</a>`;
     const proof = (x: any) => x?.sha256 ? ` · sha256 <span class="hash">${esc(x.sha256.slice(0, 12))}…</span>${x.memo ? ` · <a href="https://explorer.solana.com/tx/${x.memo}?cluster=devnet" target="_blank" rel="noopener">${t("ev.memo")}</a>` : ""}` : "";
     const row = (label: string, value: string, x: any) => `<div><b>${label}</b> <span class="mono">${value}</span>${x?.slot ? ` · ${when(x.slot)}` : ""}${proof(x)}</div>`;

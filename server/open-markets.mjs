@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import anchor from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { windowValues, quantileThresholds, parseMetric, valueIn, loadSlots, DAY_LOCK_SECS, DAY_OPEN_LEAD_SECS } from "./history.mjs";
+import { windowValues, quantileThresholds, parseMetric, valueIn, loadSlots, roundToDisplay, DAY_LOCK_SECS, DAY_OPEN_LEAD_SECS } from "./history.mjs";
 
 const { BN } = anchor;
 const SNAP = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots");
@@ -49,7 +49,7 @@ for (const t of tpl.templates) {
   const hist = windowValues(t.metric, SNAP).map((w) => w.value);
   if (spec.kind === "daily") { if (hist.length < 20) { skipped.push(`${t.metric}: only ${hist.length} days of source history`); continue; } thresholds = quantileThresholds(hist, t.buckets); how = `quantiles of the last ${hist.length} days reported by the source`; }
   else if (hist.length >= (tpl.minWindows ?? 8) && t.buckets > 1 && t.auto !== false) { thresholds = quantileThresholds(hist, t.buckets); how = `quantiles of ${hist.length} windows`; }
-  else if (t.seed === "baseline") { if (opening == null) { skipped.push(`${t.metric}: no recent snapshot value for ${spec.src}`); continue; } thresholds = [opening]; how = `yes/no at the ${latestSlot} level`; }
+  else if (t.seed === "baseline") { if (opening == null) { skipped.push(`${t.metric}: no recent snapshot value for ${spec.src}`); continue; } thresholds = [roundToDisplay(t.metric, opening)]; how = `yes/no at the ${latestSlot} level${thresholds[0] !== opening ? ` (${opening} rounded to the displayed precision)` : ""}`; }
   else { thresholds = t.seed; how = `seed (${hist.length} windows of history so far)`; }
   if (spec.kind === "med" && t.seed !== "baseline" && thresholds === t.seed) { skipped.push(`${t.metric}: level metric needs 'baseline' seed`); continue; }
   const nBuckets = thresholds.length + 1; if (nBuckets < 2 || nBuckets > 8) { skipped.push(`${t.metric}: bad bucket count`); continue; }

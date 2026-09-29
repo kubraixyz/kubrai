@@ -224,9 +224,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && (url.pathname === "/" || url.pathname.endsWith(".html")) && (await servePage(req, res, url))) return;
     const po = url.pathname.match(/^\/positions\/([1-9A-HJ-NP-Za-km-z]{32,44})$/);
     if (po) {
-      const f = path.join(SNAP, "settlements.jsonl");
-      const rows = fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.owner === po[1]) : [];
-      return json(res, 200, { owner: po[1], settled: rows.reverse() }, { "cache-control": "no-store" });
+      return json(res, 200, { owner: po[1], settled: settledRowsOf(po[1]).reverse() }, { "cache-control": "no-store" });   // cached rows (points.mjs); a torn line is skipped, not a 500
     }
     // Leaderboard: points = SKR staked, per settled market (points.mjs). ?window=7d|30d|all, ?limit=n.
     if (url.pathname === "/leaderboard") {
