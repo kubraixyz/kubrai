@@ -365,7 +365,7 @@
  "ev.dailyDay": "Periodo contado",
  "ev.dailyReported": "Reportado hasta ahora",
  "ev.dailyNotYet": "aún no publicado (se lee {lag} días después de que termine el día)",
- "ev.dailyRecent": "últimos 7 días de la fuente",
+ "ev.dailyRecent": "Referencia: cifras diarias de los 7 días anteriores (no cuentan para la liquidación)",
  "cat.ORE": "ORE",
  "m.nextWindowGeneric": "las próximas 24 h",
  "ev.rawSnapshot": "Abrir la instantánea original",

@@ -365,7 +365,7 @@
  "ev.dailyDay": "计算时段",
  "ev.dailyReported": "目前报出",
  "ev.dailyNotYet": "尚未发布(该日结束 {lag} 天后读值)",
- "ev.dailyRecent": "来源最近 7 天",
+ "ev.dailyRecent": "参考：前 7 天每日数字（不参与结算）",
  "cat.ORE": "ORE",
  "m.nextWindowGeneric": "截止后",
  "ev.rawSnapshot": "打开原始快照文件",

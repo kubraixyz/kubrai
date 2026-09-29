@@ -365,7 +365,7 @@
  "ev.dailyDay": "集計期間",
  "ev.dailyReported": "現時点の報告値",
  "ev.dailyNotYet": "未公開(その日の終了から {lag} 日後に読み取り)",
- "ev.dailyRecent": "ソースの直近 7 日",
+ "ev.dailyRecent": "参考：直前 7 日の日次の値（精算には使われません）",
  "cat.ORE": "ORE",
  "m.nextWindowGeneric": "締切後",
  "ev.rawSnapshot": "元のスナップショットを開く",

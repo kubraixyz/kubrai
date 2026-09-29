@@ -365,7 +365,7 @@
  "ev.dailyDay": "Counted period",
  "ev.dailyReported": "Reported so far",
  "ev.dailyNotYet": "not published yet (read {lag} days after the day ends)",
- "ev.dailyRecent": "the source's last 7 days",
+ "ev.dailyRecent": "For reference: daily figures for the previous 7 days (not used to settle)",
  "cat.ORE": "ORE",
  "m.nextWindowGeneric": "the next 24 hours",
  "ev.rawSnapshot": "Open the raw snapshot file",
