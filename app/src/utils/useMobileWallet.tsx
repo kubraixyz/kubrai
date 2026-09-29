@@ -58,7 +58,10 @@ export function useMobileWallet() {
           addresses: [authResult.address],
           payloads: [message],
         });
-        return signedMessages[0];
+        // MWA hands back the signed payload: the bare 64-byte ed25519 signature, or the message with the signature
+        // appended — the signature is the last 64 bytes either way (the rule @solana-mobile/wallet-adapter-mobile uses).
+        // The API verifies a detached signature, so only those bytes are returned.
+        return signedMessages[0].slice(-64);
       });
     },
     [authorizeSession]

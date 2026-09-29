@@ -108,7 +108,7 @@ async function settle(markets, cfg) {
       for (const { publicKey: ppk, account: p } of positions) {
         if (DRY) continue;
         try {
-          const ownerToken = (await getOrCreateAssociatedTokenAccount(conn, proposer, mint, p.owner)).address; // creates ATA if the owner closed it (rent paid by cranker)
+          const ownerToken = (await getOrCreateAssociatedTokenAccount(conn, proposer, mint, p.owner, true)).address; // creates ATA if the owner closed it (rent paid by cranker); allowOwnerOffCurve: a program-owned wallet (a multisig vault, a PDA) can bet through CPI and must be payable too, or its market never sweeps
           const fresh = await program.account.market.fetch(publicKey);
           const { payout, fee, kind } = payoutFor(fresh, p);
           const sig = await program.methods.settlePosition().accounts({ market: publicKey, position: ppk, payer: p.payer, vault: vaultPda(publicKey), ownerToken, cranker: proposer.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).rpc();

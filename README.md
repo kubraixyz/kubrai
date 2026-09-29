@@ -51,8 +51,12 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
    plus the hash of the snapshot bundle it came from; the winning bucket is derived
    **on-chain** from the market's thresholds. A 24 h dispute window follows. Anyone can
    finalize after the window; the admin key (a Seed Vault key, multisig on mainnet) can
-   finalize early or void. A compromised server can delay a market by a day and lie about a
-   number that everyone can check; it cannot steal a pool.
+   finalize early or void. A second host re-derives every proposed value from its own
+   snapshots and holds a **verifier** key (`Roles.verifier`, `void_proposed_market`) that can do
+   exactly one thing: void a market whose proposal it cannot confirm. It cannot propose,
+   finalize, touch an open market or change the config. A compromised server can delay a
+   market by a day and lie about a number that everyone can check; a compromised verifier can
+   force refunds; neither can steal a pool.
 3. **The baseline is fixed on-chain at market creation** from the opening snapshot, and
    **betting closes before the closing snapshot is taken** (snapshots run right after the hour, markets close on the hour), so nobody bets on a
    number they have already seen.
@@ -91,13 +95,18 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
 ## Operations: two hosts, one of them cold-ish
 
 - **App host (Germany)** runs the site, the API, the hourly snapshot (memo on-chain), the market opener, the resolver
-  and the referral payout, all under `flock`. It holds the proposer key (proposes values, settles, sweeps) and, on
-  devnet, the admin/deployer key for payouts and top-ups. It serves no admin UI.
-- **Tokyo** takes its own hourly snapshots and runs `server/verify-proposals.mjs` every 10 minutes: every proposed
-  value is re-derived from Tokyo's snapshots; a different range voids the market (full refunds) and pages; a result
-  Tokyo watched but cannot verify is voided 45 min before the window closes; a market Tokyo was not watching yet is
-  left to the proposal. Tokyo also runs the operator dashboard (read-only rsync of the app host's data every 5 min;
-  the only action is *void*, typed out to confirm) and pushes a heartbeat the app host checks (`heartbeat-check.mjs`).
+  and the referral payout, all under `flock`. It holds only hot keys with a bounded blast radius: the **proposer**
+  (opens markets, proposes values, settles, sweeps), the **rebate** wallet (a week of referral rebates in SKR), the
+  **funding** wallet (a few SOL for top-ups), the devnet **faucet**, and the **deployer** (program upgrade authority on
+  devnet; Squads on mainnet). The admin key is not on it. It serves no admin UI.
+- **Tokyo** takes its own hourly snapshots and runs `server/verify-proposals.mjs` every 10 minutes with the
+  **verifier** key: every proposed value is re-derived from Tokyo's snapshots; a different range voids the market
+  (full refunds, `void_proposed_market`) and pages; a result Tokyo watched but cannot verify is voided 45 min before
+  the window closes; a market Tokyo was not watching yet is left to the proposal. Tokyo is also the admin host: it
+  reprices the ORE-miner discount daily (`ore-tier.mjs`, `set_fee_tiers`), runs the operator dashboard (read-only
+  rsync of the app host's data every 5 min; the only action is *void*, typed out to confirm), keeps an hourly
+  versioned backup of the app host's snapshots, memos, crontab and Caddyfile, and pushes a heartbeat the app host
+  checks (`heartbeat-check.mjs`). On mainnet the admin key becomes a Squads multisig; Tokyo keeps only the verifier.
 - **Guardrails without hands**: a market still without a proposal a day after it could have had one is voided on-chain
   (`void_stale_market`, proposer may); a position that fails to settle three rounds in a row pages once; hot wallets
   are refilled from a funding wallet to fixed targets (`sol-topup.mjs`); referral rebates are paid only for settlement

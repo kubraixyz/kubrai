@@ -7,13 +7,14 @@ import { useMarkets, usePositions } from "../hooks/useKubrai";
 import { useAuthorization } from "../utils/useAuthorization";
 import { useMobileWallet } from "../utils/useMobileWallet";
 import { fetchSettled } from "../chain/api";
-import { metricLabel, fmtExact } from "../chain/metrics";
+import { metricLabel, fmtExact, fmtValue } from "../chain/metrics";
 import { bucketColor, bucketLabel, fmtAmt, fmtTs, statusLabel, timeLeft } from "../chain/format";
 import { NO_OUTCOME, payoutIfBucket, totalPool, type MarketView } from "../chain/kubrai";
 import { PoolBar } from "../components/PoolBar";
 import { nextStepText } from "../chain/timeline";
+import { explorerTxUrl } from "../chain/explorer";
 import { useConfig } from "../hooks/useKubrai";
-import { APP, TOKEN_SYMBOL } from "../config";
+import { TOKEN_SYMBOL } from "../config";
 
 const GREEN = "#0f8f7c", RED = "#c4553f";
 function Big({ label, value, color, right }: { label: string; value: string; color?: string; right?: boolean }) {
@@ -87,7 +88,7 @@ export function MyBetsScreen() {
             <Big label="You staked" value={fmtAmt(staked)} />
             <Big label="Paid to you" value={lost ? "0" : fmtAmt(Number(s.payout))} color={won ? GREEN : lost ? RED : undefined} right />
           </View>
-          <Button compact style={{ alignSelf: "flex-start", marginTop: 4 }} onPress={() => Linking.openURL(`https://explorer.solana.com/tx/${s.signature}?cluster=${APP.cluster === "mainnet" ? "mainnet-beta" : "devnet"}`)}>View transaction</Button>
+          <Button compact style={{ alignSelf: "flex-start", marginTop: 4 }} onPress={() => Linking.openURL(explorerTxUrl(s.signature))}>View transaction</Button>
         </>, undefined, s.signature);
       })}
     </ScrollView>

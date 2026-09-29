@@ -276,6 +276,46 @@ describe("kubrai parimutuel", () => {
     await program.methods.setFeeTiers({ ...base, stakeProgram: PublicKey.default, stakeOwnerOffset: 0, stakeAmountOffset: 0, stakeMinAmount: new BN(0), stakeDiscountBps: 0 }).accounts({ config: configPda, feeTiers, admin: admin.publicKey, systemProgram: SystemProgram.programId }).rpc();
   });
 
+  it("verifier role: admin names it, it voids a proposed result only (full refund), a stranger cannot, it cannot finalize/propose/reconfigure; zero admin refused", async () => {
+    const verifier = Keypair.generate();
+    const sig0 = await conn.requestAirdrop(verifier.publicKey, LAMPORTS_PER_SOL); await conn.confirmTransaction(sig0, "confirmed");
+    const [rolesPda] = PublicKey.findProgramAddressSync([Buffer.from("roles")], program.programId);
+    const setRoles = (who: Keypair, v: PublicKey) => program.methods.setRoles(v).accounts({ config: configPda, roles: rolesPda, admin: who.publicKey, systemProgram: SystemProgram.programId }).signers(who === admin ? [] : [who]).rpc();
+    const voidProposed = (m: PublicKey, who: Keypair) => program.methods.voidProposedMarket().accounts({ config: configPda, roles: rolesPda, market: m, verifier: who.publicKey }).signers(who === admin ? [] : [who]).rpc();
+    await expectErr(setRoles(alice, verifier.publicKey), "Unauthorized");
+    await setRoles(admin, verifier.publicKey);
+    assert.ok((await program.account.roles.fetch(rolesPda)).verifier.equals(verifier.publicKey));
+    const { m, v } = await createMarket(-1, 4);
+    await bet(m, v, alice, "yes", 30 * T); await bet(m, v, bob, "no", 10 * T);
+    await expectErr(voidProposed(m, verifier), "NotProposed");                       // nothing proposed yet: no say
+    await sleep(5500);
+    await program.methods.proposeResolution(new BN(1500), qhash).accounts({ config: configPda, market: m, proposer: proposer.publicKey }).signers([proposer]).rpc();
+    await expectErr(voidProposed(m, carol), "Unauthorized");                          // a stranger
+    await expectErr(program.methods.finalizeResolution().accounts({ config: configPda, market: m, signer: verifier.publicKey }).signers([verifier]).rpc(), "DisputeWindowOpen"); // not the admin's early finalize
+    await voidProposed(m, verifier);
+    assert.equal((await program.account.market.fetch(m)).status, 3, "voided");
+    const a0 = await bal(ata.alice), b0 = await bal(ata.bob);
+    await settle(m, v, alice, dave); await settle(m, v, bob, dave);
+    assert.equal((await bal(ata.alice)) - a0, 30 * T); assert.equal((await bal(ata.bob)) - b0, 10 * T);   // refunds, no fee
+    await sweep(m, v, dave);
+    await expectErr(voidProposed(m, verifier), "NotProposed");                       // final markets are out of reach
+    // the role ends at voiding: no proposing, no config, no voiding of an open market
+    const { m: m2 } = await createMarket(-1, 60);
+    await expectErr(program.methods.proposeResolution(new BN(1), qhash).accounts({ config: configPda, market: m2, proposer: verifier.publicKey }).signers([verifier]).rpc(), "Unauthorized");
+    await expectErr(program.methods.updateConfig(cfgArgs, null, false).accounts({ config: configPda, admin: verifier.publicKey }).signers([verifier]).rpc(), "Unauthorized");
+    await expectErr(voidProposed(m2, verifier), "NotProposed");
+    // the admin may use the same instruction; the zero address can never become admin (it would lock the config)
+    await expectErr(program.methods.updateConfig(cfgArgs, PublicKey.default, false).accounts({ config: configPda, admin: admin.publicKey }).rpc(), "ZeroAdmin");
+    await setRoles(admin, PublicKey.default);                                        // role disabled: the verifier key is a stranger again
+    await sleep(1000);
+    const { m: m3 } = await createMarket(-1, 3);
+    await sleep(4500);
+    await program.methods.proposeResolution(new BN(1), qhash).accounts({ config: configPda, market: m3, proposer: proposer.publicKey }).signers([proposer]).rpc();
+    await expectErr(voidProposed(m3, verifier), "Unauthorized");
+    await voidProposed(m3, admin);
+    assert.equal((await program.account.market.fetch(m3)).status, 3);
+  });
+
   it("paused config blocks bets", async () => {
     const { m, v } = await createMarket(-1, 60);
     await program.methods.updateConfig(cfgArgs, null, true).accounts({ config: configPda, admin: admin.publicKey }).rpc();

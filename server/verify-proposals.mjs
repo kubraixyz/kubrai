@@ -1,12 +1,14 @@
 // Independent check of every proposed result, run on a second machine (Tokyo) with its own hourly snapshots and the
-// admin key. The app host proposes; this host re-derives the observed value from snapshots it took itself and compares
+// verifier key (on-chain `Roles.verifier`: it can void a market that has a proposal standing, nothing else — a lost
+// verifier host means refunds at worst, never a moved pool). The app host proposes; this host re-derives the observed value from snapshots it took itself and compares
 // the range the value falls in. Same range → nothing to do. Different range → the proposal is wrong or one host's data
 // is: the market is voided (full refunds) and the operator is paged; nobody re-judges by hand (guardrails are
 // automatic). No usable local data → a note only, unless the dispute window is about to close, in which case the
 // unverified proposal is voided too (a result nobody could check must not pay out).
 //
-// Env: CLUSTER, CLUSTER_RPC, SNAPSHOT_DIR (this host's own bundles, taken with MEMO_DISABLED=1), ADMIN_KEYPAIR,
-//      API (the app host's public API, for the proposal file), VOID_UNVERIFIED=1|0 (default 1), DRY_RUN=1.
+// Env: CLUSTER, CLUSTER_RPC, SNAPSHOT_DIR (this host's own bundles, taken with MEMO_DISABLED=1), VERIFIER_KEYPAIR
+//      (or ADMIN_KEYPAIR: the admin may sign the same instruction; before the Roles account exists it falls back to
+//      void_market), API (the app host's public API, for the proposal file), VOID_UNVERIFIED=1|0 (default 1), DRY_RUN=1.
 // State: <SNAPSHOT_DIR>/verified.json remembers each (market, proposedAt) verdict so a proposal is judged once.
 import fs from "node:fs";
 import path from "node:path";
@@ -27,10 +29,11 @@ const VOID_UNVERIFIED = process.env.VOID_UNVERIFIED !== "0";
 const UNVERIFIED_GRACE_SECS = 45 * 60;      // window closes within this and we still have no verdict → void
 const STATE = path.join(SNAP, "verified.json");
 const loadKp = (f) => Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(f, "utf8"))));
-const admin = loadKp(process.env.ADMIN_KEYPAIR ?? path.join(process.env.HOME ?? "/root", "kubrai/secrets", CLUSTER, "admin.json"));
+const signer = loadKp(process.env.VERIFIER_KEYPAIR ?? process.env.ADMIN_KEYPAIR ?? path.join(process.env.HOME ?? "/root", "kubrai/secrets", CLUSTER, "verifier.json"));
 const conn = new Connection(RPC, "confirmed");
-const program = new Program(idlJson, new AnchorProvider(conn, new Wallet(admin), { commitment: "confirmed" }));
+const program = new Program(idlJson, new AnchorProvider(conn, new Wallet(signer), { commitment: "confirmed" }));
 const [configPda] = PublicKey.findProgramAddressSync([Buffer.from("config")], program.programId);
+const [rolesPda] = PublicKey.findProgramAddressSync([Buffer.from("roles")], program.programId);
 const tag = (b) => Buffer.from(b).toString("utf8").replace(/\0+$/, "");
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const { evaluate, slotOf } = makeEvaluator({ snapDir: SNAP, conn });
@@ -44,14 +47,20 @@ export function comparisonAction(proposedBucket, ourBucket) {
   return proposedBucket === ourBucket ? "agree" : "void-mismatch";
 }
 
+const cfg = await program.account.config.fetch(configPda);
+// program.account.roles only exists once idl/kubrai.json carries the Roles account (the upgrade that added the role);
+// with an older IDL the script keeps verifying and voids through the admin-only instruction as before.
+const roles = program.account.roles ? await program.account.roles.fetchNullable(rolesPda).catch(() => null) : null;
+const isAdmin = cfg.admin.equals(signer.publicKey), isVerifier = !!roles && roles.verifier.equals(signer.publicKey);
+if (!isAdmin && !isVerifier) log(`this key ${signer.publicKey.toBase58()} is neither the verifier (${roles?.verifier.toBase58() ?? "role not set"}) nor the admin; voiding would fail — checking only`);
 async function voidMarket(publicKey, m, why) {
   if (DRY) { log(`market #${m.id}: would VOID (${why})`); return null; }
-  const sig = await program.methods.voidMarket().accounts({ config: configPda, market: publicKey, admin: admin.publicKey }).rpc();
+  // void_proposed_market once the Roles account exists (verifier or admin may sign); the admin-only void_market before
+  const sig = roles
+    ? await program.methods.voidProposedMarket().accounts({ config: configPda, roles: rolesPda, market: publicKey, verifier: signer.publicKey }).rpc()
+    : await program.methods.voidMarket().accounts({ config: configPda, market: publicKey, admin: signer.publicKey }).rpc();
   log(`market #${m.id}: VOIDED ${sig} (${why})`); return sig;
 }
-
-const cfg = await program.account.config.fetch(configPda);
-if (!cfg.admin.equals(admin.publicKey)) { log(`this key ${admin.publicKey.toBase58()} is not the admin (${cfg.admin.toBase58()}); voiding would fail — checking only`); }
 const win = cfg.disputeWindowSecs.toNumber();
 const markets = (await program.account.market.all([{ dataSize: program.account.market.size }])).filter((x) => x.account.status === 1);
 const now = Math.floor(Date.now() / 1000);

@@ -380,5 +380,8 @@
  "tl.start": "Counting starts",
  "tl.startNote": "the day being counted begins; bets stay open until halfway through it",
  "mkt.zoneShort": "Times in {z}",
- "mkt.headNext": "{step} {in}"
+ "mkt.headNext": "{step} {in}",
+ "bet.slow": "Still waiting for confirmation — signature {sig}. Do not bet again until it shows up.",
+ "bet.unconfirmed": "Still unconfirmed after {min} minutes — check the explorer link before betting again: {sig}",
+ "ref.signNote": "One more signature applies your invite — it costs nothing and moves no funds."
 }

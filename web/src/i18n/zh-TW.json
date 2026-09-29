@@ -380,5 +380,8 @@
  "tl.start": "開始計算",
  "tl.startNote": "要計算的那一天開始了；下注開放到這一天過一半為止",
  "mkt.zoneShort": "時間為 {z}",
- "mkt.headNext": "{in}{step}"
+ "mkt.headNext": "{in}{step}",
+ "bet.slow": "仍在等待確認 — 交易簽章 {sig}。在鏈上看到它之前，請勿再次下注。",
+ "bet.unconfirmed": "已等待 {min} 分鐘仍未確認 — 再次下注前，請先查看區塊鏈瀏覽器連結：{sig}",
+ "ref.signNote": "再簽署一次即可套用你的邀請 — 不收費，也不會移動任何資金。"
 }

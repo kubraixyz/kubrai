@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Linking, ScrollView, StyleSheet, View } from "react-native";
 import { ActivityIndicator, Button, Chip, Divider, Text, TextInput, useTheme } from "react-native-paper";
 import { useRoute } from "@react-navigation/native";
 import { PublicKey } from "@solana/web3.js";
 import { useBalances, useConfig, useInvalidateAll, useMarket, usePositions } from "../hooks/useKubrai";
+import { useApplyInvite, usePendingReferral, type InviteNote } from "../hooks/useReferral";
 import { metricInfo, metricLabel, fmtExact, fmtValue, SOURCE_LABEL } from "../chain/metrics";
 import { PoolBar } from "../components/PoolBar";
 import { Timeline } from "../components/Timeline";
-import { bucketColor, bucketLabel, fmtAmt, fmtTs, fmtTsShort, statusLabel, timeLeft } from "../chain/format";
-import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, impliedPayout, earlyBirdUntil, programId } from "../chain/kubrai";
+import { bucketColor, bucketLabel, fmtAmt, fmtTs, fmtTsShort, short, statusLabel, timeLeft } from "../chain/format";
+import { NO_OUTCOME, buildPlaceBetTx, waitForSignature, impliedPayout, earlyBirdUntil, programId } from "../chain/kubrai";
+import { explorerTxUrl } from "../chain/explorer";
 import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type HolderProof } from "../chain/holder";
 import { useConnection } from "../utils/ConnectionProvider";
 import { useAuthorization } from "../utils/useAuthorization";
@@ -17,13 +19,23 @@ import { APP, TOKEN_DECIMALS, TOKEN_SYMBOL, IS_TEST } from "../config";
 import bs58 from "bs58";
 import { recordError } from "../utils/errorLog";
 
+const OK_GREEN = "#0f8f7c";
+/** "wait" = sent, neither confirmed nor rejected yet: neutral, and the bet button stays locked. `sig` adds an explorer link. */
+type BetMsg = { kind: "ok" | "err" | "info" | "wait"; text: string; sig?: string };
+
 export function MarketScreen() {
   const { params } = useRoute<any>(); const id = Number(params?.id);
   const theme = useTheme(); const { connection } = useConnection();
   const { selectedAccount } = useAuthorization(); const { connect, signAndSendTransaction, signTransaction, signMessage } = useMobileWallet();
   const [dispute, setDispute] = useState<{ open: boolean; reason: string; claimed: string; msg: string; busy: boolean }>({ open: false, reason: "", claimed: "", msg: "", busy: false });
   const { data: m, isLoading } = useMarket(id); const { data: cfg } = useConfig(); const bal = useBalances(); const positions = usePositions(); const invalidate = useInvalidateAll();
-  const [bucket, setBucket] = useState(0); const [amt, setAmt] = useState(""); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<{ kind: "ok" | "err" | "info"; text: string } | null>(null);
+  const [bucket, setBucket] = useState(0); const [amt, setAmt] = useState(""); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<BetMsg | null>(null);
+  // A sent bet the network has neither confirmed nor rejected after every poll locks the button until the screen is
+  // reopened: tapping again would place a second real bet.
+  const [locked, setLocked] = useState(false);
+  // Invite code waiting on this phone (Settings / ?ref= link): bound right after this wallet's first bet (hooks/useReferral).
+  const [inviteNote, setInviteNote] = useState<InviteNote | null>(null);
+  const pendingInvite = usePendingReferral(); const applyInvite = useApplyInvite();
   const info = m ? metricInfo(m.metric) : undefined;
   const [ev, setEv] = useState<any>(null);
   useEffect(() => { if (!m) return; fetch(`${APP.apiBase}/evidence?metric=${encodeURIComponent(m.metric)}&open=${m.openTs}&close=${m.closeTs}&baseline=${m.baseline}&id=${m.id}`).then((r) => (r.ok ? r.json() : null)).then(setEv).catch(() => setEv(null)); }, [m?.pubkey?.toBase58?.()]);
@@ -41,7 +53,7 @@ export function MarketScreen() {
   async function placeBet() {
     if (!m || !cfg) return;
     if (a < cfg.minBet.toNumber()) { setMsg({ kind: "err", text: `Minimum bet is ${fmtAmt(cfg.minBet.toNumber())} ${TOKEN_SYMBOL}.` }); return; }
-    setBusy(true); setMsg({ kind: "info", text: "Confirm in your wallet…" });
+    setBusy(true); setMsg({ kind: "info", text: "Confirm in your wallet…" }); setInviteNote(null);
     try {
       const account = selectedAccount ?? (await connect());
       const p = await holderProof(connection, programId, account.publicKey, cfg.feeTiers ?? null);
@@ -57,9 +69,24 @@ export function MarketScreen() {
         const signed = await signTransaction(tx);
         sig = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: "confirmed" });
       }
-      setMsg({ kind: "info", text: "Sent. Waiting for confirmation…" });
-      await confirmBySig(connection, sig);
-      setMsg({ kind: "ok", text: `Bet placed: ${fmtAmt(a)} ${TOKEN_SYMBOL} on “${bucketLabel(m, bucket)}”.` }); setAmt(""); invalidate();
+      setMsg({ kind: "info", text: "Sent. Waiting for confirmation…", sig });
+      const expiry = { lastValidBlockHeight: tx.lastValidBlockHeight };
+      let r = await waitForSignature(connection, sig, { ...expiry, timeoutMs: 60_000, everyMs: 1200 });
+      if (r.status === "unknown") {
+        // Not a failure: the network has neither confirmed nor rejected the bet and it can still land. Re-enabling the
+        // button here is what used to let a second tap place a second real bet, so it stays locked while we keep asking.
+        setMsg({ kind: "wait", text: `Still waiting for confirmation — signature ${short(sig)}. The bet may still land; the button stays locked until the network answers (up to 5 more minutes).`, sig });
+        r = await waitForSignature(connection, sig, { ...expiry, timeoutMs: 5 * 60_000, everyMs: 3000, history: true });
+      }
+      if (r.status === "failed") throw new Error(r.reason);
+      if (r.status === "unknown") {
+        setLocked(true);
+        setMsg({ kind: "wait", text: `Still no answer from the network for signature ${short(sig)}. The bet may or may not have landed — check it on the explorer or under My bets before betting again. This button stays locked until you reopen the market.`, sig });
+        return;
+      }
+      setMsg({ kind: "ok", text: `Bet placed: ${fmtAmt(a)} ${TOKEN_SYMBOL} on “${bucketLabel(m, bucket)}”.`, sig }); setAmt(""); invalidate();
+      // First bet with an invite code waiting: one more signature binds the wallet to it (nothing is charged).
+      await applyInvite(account.publicKey.toBase58(), setInviteNote);
     } catch (e: any) {
       recordError(e, "bet");
       const raw = String(e?.message ?? e);
@@ -84,6 +111,7 @@ export function MarketScreen() {
 
   if (isLoading || !m) return <View style={styles.center}><ActivityIndicator /></View>;
   const highlight = m.status >= 1 && m.proposedOutcome !== NO_OUTCOME ? m.proposedOutcome : -1;
+  const txLink = msg?.sig ? explorerTxUrl(msg.sig) : null;
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <View style={styles.row}><Chip compact mode="outlined">{statusLabel(m)}</Chip><Text variant="labelSmall" style={styles.dim}>Market #{m.id} · {m.status === 0 ? timeLeft(m.closeTs) : ""}</Text></View>
@@ -110,8 +138,11 @@ export function MarketScreen() {
               <Text variant="bodySmall" style={styles.dim}>= your {fmtAmt(a)} back + {fmtAmt(quote.fromLosers)} from the losing pools − {fmtAmt(quote.fee)} fee{quote.fromSeed ? ` + ${fmtAmt(quote.fromSeed)} house prize (fee-free)` : ""}. Any other outcome loses {fmtAmt(a)}.</Text>
             </>) : <Text variant="bodySmall" style={styles.dim}>Enter an amount to see the payout if “{bucketLabel(m, bucket)}” wins.</Text>}
           </View>
-          <Button mode="contained" buttonColor={bucketColor(m, bucket)} textColor="#fff" loading={busy} disabled={busy} onPress={placeBet}>{selectedAccount ? `Place bet on “${bucketLabel(m, bucket)}”` : "Connect wallet & bet"}</Button>
-          {msg && <Text style={{ color: msg.kind === "err" ? theme.colors.error : msg.kind === "ok" ? "#0f8f7c" : undefined }}>{msg.text}</Text>}
+          <Button mode="contained" buttonColor={bucketColor(m, bucket)} textColor="#fff" loading={busy} disabled={busy || locked} onPress={placeBet}>{selectedAccount ? `Place bet on “${bucketLabel(m, bucket)}”` : "Connect wallet & bet"}</Button>
+          {msg && <Text style={{ color: msg.kind === "err" ? theme.colors.error : msg.kind === "ok" ? OK_GREEN : undefined }}>{msg.text}</Text>}
+          {txLink && <Button compact mode="outlined" icon="open-in-new" style={{ alignSelf: "flex-start" }} onPress={() => Linking.openURL(txLink)}>View transaction on explorer</Button>}
+          {inviteNote ? <Text style={{ color: inviteNote.kind === "err" ? theme.colors.error : inviteNote.kind === "ok" ? OK_GREEN : undefined }}>{inviteNote.text}</Text>
+            : pendingInvite.data ? <Text variant="bodySmall" style={styles.dim}>Invite code {pendingInvite.data} is applied right after this bet if it is this wallet's first — one extra signature, nothing charged.</Text> : null}
           <Text variant="bodySmall" style={styles.dim}>Parimutuel: the quote assumes pools stay as they are. Your fee: {fee / 100}%{discountLabel(early, proof) ? ` (${discountLabel(early, proof)})` : ""} — applies to winnings only and is locked in at the time of this bet.</Text>
           {myPos && <KV k="Your position" v={myPos.amounts.slice(0, m.nBuckets).map((x: number, i: number) => (x ? `${bucketLabel(m, i)}: ${fmtAmt(x)}` : "")).filter(Boolean).join(" · ") + " " + TOKEN_SYMBOL} />}
         </View>
@@ -139,7 +170,7 @@ export function MarketScreen() {
             <TextInput mode="outlined" dense keyboardType="numeric" value={dispute.claimed} onChangeText={(v) => setDispute((d) => ({ ...d, claimed: v }))} placeholder="Correct observed value (optional)" />
             <View style={styles.row}><Button mode="contained" loading={dispute.busy} disabled={dispute.busy} onPress={fileDispute}>Sign &amp; file dispute</Button><Button onPress={() => setDispute((d) => ({ ...d, open: false }))}>Cancel</Button></View>
           </>) : <Button mode="outlined" style={{ alignSelf: "flex-start" }} onPress={() => setDispute((d) => ({ ...d, open: true, msg: "" }))}>Dispute this result</Button>}
-          {!!dispute.msg && <Text style={{ color: /filed/.test(dispute.msg) ? "#0f8f7c" : theme.colors.error }}>{dispute.msg}</Text>}
+          {!!dispute.msg && <Text style={{ color: /filed/.test(dispute.msg) ? OK_GREEN : theme.colors.error }}>{dispute.msg}</Text>}
         </View>
       )}
       <KV k="Market account" v={m.pubkey.toBase58()} mono />

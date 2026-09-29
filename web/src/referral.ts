@@ -37,10 +37,13 @@ export async function bindIfPending(s: Session): Promise<void> {
   } catch {}
 }
 
-/** After a confirmed bet: bind the wallet to the pending code. Returns a short note for the UI, or null. */
-export async function bindReferralAfterBet(s: Session): Promise<string | null> {
+/** After a confirmed bet: bind the wallet to the pending code. Returns a short note for the UI, or null.
+ *  `host` is where to explain the signature prompt that is about to appear (the bet box's message area); without one
+ *  the note goes under the header, next to the invite bar — the on-connect path (bindIfPending) lands on any page. */
+export async function bindReferralAfterBet(s: Session, host?: Element | null): Promise<string | null> {
   const code = pendingReferral(); if (!code || !API_BASE) return null;
   const wallet = s.publicKey.toBase58();
+  const note = signNote(host);
   try {
     const ts = Math.floor(Date.now() / 1000);
     const sig = await s.signMessage(new TextEncoder().encode(`kubrai-referral v1\ndomain=${location.host}\nwallet=${wallet}\ncode=${code}\nts=${ts}`));
@@ -50,4 +53,14 @@ export async function bindReferralAfterBet(s: Session): Promise<string | null> {
     if (j.permanent) { clear(); document.getElementById("refbar")?.remove(); }   // wrong wallet for this link; stop asking
     return null;
   } catch { return null; }   // user declined the signature or network hiccup: the code stays for the next bet
+  finally { note.remove(); }
+}
+
+/** The wallet is about to ask for a signature that is not a bet. Said first, or the second prompt reads as one. */
+function signNote(host?: Element | null) {
+  document.getElementById("refnote")?.remove();
+  const el = document.createElement("div"); el.id = "refnote"; el.className = "msg"; el.textContent = t("ref.signNote");
+  if (host) { el.style.marginTop = "8px"; host.appendChild(el); }
+  else { const anchor = document.getElementById("refbar") ?? document.querySelector("header.top"); if (anchor) { el.style.margin = "0 0 16px"; anchor.after(el); } }
+  return el;
 }

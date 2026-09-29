@@ -5,6 +5,7 @@ import { bucketLabel, esc, fmtAmt, fmtTs, isBase58, mountNetBadge, mountWallet, 
 import { API_BASE, TOKEN_SYMBOL } from "./config";
 import { nextStepText } from "./timeline";
 import { t } from "./i18n";
+import { explorerTx } from "./explorer";
 
 mountNetBadge(); mountWallet();
 const openEl = document.getElementById("open")!, settledEl = document.getElementById("settled")!;
@@ -41,7 +42,7 @@ async function render(owner: PublicKey | null) {
       const outcome = s.status === 3 ? t("status.voided") : m ? t("pf.outcomeV", { b: bucketLabel(m, Number(s.outcome)), v: Number(s.observed).toLocaleString("en-US") }) : `bucket ${esc(s.outcome)}`;
       const cls = s.kind === "won" ? "ok" : s.kind === "lost" ? "err" : "";
       const sig = isBase58(s.signature) ? s.signature : null;
-      return `<tr><td>${m ? `<a href="/market.html?id=${m.id}">${metricLabel(m.metric)}</a>` : esc(metricLabel(String(s.metric)))}<div class="note">#${esc(s.id)} · ${fmtTs(Date.parse(s.at) / 1000)}</div></td><td>${bets}</td><td>${esc(outcome)}</td><td class="r mono"><span class="msg ${cls}" style="padding:2px 8px">${s.kind === "lost" ? "0" : fmtAmt(Number(s.payout))} ${TOKEN_SYMBOL}</span></td><td class="hash">${sig ? `<a href="https://explorer.solana.com/tx/${sig}?cluster=devnet" target="_blank" rel="noopener">${sig.slice(0, 8)}…</a>` : "—"}</td></tr>`;
+      return `<tr><td>${m ? `<a href="/market.html?id=${m.id}">${metricLabel(m.metric)}</a>` : esc(metricLabel(String(s.metric)))}<div class="note">#${esc(s.id)} · ${fmtTs(Date.parse(s.at) / 1000)}</div></td><td>${bets}</td><td>${esc(outcome)}</td><td class="r mono"><span class="msg ${cls}" style="padding:2px 8px">${s.kind === "lost" ? "0" : fmtAmt(Number(s.payout))} ${TOKEN_SYMBOL}</span></td><td class="hash">${sig ? `<a href="${explorerTx(sig)}" target="_blank" rel="noopener">${sig.slice(0, 8)}…</a>` : "—"}</td></tr>`;
     }).join("")}</tbody></table></div>`;
   } catch { settledEl.innerHTML = `<div class="note">${t("pf.histErr")}</div>`; }
 }

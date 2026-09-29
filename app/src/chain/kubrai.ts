@@ -1,6 +1,6 @@
 // Chain client shared by every screen. Reads decode raw account bytes (see raw.ts) and
 // writes hand-encode instructions — no Anchor at runtime, which does not survive Hermes.
-import { Connection, PublicKey, Transaction } from "@solana/web3.js";
+import { Connection, PublicKey, SignatureStatus, Transaction } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { APP } from "../config";
 import { DISC, SIZE, decodeFeeTiers, type RawFeeTiers, decodeConfig, decodeMarket, decodePosition, discBase58, placeBetIx, type RawConfig } from "./raw";
@@ -79,15 +79,31 @@ export async function buildPlaceBetTx(connection: Connection, user: PublicKey, m
   const tx = new Transaction({ feePayer: user, blockhash, lastValidBlockHeight }).add(ix);
   return { tx, minContextSlot: await connection.getSlot("confirmed") };
 }
-export async function confirmBySig(connection: Connection, sig: string, timeoutMs = 60000) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < timeoutMs) {
-    const st = (await connection.getSignatureStatuses([sig])).value[0];
-    if (st?.err) throw new Error("Transaction failed: " + JSON.stringify(st.err));
-    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return;
-    await new Promise((r) => setTimeout(r, 1200));
+export type ConfirmOutcome = { status: "confirmed" } | { status: "failed"; reason: string } | { status: "unknown" };
+/** Polls a signature until it is confirmed, has definitely failed, or `timeoutMs` passes with no answer. "unknown" is
+ *  not a failure — the transaction can still land, so the caller must not let the user send it again. With
+ *  `lastValidBlockHeight`, a signature the network has never seen becomes a definite failure once its blockhash has
+ *  expired (the network can no longer accept it); `history` also searches the ledger, for long waits. RPC errors are
+ *  skipped, not thrown. */
+export async function waitForSignature(connection: Connection, sig: string, o: { timeoutMs: number; everyMs?: number; lastValidBlockHeight?: number; history?: boolean }): Promise<ConfirmOutcome> {
+  const t0 = Date.now(); let expired = false;
+  for (;;) {
+    let st: SignatureStatus | null | undefined;
+    try { st = (await connection.getSignatureStatuses([sig], o.history || expired ? { searchTransactionHistory: true } : undefined)).value[0]; } catch {}
+    if (st?.err) return { status: "failed", reason: "Transaction failed: " + JSON.stringify(st.err) };
+    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return { status: "confirmed" };
+    // Expired and still nowhere (checked once more, ledger included): it will never be processed.
+    if (!st && expired) return { status: "failed", reason: "The network dropped the transaction before processing it (its blockhash expired). Nothing was charged — you can place the bet again." };
+    if (!st && o.lastValidBlockHeight != null) { try { expired = (await connection.getBlockHeight("confirmed")) > o.lastValidBlockHeight; } catch {} }
+    if (Date.now() - t0 >= o.timeoutMs) return { status: "unknown" };
+    await new Promise((r) => setTimeout(r, o.everyMs ?? 1200));
   }
-  throw new Error("Not confirmed after " + timeoutMs / 1000 + "s");
+}
+/** Throwing form of waitForSignature (no caller left in the app; kept for scripts and older screens). */
+export async function confirmBySig(connection: Connection, sig: string, timeoutMs = 60000) {
+  const r = await waitForSignature(connection, sig, { timeoutMs });
+  if (r.status === "failed") throw new Error(r.reason);
+  if (r.status === "unknown") throw new Error("Not confirmed after " + timeoutMs / 1000 + "s");
 }
 export async function fetchBalances(connection: Connection, owner: PublicKey, mint: PublicKey) {
   const [sol, tok] = await Promise.all([

@@ -8,6 +8,7 @@ import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type Holde
 import { connection, programId } from "./kubrai";
 import { nextStepHead, timelineGrid } from "./timeline";
 import { bindReferralAfterBet } from "./referral";
+import { explorerTx } from "./explorer";
 import { fmtRange, fmtTsShort, inWords, zoneName, zoneShort } from "./time";
 import { t } from "./i18n";
 
@@ -15,6 +16,15 @@ mountNetBadge(); mountWallet();
 const root = document.getElementById("market")!;
 const id = Number(new URLSearchParams(location.search).get("id"));
 let m: MarketView, cfg: any, bucket = 0;
+// A bet the chain has not answered for after the first minute of waiting. While set, every render of the bet box shows
+// this note and draws the bet button disabled — wallet events re-render the box, and a fresh enabled button would invite
+// a second real bet. Cleared once the bet confirms or the chain rejects it; a page reload clears it too.
+let hold: string | null = null;
+function setHold(html: string) {
+  hold = html;
+  const msg = document.getElementById("msg"); if (msg) msg.innerHTML = html;
+  const go = document.getElementById("go") as HTMLButtonElement | null; if (go) go.disabled = true;
+}
 let proof: HolderProof = { accounts: [], sgt: false, stake: false, sgtDiscountBps: 0, stakeDiscountBps: 0, minFeeBps: 0, stakeLabel: "" };
 // The holder-discount lookup goes to the public RPC, which can leave a request hanging for good (2026-09-26: every
 // market page with a wallet connected sat on "Loading…"). The page never waits for it: it renders at the full fee
@@ -89,8 +99,8 @@ function renderBet(open: boolean, fee: number) {
     <div class="amtrow"><input id="amt" type="number" min="${cfg.minBet.toNumber() / 10 ** TOKEN_DECIMALS}" step="1" placeholder="${esc(t("bet.amountPh", { tok: TOKEN_SYMBOL }))}">${s ? `<button id="max" type="button" title="${esc(t("bet.maxTitle", { tok: TOKEN_SYMBOL }))}">${t("bet.max")}</button>` : ""}</div>
     ${s && balances.loaded ? `<div class="note">${t("bet.available")} <span class="mono">${fmtAmt(balances.token)} ${TOKEN_SYMBOL}</span>${balances.sol < 0.002 ? ` · <span class="warn">${t("bet.needSol")}</span>` : ""}</div>` : ""}
     <div class="quote" id="quote"></div>
-    ${s ? `<button class="primary" id="go" style="background:${bucketColor(m, bucket)};border-color:${bucketColor(m, bucket)}">${t("bet.place", { b: bucketLabel(m, bucket) })}</button>` : `<div class="note">${t("bet.connect")}</div>`}
-    <div id="msg"></div>
+    ${s ? `<button class="primary" id="go"${hold ? " disabled" : ""} style="background:${bucketColor(m, bucket)};border-color:${bucketColor(m, bucket)}">${t("bet.place", { b: bucketLabel(m, bucket) })}</button>` : `<div class="note">${t("bet.connect")}</div>`}
+    <div id="msg">${hold ?? ""}</div>
     <div class="note">${t("bet.parimutuel")} <b>${t("bet.yourFee", { pct: fee / 100 })}</b>${discountLabel(Date.now() / 1000 < earlyBirdUntil(cfg, m), proof) ? ` (${discountLabel(Date.now() / 1000 < earlyBirdUntil(cfg, m), proof)})` : ""} ${t("bet.feeNote")}</div>
   </div>`;
   const amtEl = box.querySelector<HTMLInputElement>("#amt")!, quote = box.querySelector("#quote")!;
@@ -105,24 +115,41 @@ function renderBet(open: boolean, fee: number) {
   box.querySelectorAll<HTMLButtonElement>(".sides button").forEach((b) => (b.onclick = () => { bucket = Number(b.dataset.b); renderBet(open, fee); }));
   const go = box.querySelector<HTMLButtonElement>("#go"), msg = box.querySelector("#msg")!;
   if (go) go.onclick = async () => {
-    const sess = getSession()!; const a = Math.round((Number(amtEl.value) || 0) * 10 ** TOKEN_DECIMALS);
+    const sess = getSession()!; const a = Math.round((Number(amtEl.value) || 0) * 10 ** TOKEN_DECIMALS), side = bucket;
     if (a < cfg.minBet.toNumber()) { msg.innerHTML = `<div class="msg err">${t("bet.min", { amt: fmtAmt(cfg.minBet.toNumber()), tok: TOKEN_SYMBOL })}</div>`; return; }
     go.disabled = true; msg.innerHTML = `<div class="msg">${t("bet.confirm")}</div>`;
+    // The box may have been re-rendered while we waited (wallet events do that): always write to the elements on the page.
+    const msgNow = () => document.getElementById("msg") ?? msg, goNow = () => (document.getElementById("go") as HTMLButtonElement | null) ?? go;
+    const sigLink = (sig: string) => `<a class="mono" style="word-break:break-all" href="${explorerTx(sig)}" target="_blank" rel="noopener">${esc(sig)}</a>`;
+    // Everything that follows a confirmed bet, whether it confirmed in seconds or minutes later.
+    const landed = async () => {
+      hold = null;
+      const okHtml = `<div class="msg ok">${t("bet.placed", { amt: fmtAmt(a), tok: TOKEN_SYMBOL, b: bucketLabel(m, side) })}</div>`;
+      const cur = msgNow(); cur.innerHTML = okHtml;
+      try {
+        const refNote = await bindReferralAfterBet(sess, cur);
+        await refreshBalances(); await load(true); await showPosition();
+        // load() re-rendered the page: keep the confirmation visible in the fresh bet box
+        const fresh = document.getElementById("msg"); if (fresh) fresh.innerHTML = okHtml;
+        if (refNote) { const b = document.getElementById("bet"); if (b) b.insertAdjacentHTML("beforeend", `<div class="msg ok" style="margin-top:8px">${esc(refNote)}</div>`); }
+      } catch (e) { console.warn("refresh after bet failed", e); goNow().disabled = false; }   // the bet is on-chain: a failed refresh must not read as a failed bet
+    };
     try {
       await refreshProof(false);
       // A wallet funded seconds ago can hit an RPC node that has not seen the credit yet; one retry covers it.
-      const send = async () => sess.signAndSend(await buildPlaceBetTx(sess.publicKey, m, bucket, a, new PublicKey(cfg.mint), proof.accounts));
+      const send = async () => sess.signAndSend(await buildPlaceBetTx(sess.publicKey, m, side, a, new PublicKey(cfg.mint), proof.accounts));
       const sig = await send().catch(async (e) => { if (!/prior credit|Blockhash not found/i.test(String(e?.message ?? e))) throw e; msg.innerHTML = `<div class="msg">${t("bet.retry")}</div>`; await new Promise((r) => setTimeout(r, 4000)); return send(); });
       msg.innerHTML = `<div class="msg">${t("bet.sent")} <span class="hash">${esc(sig)}</span></div>`;
-      await confirmBySig(sig);
-      const okHtml = `<div class="msg ok">${t("bet.placed", { amt: fmtAmt(a), tok: TOKEN_SYMBOL, b: bucketLabel(m, bucket) })}</div>`;
-      msg.innerHTML = okHtml;
-      const refNote = await bindReferralAfterBet(sess);
-      await refreshBalances(); await load(true); await showPosition();
-      // load() re-rendered the page: keep the confirmation visible in the fresh bet box
-      const fresh = document.getElementById("msg"); if (fresh) fresh.innerHTML = okHtml;
-      if (refNote) { const b = document.getElementById("bet"); if (b) b.insertAdjacentHTML("beforeend", `<div class="msg ok" style="margin-top:8px">${esc(refNote)}</div>`); }
-    } catch (e: any) { msg.innerHTML = `<div class="msg err">${esc(e?.message ?? e)}</div>`; go.disabled = false; }
+      let st = await confirmBySig(sig, 60_000);
+      if (st === "pending") {
+        // Slow is not failed: a transaction the chain has not answered for usually lands a little later, and a red
+        // "failed" here has made people bet twice. Say so, keep the button locked, and keep looking for five more minutes.
+        setHold(`<div class="msg">${t("bet.slow", { sig: sigLink(sig) })}</div>`);
+        st = await confirmBySig(sig, 5 * 60_000, { everyMs: 3000, history: true });
+      }
+      if (st === "confirmed") { await landed(); return; }
+      setHold(`<div class="msg">${t("bet.unconfirmed", { min: 6, sig: sigLink(sig) })}</div>`);   // stays locked until the page is reloaded
+    } catch (e: any) { hold = null; msgNow().innerHTML = `<div class="msg err">${esc(e?.message ?? e)}</div>`; goNow().disabled = false; }
   };
 }
 async function showPosition() {
@@ -145,7 +172,7 @@ async function loadEvidence() {
     if (!r.ok) { el.textContent = t("ev.none"); return; }
     const e = await r.json(); const fv = (v: number | null | undefined) => (v == null ? "—" : fmtValue(m.metric, v, m.thresholds));
     const when = (slot?: string | null) => !slot ? "" : slot === "on-chain" ? t("ev.onchainBaseline") : `<a href="${API_BASE}/snapshots/${slot}" target="_blank" rel="noopener" title="${esc(t("ev.rawSnapshot"))}">${esc(fmtTsShort(Date.parse(slot + ":00:00Z") / 1000))}</a>`;
-    const proof = (x: any) => x?.sha256 ? ` · sha256 <span class="hash">${esc(x.sha256.slice(0, 12))}…</span>${x.memo ? ` · <a href="https://explorer.solana.com/tx/${x.memo}?cluster=devnet" target="_blank" rel="noopener">${t("ev.memo")}</a>` : ""}` : "";
+    const proof = (x: any) => x?.sha256 ? ` · sha256 <span class="hash">${esc(x.sha256.slice(0, 12))}…</span>${x.memo ? ` · <a href="${explorerTx(x.memo)}" target="_blank" rel="noopener">${t("ev.memo")}</a>` : ""}` : "";
     const row = (label: string, value: string, x: any) => `<div><b>${label}</b> <span class="mono">${value}</span>${x?.slot ? ` · ${when(x.slot)}` : ""}${proof(x)}</div>`;
     const rows: string[] = [];
     if (e.kind === "daily") {

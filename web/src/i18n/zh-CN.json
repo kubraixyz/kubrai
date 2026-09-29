@@ -380,5 +380,8 @@
  "tl.start": "开始计算",
  "tl.startNote": "要计算的那一天开始了；下注开放到这一天过一半为止",
  "mkt.zoneShort": "时间为 {z}",
- "mkt.headNext": "{in}{step}"
+ "mkt.headNext": "{in}{step}",
+ "bet.slow": "仍在等待确认 — 交易签名 {sig}。在链上看到它之前，请勿再次下注。",
+ "bet.unconfirmed": "已等待 {min} 分钟仍未确认 — 再次下注前，请先查看区块链浏览器链接：{sig}",
+ "ref.signNote": "再签署一次即可应用你的邀请 — 不收费，也不会转移任何资金。"
 }

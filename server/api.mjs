@@ -352,7 +352,15 @@ reason=${reason}`;
     if (url.pathname === "/disputes") {
       const m = url.searchParams.get("market");
       const rows = fs.existsSync(DISPUTES) ? fs.readFileSync(DISPUTES, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
-      return json(res, 200, { disputes: rows.filter((d) => !m || d.market === m).map(({ id, at, market, wallet, reason, claimedValue, status, resolution }) => ({ id, at, market, wallet: wallet.slice(0, 4) + "…" + wallet.slice(-4), reason, claimedValue, status, resolution })) });
+      // A dispute is open only while the market still has a proposal standing. Once the market finalized or was voided
+      // that outcome closes it (derived here; the file only ever records the filing), so nothing shows as "open" forever.
+      let byKey = new Map(); try { byKey = new Map((await chainState()).markets.map((x) => [x.pubkey, x])); } catch {}
+      const effective = (d) => {
+        if (d.status !== "open") return { status: d.status, resolution: d.resolution };
+        const mk = byKey.get(d.market); if (!mk || mk.status === 1) return { status: "open", resolution: d.resolution };
+        return mk.status === 3 || mk.outcome >= mk.nBuckets ? { status: "closed", resolution: "market voided: every stake refunded" } : { status: "closed", resolution: `market finalized: range ${mk.outcome}` };
+      };
+      return json(res, 200, { disputes: rows.filter((d) => !m || d.market === m).map(({ id, at, market, wallet, reason, claimedValue, ...d }) => ({ id, at, market, wallet: wallet.slice(0, 4) + "…" + wallet.slice(-4), reason, claimedValue, ...effective(d) })) });
     }
     // Settlement evidence for one market: which hourly snapshots feed it and what they say, so nobody has to dig.
     //   GET /evidence?metric=<tag>&open=<unix>&close=<unix>&baseline=<onchain>&id=<market id>

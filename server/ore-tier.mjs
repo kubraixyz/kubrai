@@ -2,7 +2,8 @@
 //   FeeTiers stake rule = { program: ORE (or the devnet stub), owner offset 8, amount offset 704 = rewards_ore, min = 500 / ORE_USD in base units }.
 //   Runs daily from cron; only writes when the minimum drifts more than DRIFT (10 %) from the current on-chain value.
 //   env: ANCHOR_PROVIDER_URL, ANCHOR_WALLET (admin), ORE_MINER_PROGRAM (default: mainnet ORE; devnet passes the stub id),
-//        USD_MIN (default 500), DRY_RUN=1
+//        USD_MIN (default 500), SNAPSHOT_DIR (where ore-tier.jsonl is appended), DRY_RUN=1
+//   Runs on the admin host (Tokyo), the only place the admin key lives; the app host never needs it.
 import anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 import fs from "node:fs";
@@ -29,4 +30,5 @@ const args = { sgtGroupMint: cur?.sgtGroupMint ?? PublicKey.default, sgtDiscount
 if (process.env.DRY_RUN === "1") { log("DRY_RUN, would set", { ...args, stakeProgram: stakeProgram.toBase58(), stakeMinAmount: minBase.toString() }); process.exit(0); }
 const sig = await program.methods.setFeeTiers(args).accounts({ config, feeTiers, admin: provider.wallet.publicKey }).rpc();
 log("set", sig);
-fs.appendFileSync(new URL("./snapshots/ore-tier.jsonl", import.meta.url), JSON.stringify({ at: new Date().toISOString(), oreUsd: price, usdMin: USD_MIN, minBase: minBase.toString(), sig }) + "\n");
+const logDir = process.env.SNAPSHOT_DIR ?? new URL("./snapshots/", import.meta.url).pathname; fs.mkdirSync(logDir, { recursive: true });
+fs.appendFileSync(`${logDir}/ore-tier.jsonl`, JSON.stringify({ at: new Date().toISOString(), oreUsd: price, usdMin: USD_MIN, minBase: minBase.toString(), sig }) + "\n");

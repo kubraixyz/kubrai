@@ -1,14 +1,14 @@
 // Invite page: the wallet's referral link (unlocked by its first bet), who it brought in, and what that earned.
 import { esc, getSession, mountNetBadge, mountWallet, onSession } from "./ui";
-import { API_BASE, CLUSTER, TOKEN_SYMBOL } from "./config";
+import { API_BASE, TOKEN_SYMBOL } from "./config";
 import { fmtTs } from "./time";
 import { t } from "./i18n";
+import { explorerTx } from "./explorer";
 
 mountNetBadge(); mountWallet();
 const el = document.getElementById("invite")!;
 const pct = (bps: number) => (bps / 100).toFixed(0) + "%";
 const amt = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 2 });
-const explorerTx = (s: string) => `https://explorer.solana.com/tx/${s}?cluster=${CLUSTER === "mainnet" ? "mainnet-beta" : "devnet"}`;
 
 async function render() {
   const s = getSession(); const wallet = s?.publicKey.toBase58() ?? null;

@@ -380,5 +380,8 @@
  "tl.start": "Empieza el conteo",
  "tl.startNote": "empieza el día que se cuenta; las apuestas siguen abiertas hasta la mitad del día",
  "mkt.zoneShort": "Horas en {z}",
- "mkt.headNext": "{step} {in}"
+ "mkt.headNext": "{step} {in}",
+ "bet.slow": "Aún esperando la confirmación — firma {sig}. No vuelvas a apostar hasta que aparezca en la cadena.",
+ "bet.unconfirmed": "Sigue sin confirmarse tras {min} minutos — revisa el enlace del explorador antes de volver a apostar: {sig}",
+ "ref.signNote": "Una firma más aplica tu invitación — no cuesta nada y no mueve fondos."
 }

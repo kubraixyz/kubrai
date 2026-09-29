@@ -19,9 +19,11 @@ import {
   MD3DarkTheme,
   MD3LightTheme,
   Portal,
+  Snackbar,
   Text,
   adaptNavigationTheme,
 } from "react-native-paper";
+import { useReferralLinkCapture } from "../hooks/useReferral";
 import { NavigationContainerRef } from "@react-navigation/native";
 
 /**
@@ -83,6 +85,10 @@ export const AppNavigator = (props: NavigationProps) => {
     });
     return () => sub.remove();
   }, []);
+  // Invite links (https://kubrai.xyz/?ref=CODE, kubrai://…?ref=CODE) hand the app a code that waits for the wallet's
+  // first bet (hooks/useReferral). Say so: the link otherwise just opens the market list.
+  const [invite, setInvite] = useState<string | null>(null);
+  useReferralLinkCapture(setInvite);
   return (
     <NavigationContainer ref={navRef} {...props}>
       <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
@@ -96,6 +102,7 @@ export const AppNavigator = (props: NavigationProps) => {
             <Button onPress={() => { setAskExit(false); BackHandler.exitApp(); }}>Exit</Button>
           </Dialog.Actions>
         </Dialog>
+        <Snackbar visible={!!invite} onDismiss={() => setInvite(null)} duration={7000} wrapperStyle={{ bottom: 76 }} action={{ label: "Settings", onPress: () => navRef.current?.navigate("Settings") }}>{`Invite code ${invite} saved — it applies with your first bet.`}</Snackbar>
       </Portal>
     </NavigationContainer>
   );

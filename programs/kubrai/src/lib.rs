@@ -72,6 +72,7 @@ pub mod kubrai {
         c.min_bet = args.min_bet;
         c.paused = paused;
         if let Some(a) = new_admin {
+            require!(a != Pubkey::default(), KubraiError::ZeroAdmin);
             c.admin = a;
         }
         Ok(())
@@ -224,6 +225,28 @@ pub mod kubrai {
     pub fn void_market(ctx: Context<AdminMarket>) -> Result<()> {
         let m = &mut ctx.accounts.market;
         require!(m.status == MarketStatus::Open as u8 || m.status == MarketStatus::Proposed as u8, KubraiError::AlreadyFinal);
+        m.status = MarketStatus::Voided as u8;
+        m.resolved_at = Clock::get()?.unix_timestamp;
+        emit!(MarketResolved { market: m.key(), bucket: NO_OUTCOME, voided: true });
+        Ok(())
+    }
+
+    /// Admin: names the verifier — the second host that re-derives every proposed result from its own snapshots.
+    /// `Pubkey::default()` disables the role. Creates the account on first use.
+    pub fn set_roles(ctx: Context<SetRoles>, verifier: Pubkey) -> Result<()> {
+        let r = &mut ctx.accounts.roles;
+        r.verifier = verifier;
+        r.bump = ctx.bumps.roles;
+        Ok(())
+    }
+
+    /// Verifier (or admin): void a market whose proposed result could not be confirmed independently. Only a market
+    /// with a proposal standing can be voided this way, and voiding is all the role can do — it cannot propose,
+    /// finalize, touch an Open market or change the config — so a compromised verifier host can force refunds,
+    /// never steer a pool anywhere.
+    pub fn void_proposed_market(ctx: Context<VerifierMarket>) -> Result<()> {
+        let m = &mut ctx.accounts.market;
+        require!(m.status == MarketStatus::Proposed as u8, KubraiError::NotProposed);
         m.status = MarketStatus::Voided as u8;
         m.resolved_at = Clock::get()?.unix_timestamp;
         emit!(MarketResolved { market: m.key(), bucket: NO_OUTCOME, voided: true });
@@ -461,6 +484,15 @@ pub struct MarketArgs {
     pub baseline: i64,
 }
 
+/// Who may void a proposed result besides the admin (see `void_proposed_market`). Kept apart from Config so the
+/// verifier key can rotate without an admin-signed config update and old clients keep their Config layout.
+#[account]
+#[derive(InitSpace)]
+pub struct Roles {
+    pub verifier: Pubkey,
+    pub bump: u8,
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct Config {
@@ -648,6 +680,27 @@ pub struct AdminMarket<'info> {
     pub market: Account<'info, Market>,
     pub admin: Signer<'info>,
 }
+#[derive(Accounts)]
+pub struct SetRoles<'info> {
+    #[account(seeds = [b"config"], bump = config.bump, has_one = admin @ KubraiError::Unauthorized)]
+    pub config: Account<'info, Config>,
+    #[account(init_if_needed, payer = admin, space = 8 + Roles::INIT_SPACE, seeds = [b"roles"], bump)]
+    pub roles: Account<'info, Roles>,
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+#[derive(Accounts)]
+pub struct VerifierMarket<'info> {
+    #[account(seeds = [b"config"], bump = config.bump)]
+    pub config: Account<'info, Config>,
+    #[account(seeds = [b"roles"], bump = roles.bump,
+        constraint = (roles.verifier != Pubkey::default() && verifier.key() == roles.verifier) || verifier.key() == config.admin @ KubraiError::Unauthorized)]
+    pub roles: Account<'info, Roles>,
+    #[account(mut, seeds = [b"market", market.id.to_le_bytes().as_ref()], bump = market.bump)]
+    pub market: Account<'info, Market>,
+    pub verifier: Signer<'info>,
+}
 
 #[derive(Accounts)]
 pub struct Settle<'info> {
@@ -744,6 +797,7 @@ pub enum KubraiError {
     #[msg("bad bucket definition or index")] BadBuckets,
     #[msg("arithmetic overflow")] MathOverflow,
     #[msg("market is not stale yet: a day must pass after resolve_after_ts without a proposal")] NotStaleYet,
+    #[msg("new admin cannot be the zero address")] ZeroAdmin,
 }
 
 #[cfg(test)]

@@ -1,21 +1,28 @@
 import { AnchorProvider, BN, Program, type Idl } from "@coral-xyz/anchor";
-import { Connection, PublicKey, SystemProgram, Transaction, type TransactionInstruction, type AccountMeta } from "@solana/web3.js";
+import { Connection, PublicKey, SystemProgram, Transaction, type TransactionInstruction, type AccountMeta, type SignatureStatus } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import idl from "../../idl/kubrai.json";
 import { API_BASE, PROGRAM_ID, RPC_URL } from "./config";
 
 export const connection = new Connection(RPC_URL, { commitment: "confirmed", disableRetryOnRateLimit: false });
 
-/** Confirm by polling signature status (no websocket: works behind tunnels, on mobile data, and on flaky public RPCs). */
-export async function confirmBySig(sig: string, timeoutMs = 60000): Promise<void> {
-  const t0 = Date.now();
-  while (Date.now() - t0 < timeoutMs) {
-    const st = (await connection.getSignatureStatuses([sig])).value[0];
+/** What waiting on a signature can end in. "pending" is not a failure: the transaction may still land, so the caller
+ *  must not let the user send it again. A transaction the chain rejected is thrown instead — the only true failure. */
+export type SigOutcome = "confirmed" | "pending";
+/** Confirm by polling signature status (no websocket: works behind tunnels, on mobile data, and on flaky public RPCs)
+ *  until it is confirmed or `timeoutMs` has passed. An RPC hiccup mid-poll says nothing about the transaction, so it is
+ *  polled again rather than reported. `history` also asks the node to look past its short recent-status cache, which a
+ *  transaction that landed minutes ago has already left. */
+export async function confirmBySig(sig: string, timeoutMs = 60000, opts: { everyMs?: number; history?: boolean } = {}): Promise<SigOutcome> {
+  const t0 = Date.now(), everyMs = opts.everyMs ?? 1200;
+  for (;;) {
+    let st: SignatureStatus | null = null;
+    try { st = (await connection.getSignatureStatuses([sig], { searchTransactionHistory: !!opts.history })).value[0]; } catch { /* transient RPC failure: ask again */ }
     if (st?.err) throw new Error("Transaction failed: " + JSON.stringify(st.err));
-    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return;
-    await new Promise((r) => setTimeout(r, 1200));
+    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return "confirmed";
+    if (Date.now() - t0 >= timeoutMs) return "pending";
+    await new Promise((r) => setTimeout(r, everyMs));
   }
-  throw new Error("Not confirmed after " + timeoutMs / 1000 + "s. Check signature " + sig);
 }
 export const programId = new PublicKey(PROGRAM_ID);
 const readOnlyProvider = new AnchorProvider(connection, { publicKey: PublicKey.default, signTransaction: async (t: any) => t, signAllTransactions: async (t: any) => t } as any, { commitment: "confirmed" });

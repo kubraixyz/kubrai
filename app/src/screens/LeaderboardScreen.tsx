@@ -4,6 +4,7 @@ import { ActivityIndicator, Chip, SegmentedButtons, Text, useTheme } from "react
 import { useQuery } from "@tanstack/react-query";
 import { useAuthorization } from "../utils/useAuthorization";
 import { fmtTsShort, short } from "../chain/format";
+import { explorerAddressUrl } from "../chain/explorer";
 import { APP, TOKEN_SYMBOL } from "../config";
 
 type Entry = { rank: number; wallet: string; points: number; markets: number; won: number; lastAt: string; test?: boolean };
@@ -20,7 +21,7 @@ export function LeaderboardScreen() {
   const q = useQuery({ queryKey: ["leaderboard", win], queryFn: () => fetchBoard(win), refetchInterval: 60_000 });
   const me = selectedAccount?.publicKey.toBase58() ?? null;
   const rows = q.data?.entries ?? [], mine = me ? rows.find((e) => e.wallet === me) : null;
-  const explorer = (w: string) => Linking.openURL(`https://explorer.solana.com/address/${w}?cluster=${APP.cluster === "mainnet" ? "mainnet-beta" : "devnet"}`);
+  const explorer = (w: string) => Linking.openURL(explorerAddressUrl(w));
   return (
     <ScrollView contentContainerStyle={styles.screen} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} />}>
       <Text variant="headlineSmall">Leaderboard</Text>

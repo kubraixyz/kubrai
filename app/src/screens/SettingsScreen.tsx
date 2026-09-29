@@ -1,24 +1,27 @@
 import React, { useEffect, useState } from "react";
 import { ScrollView, Share, StyleSheet, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { Button, Divider, Text } from "react-native-paper";
+import { Button, Divider, Text, TextInput, useTheme } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import { useNavigation } from "@react-navigation/native";
 import { useAuthorization } from "../utils/useAuthorization";
 import { useMobileWallet } from "../utils/useMobileWallet";
 import { useBalances, useInvalidateAll } from "../hooks/useKubrai";
+import { useApplyInvite, usePendingReferral, usePendingReferralActions, useReferralLookup, type InviteNote } from "../hooks/useReferral";
 import { requestFaucet } from "../chain/api";
+import { isCode, lookupReferralCode, normalizeCode } from "../chain/referral";
 import { fmtAmt, short } from "../chain/format";
 import { APP, IS_TEST, TOKEN_SYMBOL } from "../config";
 
+const OK_GREEN = "#0f8f7c";
 export function SettingsScreen() {
   const { selectedAccount } = useAuthorization(); const { connect, disconnect } = useMobileWallet(); const bal = useBalances(); const invalidate = useInvalidateAll();
   const [msg, setMsg] = useState(""); const [busy, setBusy] = useState(false);
-  const insets = useSafeAreaInsets(); const nav = useNavigation<any>();
+  const insets = useSafeAreaInsets(); const nav = useNavigation<any>(); const theme = useTheme();
   // Invite link (server/referrals.mjs): unlocked by the wallet's first bet; friends who bet through it earn you a share
-  // of the fee on their winnings and get part of it back themselves.
-  const [ref, setRef] = useState<any>(null); const [refMsg, setRefMsg] = useState("");
+  // of the fee on their winnings and get part of it back themselves. `refTick` re-reads it after a binding.
+  const [ref, setRef] = useState<any>(null); const [refMsg, setRefMsg] = useState(""); const [refTick, setRefTick] = useState(0);
   useEffect(() => {
     if (!selectedAccount) { setRef(null); return; }
     const wallet = selectedAccount.publicKey.toBase58(); let live = true;
@@ -30,7 +33,31 @@ export function SettingsScreen() {
       } catch { if (live) setRef({ error: "unavailable" }); }
     })();
     return () => { live = false; };
-  }, [selectedAccount?.publicKey.toBase58()]);
+  }, [selectedAccount?.publicKey.toBase58(), refTick]);
+  // Invite code this phone arrived with (?ref= link) or typed below. It waits here and binds the wallet on its first bet
+  // (hooks/useReferral); the market screen does that right after the bet lands.
+  const pending = usePendingReferral(); const { save: savePending, remove: removePending } = usePendingReferralActions();
+  const lookup = useReferralLookup(pending.data); const applyInvite = useApplyInvite();
+  const [codeInput, setCodeInput] = useState(""); const [codeMsg, setCodeMsg] = useState<InviteNote | null>(null); const [codeBusy, setCodeBusy] = useState(false);
+  // A wallet that is already bound has no use for a pending code: drop it, so the next bet does not ask for a signature.
+  useEffect(() => { if (ref?.bound && pending.data) void removePending(); }, [ref?.bound?.code, pending.data]);
+  const noteColor = (n: InviteNote) => (n.kind === "err" ? theme.colors.error : n.kind === "ok" ? OK_GREEN : undefined);
+  const pct = (bps: unknown) => ((typeof bps === "number" ? bps : 1000) / 100).toFixed(0);
+  async function saveCode() {
+    const code = normalizeCode(codeInput);
+    if (!isCode(code)) { setCodeMsg({ kind: "err", text: "A code is 4–12 letters or digits." }); return; }
+    setCodeBusy(true); setCodeMsg(null);
+    try {
+      const j = await lookupReferralCode(code);
+      if (!j.valid) { setCodeMsg({ kind: "err", text: "Unknown code — check the spelling, or ask your friend for a fresh link." }); return; }
+      await savePending(code, j); setCodeInput("");
+    } catch { await savePending(code); setCodeInput(""); setCodeMsg({ kind: "info", text: "Saved. The code could not be verified right now; it is checked again when it is applied." }); }
+    finally { setCodeBusy(false); }
+  }
+  async function applyNow() {
+    if (!selectedAccount) return; setCodeBusy(true);
+    try { await applyInvite(selectedAccount.publicKey.toBase58(), setCodeMsg); } finally { setCodeBusy(false); setRefTick((t) => t + 1); }
+  }
   async function faucet() {
     if (!selectedAccount) return; setBusy(true); setMsg("Requesting…");
     try { const j = await requestFaucet(selectedAccount.publicKey.toBase58()); setMsg(`Received ${j.tokens}${j.sol !== "already funded" ? ` and ${j.sol}` : ""}${j.genesisToken && j.genesisToken !== "failed" ? ` · ${j.genesisToken === "already held" ? "test Genesis Token already held" : "plus a test Genesis Token (−1% fee on devnet; on mainnet only a real Seeker’s token counts)"}` : ""}${j.oreMiner === "registered" ? " · registered as a test ORE miner (−1% fee on devnet; on mainnet only a real ORE Miner account counts)" : j.oreMiner === "already registered" ? " · test ORE miner already registered" : ""}.`); invalidate(); }
@@ -48,6 +75,28 @@ export function SettingsScreen() {
         </View>
         {!!msg && <Text style={styles.dim}>{msg}</Text>}
       </>) : <Button mode="contained" onPress={() => connect()}>Connect wallet</Button>}
+      <Divider style={{ marginVertical: 16 }} />
+      <Text variant="titleMedium">Invite code</Text>
+      {ref?.bound ? (
+        <Text style={styles.dim}>You joined through {ref.bound.code} · invited by {ref.bound.referrer} · {pct(ref.refereeBps)}% of the fee on every win comes back to you.</Text>
+      ) : pending.data ? (<>
+        <Text style={styles.mono} selectable>{pending.data}</Text>
+        <Text style={styles.dim}>{lookup.data ? (lookup.data.valid ? `Invited by ${lookup.data.referrer} · you get ${pct(lookup.data.refereeBps)}% of every fee back` : "Unknown code — check the spelling, or ask your friend for a fresh link.") : lookup.isError ? "Could not verify the code right now." : "Checking the code…"}</Text>
+        <Text style={styles.dim}>It applies with this wallet's first bet: right after the bet lands the app asks for one extra signature — it costs nothing and moves no funds.</Text>
+        {ref && ref.eligible && !ref.firstBet && <Text style={styles.dim}>This wallet already has settled bets, so an invite can no longer apply to it; the code is kept for a fresh wallet.</Text>}
+        <View style={styles.row}>
+          {selectedAccount && ref?.firstBet && lookup.data?.valid !== false && <Button mode="contained" loading={codeBusy} disabled={codeBusy} onPress={applyNow}>Apply invite now</Button>}
+          <Button mode="outlined" icon="close" disabled={codeBusy} onPress={async () => { await removePending(); setCodeMsg(null); }}>Remove</Button>
+        </View>
+        {codeMsg && <Text style={{ color: noteColor(codeMsg) }}>{codeMsg.text}</Text>}
+      </>) : (<>
+        <Text style={styles.dim}>Have an invite code? Enter it before your first bet and {pct(ref?.refereeBps)}% of the fee on every win comes back to you.</Text>
+        <View style={[styles.row, { alignItems: "center", marginTop: 0 }]}>
+          <TextInput mode="outlined" dense autoCapitalize="characters" autoCorrect={false} value={codeInput} onChangeText={setCodeInput} placeholder="Invite code" style={{ flex: 1 }} onSubmitEditing={saveCode} />
+          <Button mode="contained" loading={codeBusy} disabled={codeBusy || !codeInput.trim()} onPress={saveCode}>Save</Button>
+        </View>
+        {codeMsg && <Text style={{ color: noteColor(codeMsg) }}>{codeMsg.text}</Text>}
+      </>)}
       <Divider style={{ marginVertical: 16 }} />
       <Text variant="titleMedium">Invite friends</Text>
       {!selectedAccount ? <Text style={styles.dim}>Connect a wallet to get your invite link.</Text> : !ref ? <Text style={styles.dim}>Loading…</Text> : ref.error ? <Text style={styles.dim}>{ref.error}</Text> : !ref.link ? <Text style={styles.dim}>Place one bet to unlock your invite link.</Text> : (<>

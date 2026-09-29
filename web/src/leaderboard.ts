@@ -1,16 +1,16 @@
 // Leaderboard. Points come from the API (server/points.mjs): for every market you were settled in,
 //   points = SKR staked, across every range you bet, won or lost.
 import { esc, getSession, mountNetBadge, mountWallet, onSession, short } from "./ui";
-import { API_BASE, CLUSTER, TOKEN_SYMBOL } from "./config";
+import { API_BASE, TOKEN_SYMBOL } from "./config";
 import { fmtTs } from "./time";
 import { t } from "./i18n";
+import { explorerAddress } from "./explorer";
 
 mountNetBadge(); mountWallet();
 const boardEl = document.getElementById("board")!, totalsEl = document.getElementById("totals")!, winEl = document.getElementById("windows")!, meEl = document.getElementById("me")!;
 const WINDOWS: [string, string][] = [["all", t("lb.all")], ["30d", t("lb.30d")], ["7d", t("lb.7d")]];
 let win = new URLSearchParams(location.search).get("window") ?? "all";
 if (!WINDOWS.some(([k]) => k === win)) win = "all";
-const explorer = (w: string) => `https://explorer.solana.com/address/${w}?cluster=${CLUSTER === "mainnet" ? "mainnet-beta" : "devnet"}`;
 const fmtPoints = (v: number) => (v >= 1e6 ? (v / 1e6).toFixed(2) + "M" : v >= 1e4 ? (v / 1e3).toFixed(1) + "k" : v.toLocaleString("en-US", { maximumFractionDigits: 0 }));
 
 function renderWindows() {
@@ -35,7 +35,7 @@ async function load() {
   boardEl.innerHTML = `<div class="scroll"><table class="tbl"><thead><tr><th>#</th><th>${t("lb.colWallet")}</th><th class="r">${t("lb.colPoints")}</th><th class="r">${t("lb.colMarkets")}</th><th class="r">${t("lb.colWon")}</th><th class="r">${t("lb.colLast")}</th></tr></thead><tbody>${rows.map((e) => `
     <tr${e.wallet === me ? ` class="me"` : ""}>
       <td class="mono">${Number(e.rank)}</td>
-      <td><a class="mono" href="${explorer(e.wallet)}" target="_blank" rel="noopener">${esc(short(e.wallet))}</a>${e.wallet === me ? ` <b>${t("lb.you")}</b>` : ""}${e.test ? ` <span class="pill">${t("lb.test")}</span>` : ""}</td>
+      <td><a class="mono" href="${explorerAddress(e.wallet)}" target="_blank" rel="noopener">${esc(short(e.wallet))}</a>${e.wallet === me ? ` <b>${t("lb.you")}</b>` : ""}${e.test ? ` <span class="pill">${t("lb.test")}</span>` : ""}</td>
       <td class="r mono"><b>${esc(fmtPoints(e.points))}</b></td>
       <td class="r mono">${Number(e.markets)}</td>
       <td class="r mono">${Number(e.won)} / ${Number(e.markets)}</td>
