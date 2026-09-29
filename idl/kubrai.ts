@@ -591,6 +591,79 @@ export type Kubrai = {
       ]
     },
     {
+      "name": "setRoles",
+      "docs": [
+        "Admin: names the verifier — the second host that re-derives every proposed result from its own snapshots.",
+        "`Pubkey::default()` disables the role. Creates the account on first use."
+      ],
+      "discriminator": [
+        119,
+        86,
+        129,
+        161,
+        55,
+        23,
+        250,
+        12
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "roles",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  108,
+                  101,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "verifier",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "settlePosition",
       "docs": [
         "Permissionless payout + close. Winners are paid, losers just get their",
@@ -909,6 +982,157 @@ export type Kubrai = {
         }
       ],
       "args": []
+    },
+    {
+      "name": "voidProposedMarket",
+      "docs": [
+        "Verifier (or admin): void a market whose proposed result could not be confirmed independently. Only a market",
+        "with a proposal standing can be voided this way, and voiding is all the role can do — it cannot propose,",
+        "finalize, touch an Open market or change the config — so a compromised verifier host can force refunds,",
+        "never steer a pool anywhere."
+      ],
+      "discriminator": [
+        133,
+        12,
+        173,
+        185,
+        47,
+        239,
+        214,
+        1
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "roles",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  108,
+                  101,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "verifier",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "voidStaleMarket",
+      "docs": [
+        "Proposer (or admin) may void a market that is still without a proposal a full day after it could have had one:",
+        "the evidence never verified, so nobody wins and every stake is refunded. Cannot touch a market that has a proposal."
+      ],
+      "discriminator": [
+        91,
+        128,
+        56,
+        91,
+        77,
+        184,
+        56,
+        116
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "proposer",
+          "signer": true
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -962,6 +1186,19 @@ export type Kubrai = {
         64,
         247,
         208
+      ]
+    },
+    {
+      "name": "roles",
+      "discriminator": [
+        177,
+        37,
+        17,
+        201,
+        242,
+        158,
+        212,
+        65
       ]
     }
   ],
@@ -1122,6 +1359,16 @@ export type Kubrai = {
       "code": 6017,
       "name": "mathOverflow",
       "msg": "arithmetic overflow"
+    },
+    {
+      "code": 6018,
+      "name": "notStaleYet",
+      "msg": "market is not stale yet: a day must pass after resolve_after_ts without a proposal"
+    },
+    {
+      "code": 6019,
+      "name": "zeroAdmin",
+      "msg": "new admin cannot be the zero address"
     }
   ],
   "types": [
@@ -1699,6 +1946,26 @@ export type Kubrai = {
           {
             "name": "proposedAt",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "roles",
+      "docs": [
+        "Who may void a proposed result besides the admin (see `void_proposed_market`). Kept apart from Config so the",
+        "verifier key can rotate without an admin-signed config update and old clients keep their Config layout."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "verifier",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }

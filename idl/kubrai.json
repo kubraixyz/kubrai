@@ -585,6 +585,79 @@
       ]
     },
     {
+      "name": "set_roles",
+      "docs": [
+        "Admin: names the verifier — the second host that re-derives every proposed result from its own snapshots.",
+        "`Pubkey::default()` disables the role. Creates the account on first use."
+      ],
+      "discriminator": [
+        119,
+        86,
+        129,
+        161,
+        55,
+        23,
+        250,
+        12
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "roles",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  108,
+                  101,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "verifier",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "settle_position",
       "docs": [
         "Permissionless payout + close. Winners are paid, losers just get their",
@@ -905,6 +978,91 @@
       "args": []
     },
     {
+      "name": "void_proposed_market",
+      "docs": [
+        "Verifier (or admin): void a market whose proposed result could not be confirmed independently. Only a market",
+        "with a proposal standing can be voided this way, and voiding is all the role can do — it cannot propose,",
+        "finalize, touch an Open market or change the config — so a compromised verifier host can force refunds,",
+        "never steer a pool anywhere."
+      ],
+      "discriminator": [
+        133,
+        12,
+        173,
+        185,
+        47,
+        239,
+        214,
+        1
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "roles",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  108,
+                  101,
+                  115
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "verifier",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "void_stale_market",
       "docs": [
         "Proposer (or admin) may void a market that is still without a proposal a full day after it could have had one:",
@@ -1022,6 +1180,19 @@
         64,
         247,
         208
+      ]
+    },
+    {
+      "name": "Roles",
+      "discriminator": [
+        177,
+        37,
+        17,
+        201,
+        242,
+        158,
+        212,
+        65
       ]
     }
   ],
@@ -1187,6 +1358,11 @@
       "code": 6018,
       "name": "NotStaleYet",
       "msg": "market is not stale yet: a day must pass after resolve_after_ts without a proposal"
+    },
+    {
+      "code": 6019,
+      "name": "ZeroAdmin",
+      "msg": "new admin cannot be the zero address"
     }
   ],
   "types": [
@@ -1764,6 +1940,26 @@
           {
             "name": "proposed_at",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Roles",
+      "docs": [
+        "Who may void a proposed result besides the admin (see `void_proposed_market`). Kept apart from Config so the",
+        "verifier key can rotate without an admin-signed config update and old clients keep their Config layout."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "verifier",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
