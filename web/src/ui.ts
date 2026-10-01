@@ -115,17 +115,31 @@ export function mountFeedback() {
     };
   };
 }
-/** Language picker in the header; the choice is a cookie so the server renders the next page in it. */
+/** Language picker in the header, left of the wallet; the choice is a cookie so the server renders the next page in it.
+ *  Phones get the picker inside the ☰ menu instead (CSS hides this one below 960px). */
 function mountLangPicker() {
   const host = document.querySelector("header.top"); if (!host || document.getElementById("lang")) return;
   const sel = document.createElement("select"); sel.id = "lang"; sel.className = "lang"; sel.setAttribute("aria-label", t("lang.label"));
   sel.innerHTML = LANGS.map(([k, name]) => `<option value="${k}"${k === LANG ? " selected" : ""}>${name}</option>`).join("");
   sel.onchange = () => setLang(sel.value);
-  // Desktop: in the system strip, left of the Android row (the header row cannot fit links + picker + wallet in every
-  // language). Phones get the picker inside the ☰ menu instead (CSS hides this one below 960px).
-  const bar = document.getElementById("sysbar"), apk = document.getElementById("apk"), box = document.getElementById("wallet");
-  if (bar) { if (apk && apk.parentElement === bar) apk.before(sel); else bar.appendChild(sel); } else if (box) box.before(sel); else host.appendChild(sel);
+  const box = document.getElementById("wallet"); if (box) box.before(sel); else host.appendChild(sel);
 }
+// The header is one row: brand + tagline, links and picker (or ☰), wallet. When a language needs more than the row has
+// (Japanese and Spanish links beside a connected wallet; Spanish on a phone) the tagline gives way instead of the row
+// breaking in two (CSS header.top.tight). With the links inline the wallet is measured as a connected pill from the
+// start, so they do not jump when it reconnects a moment after the page loads.
+const WALLET_ROOM = 230;   // px: a pill with the address and a seven-digit balance
+function fitHeader() {
+  const h = document.querySelector<HTMLElement>("header.top"), brand = h?.querySelector<HTMLElement>(".brand"), box = document.getElementById("wallet");
+  if (!h || !brand || !box) return;
+  h.classList.remove("tight");
+  if (h.querySelector<HTMLElement>(".nav")?.offsetParent) box.style.minWidth = WALLET_ROOM + "px";
+  const broke = box.getBoundingClientRect().top >= brand.getBoundingClientRect().bottom;   // the brand is first and the wallet last: on different rows, the row has broken
+  box.style.minWidth = "";
+  h.classList.toggle("tight", broke);
+}
+addEventListener("resize", fitHeader);
+document.fonts?.addEventListener("loadingdone", fitHeader);   // web fonts swap in after the first render and change every width
 // On phones the text links fold into a ☰ button next to the wallet (inline they ran to two rows); its menu also carries
 // the language picker. Desktop keeps the links inline and the picker beside the wallet (CSS decides which shows).
 let navOpen = false;
@@ -176,6 +190,7 @@ function renderWallet() {
     el.querySelector<HTMLButtonElement>("#wbtn")!.onclick = toggle;
     el.querySelectorAll<HTMLButtonElement>("button[data-i]").forEach((b) => (b.onclick = async () => { try { setSession(await connectWallet(wallets[Number(b.dataset.i)])); } catch (e: any) { alert(e.message ?? e); } }));
     const d = el.querySelector<HTMLButtonElement>("#wdev"); if (d) d.onclick = () => setSession(devWallet());
+    fitHeader();
     return;
   }
   const addr = session.publicKey.toBase58(), lowSol = balances.loaded && balances.sol < 0.002;
@@ -186,6 +201,7 @@ function renderWallet() {
     ${IS_TEST && API_BASE ? `<button id="wfaucet" class="cta" title="${esc(t("wallet.faucetTitle", { tok: TOKEN_SYMBOL }))}">${t("wallet.faucet")}</button>` : ""}
     <hr><a class="mi" href="/portfolio.html">${t("nav.mybets")}</a><a class="mi" href="/invite.html">${t("nav.invite")}</a></div>` : ""}`;
   el.querySelector<HTMLButtonElement>("#wbtn")!.onclick = toggle;
+  fitHeader();
   const dis = el.querySelector<HTMLButtonElement>("#wdis"); if (dis) dis.onclick = async () => { await session?.disconnect(); setSession(null); };
   const cp = el.querySelector<HTMLButtonElement>("#wcopy");
   if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText(addr); cp.textContent = t("common.copied"); } catch { cp.textContent = addr; } setTimeout(() => { if (cp.isConnected) cp.textContent = short(addr); }, 1500); };

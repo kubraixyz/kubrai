@@ -65,7 +65,8 @@ h2.group+.note{margin:0 0 12px}
 .navmore{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:6px 10px;font-size:16px;line-height:1.2;color:var(--fg)}
 .navmenu{width:220px}
 .navmenu .langrow{padding:8px 6px 4px;border-top:1px solid var(--line);margin-top:4px}.navmenu .langrow select{width:100%}
-@media(max-width:960px){.nav{display:none}.navmorebox{display:block;position:static}header.top{position:relative}.menu.navmenu{width:220px}.sysbar>select.lang{display:none}.sysbar:not(:has(.testnet,#apk:not([hidden]))){display:none}}   /* below the page width the links + picker + wallet no longer fit on one row */   /* the menu hangs off the header's right edge, not the button's: anchored to the button it ran off the left of the screen */
+@media(max-width:960px){.nav{display:none}.navmorebox{display:block;position:static}header.top{position:relative}.menu.navmenu{width:220px}header.top>select.lang{display:none}}   /* below the page width the links + picker + wallet no longer fit on one row */   /* the menu hangs off the header's right edge, not the button's: anchored to the button it ran off the left of the screen */
+header.top.tight .brand small{display:none}   /* ui.ts fitHeader: the tagline gives way when the row would break in two (Japanese and Spanish links beside the wallet; Spanish on a phone) */
 /* referral banner */
 .refbar{background:var(--accent-bg);color:var(--fg);border:1px solid var(--accent);border-radius:8px;padding:8px 12px;font-size:13px;margin:-8px 0 16px}
 /* leaderboard */
@@ -133,12 +134,11 @@ select.lang{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--l
 .tgrid li.next{border-top-color:var(--accent)}.tgrid li.later b{font-weight:600}
 @media(max-width:600px){.tgrid{grid-template-columns:1fr 1fr;gap:12px}.mnow .zone{margin-left:0}#market h1{font-size:21px;line-height:1.35}}
 .card .win{font-size:12.5px;color:var(--fg);margin:-2px 0 2px}
-/* system strip above the header: test-network notice on the left, language picker + the Android build on the right (every
-   page; the Android row until the dApp Store listing). Gone when nothing in it shows. */
+/* system strip above the header: test-network notice on the left, the Android build on the right (every page; until the
+   dApp Store listing). Gone when nothing in it shows. */
 .btn:hover{text-decoration:none;border-color:var(--accent)}
 .sysbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;padding:0 0 8px;border-bottom:1px solid var(--line);font-size:12.5px}
-.sysbar>select.lang{margin-left:auto;padding:4px 6px;font-size:12.5px}
-.sysbar:not(:has(.testnet,#apk:not([hidden]),select.lang)){display:none}
+.sysbar:not(:has(.testnet,#apk:not([hidden]))){display:none}
 .getapp{display:flex;align-items:center;gap:8px}   /* space-between seats it right on one row and left when it wraps under the notice */
 .getapp img{width:22px;height:22px;border-radius:6px;flex:none}
 .getapp b{font-weight:600}
