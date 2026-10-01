@@ -47,7 +47,7 @@ export function poolsHtml(m: MarketView, highlight = -1) {
 export function mountNetBadge() {
   const el = document.getElementById("netbadge");
   if (el && IS_TEST) el.innerHTML = `<span class="testnet">${t("net.test", { net: CLUSTER })}</span>`;
-  mountLangPicker(); mountApkRow();
+  mountLangPicker(); mountNavMore(); mountApkRow();
 }
 // Android build row (files served from /apk/, written by app/scripts/build-apk.sh). The API embeds latest-<cluster>.json
 // as __BOOT__.apk and un-hides the row server-side with the link already set; this adds the version and size. The fetch
@@ -124,10 +124,34 @@ function mountLangPicker() {
   sel.onchange = () => setLang(sel.value);
   const box = document.getElementById("wallet"); if (box) box.before(sel); else host.appendChild(sel);
 }
+// On phones the text links fold into a ☰ button next to the wallet (inline they ran to two rows); its menu also carries
+// the language picker. Desktop keeps the links inline and the picker beside the wallet (CSS decides which shows).
+let navOpen = false;
+function renderNavMenu() {
+  const box = document.getElementById("navmorebox"); if (!box) return;
+  box.querySelector("#navmore")?.setAttribute("aria-expanded", String(navOpen));
+  box.querySelector("#navmenu")?.remove();
+  if (!navOpen) return;
+  const links = [...document.querySelectorAll<HTMLAnchorElement>("header.top .nav a")].map((a) => `<a class="mi" href="${esc(a.getAttribute("href") ?? "/")}">${esc(a.textContent ?? "")}</a>`).join("");
+  const menu = document.createElement("div"); menu.className = "menu navmenu"; menu.id = "navmenu";
+  menu.innerHTML = `${links}<div class="langrow"><select id="lang2" class="lang" aria-label="${esc(t("lang.label"))}">${LANGS.map(([k, name]) => `<option value="${k}"${k === LANG ? " selected" : ""}>${name}</option>`).join("")}</select></div>`;
+  menu.querySelector<HTMLSelectElement>("#lang2")!.onchange = (e) => setLang((e.target as HTMLSelectElement).value);
+  box.appendChild(menu);
+}
+function closeNav() { if (navOpen) { navOpen = false; renderNavMenu(); } }
+function mountNavMore() {
+  const host = document.querySelector("header.top"); if (!host || document.getElementById("navmorebox")) return;
+  const box = document.createElement("div"); box.className = "navmorebox"; box.id = "navmorebox";
+  box.innerHTML = `<button class="navmore" id="navmore" aria-label="${esc(t("nav.menu"))}" aria-expanded="false">\u2630</button>`;
+  const wallet = document.getElementById("wallet"); if (wallet) wallet.before(box); else host.appendChild(box);
+  box.querySelector<HTMLButtonElement>("#navmore")!.onclick = (e) => { e.stopPropagation(); navOpen = !navOpen; if (navOpen && menuOpen) { menuOpen = false; renderWallet(); } renderNavMenu(); };
+}
+document.addEventListener("click", (e) => { const box = document.getElementById("navmorebox"); if (navOpen && box && !e.composedPath().includes(box)) closeNav(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeNav(); });
 // The wallet is a pill at the right of the header; clicking it opens a menu (SharePot-style): the connect list, or the
 // balance card with the faucet, Disconnect and links. Outside clicks and Escape close it.
 let menuOpen = false;
-export function openWalletMenu() { menuOpen = true; renderWallet(); document.getElementById("wmenu")?.scrollIntoView({ block: "nearest" }); }
+export function openWalletMenu() { closeNav(); menuOpen = true; renderWallet(); document.getElementById("wmenu")?.scrollIntoView({ block: "nearest" }); }
 // composedPath, not contains: picking a wallet re-renders the menu before this runs, so the clicked button is detached by then
 document.addEventListener("click", (e) => { const box = document.getElementById("wallet"); if (menuOpen && box && !e.composedPath().includes(box)) { menuOpen = false; renderWallet(); } });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && menuOpen) { menuOpen = false; renderWallet(); } });
@@ -143,7 +167,7 @@ export function mountWallet() {
 const DEV_WALLET_LABEL = "Test wallet (browser)";
 function renderWallet() {
   const el = document.getElementById("wallet"); if (!el) return;
-  const toggle = (e: Event) => { e.stopPropagation(); menuOpen = !menuOpen; renderWallet(); };
+  const toggle = (e: Event) => { e.stopPropagation(); closeNav(); menuOpen = !menuOpen; renderWallet(); };
   if (!session) {
     const wallets = listWallets();
     el.innerHTML = `<button class="primary wbtn" id="wbtn">${t("wallet.connect")}</button>${menuOpen ? `<div class="menu" id="wmenu"><div class="mh">${t("wallet.connectTitle")}</div>${wallets.map((w, i) => `<button data-i="${i}">${esc(w.name)}</button>`).join("")}${IS_TEST ? `<button id="wdev" title="${esc(t("wallet.devTitle"))}">${t("wallet.dev")}</button>` : ""}${!wallets.length && !IS_TEST ? `<div class="note" style="padding:6px">${t("wallet.install")}</div>` : ""}</div>` : ""}`;

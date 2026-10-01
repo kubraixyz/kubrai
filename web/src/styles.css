@@ -60,7 +60,12 @@ h2.group+.note{margin:0 0 12px}
 
 /* nav */
 .nav{display:flex;gap:6px;flex-wrap:wrap}
-@media(max-width:600px){.nav{order:5;flex:1 1 100%}.nav .navlink{flex:1;text-align:center;padding:6px 4px;font-size:13px}}
+/* phones: the text links fold into a ☰ button beside the wallet (ui.ts mountNavMore), the language picker moves into that menu */
+.navmorebox{position:relative;display:none}
+.navmore{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:6px 10px;font-size:16px;line-height:1.2;color:var(--fg)}
+.navmenu{width:220px}
+.navmenu .langrow{padding:8px 6px 4px;border-top:1px solid var(--line);margin-top:4px}.navmenu .langrow select{width:100%}
+@media(max-width:600px){.nav{display:none}.navmorebox{display:block}header.top>select.lang{display:none}}
 /* referral banner */
 .refbar{background:var(--accent-bg);color:var(--fg);border:1px solid var(--accent);border-radius:8px;padding:8px 12px;font-size:13px;margin:-8px 0 16px}
 /* leaderboard */
@@ -137,7 +142,7 @@ select.lang{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--l
 .getapp b{font-weight:600}
 .getapp small{color:var(--dim);font-size:12px}.getapp small:empty{display:none}
 .getapp .btn{flex:none;padding:5px 11px;font-size:12.5px;font-weight:600}
-@media(max-width:600px){.testnet{flex:1 1 100%;display:block;text-align:center;white-space:normal}.getapp{flex:1 1 100%;margin-left:0}.getapp b{flex:1}.getapp small{display:none}}
+@media(max-width:600px){.sysbar{gap:8px 12px}.testnet{white-space:normal}.getapp{margin-left:0}.getapp small{display:none}}
 /* wallet: a pill that opens a menu — the connect list, or balance + actions (ui.ts renderWallet) */
 .wbtn{display:flex;align-items:center;gap:8px;font-weight:500;white-space:nowrap}.wbtn .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}.wbtn .note{font-size:12.5px}
 .menu{position:absolute;right:0;top:calc(100% + 8px);width:290px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.14);padding:10px;display:grid;gap:4px;z-index:30;text-align:left}
