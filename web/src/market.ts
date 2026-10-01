@@ -2,7 +2,7 @@ import { PublicKey } from "@solana/web3.js";
 import { bs58 } from "./wallet";
 import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, earlyBirdUntil, fetchConfig, fetchMarket, fetchPosition, impliedPayout, totalPool, type MarketView } from "./kubrai";
 import { SOURCE_LABEL, fmtExact, fmtValue, metricInfo, metricLabel, question } from "./metrics";
-import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, poolsHtml, refreshBalances, statusPill } from "./ui";
+import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, openWalletMenu, poolsHtml, refreshBalances, statusPill } from "./ui";
 import { API_BASE, CLUSTER, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type HolderProof } from "./holder";
 import { connection, programId } from "./kubrai";
@@ -13,6 +13,7 @@ import { fmtRange, fmtTsShort, inWords, zoneName, zoneShort } from "./time";
 import { t } from "./i18n";
 
 mountNetBadge(); mountWallet();
+document.addEventListener("click", (e) => { if ((e.target as HTMLElement | null)?.id === "goconnect") openWalletMenu(); });
 const root = document.getElementById("market")!;
 const id = Number(new URLSearchParams(location.search).get("id"));
 let m: MarketView, cfg: any, bucket = 0;
@@ -99,7 +100,7 @@ function renderBet(open: boolean, fee: number) {
     <div class="amtrow"><input id="amt" type="number" min="${cfg.minBet.toNumber() / 10 ** TOKEN_DECIMALS}" step="1" placeholder="${esc(t("bet.amountPh", { tok: TOKEN_SYMBOL }))}">${s ? `<button id="max" type="button" title="${esc(t("bet.maxTitle", { tok: TOKEN_SYMBOL }))}">${t("bet.max")}</button>` : ""}</div>
     ${s && balances.loaded ? `<div class="note">${t("bet.available")} <span class="mono">${fmtAmt(balances.token)} ${TOKEN_SYMBOL}</span>${balances.sol < 0.002 ? ` · <span class="warn">${t("bet.needSol")}</span>` : ""}</div>` : ""}
     <div class="quote" id="quote"></div>
-    ${s ? `<button class="primary" id="go"${hold ? " disabled" : ""} style="background:${bucketColor(m, bucket)};border-color:${bucketColor(m, bucket)}">${t("bet.place", { b: bucketLabel(m, bucket) })}</button>` : `<div class="note">${t("bet.connect")}</div>`}
+    ${s ? `<button class="primary" id="go"${hold ? " disabled" : ""} style="background:${bucketColor(m, bucket)};border-color:${bucketColor(m, bucket)}">${t("bet.place", { b: bucketLabel(m, bucket) })}</button>` : `<button class="primary" id="goconnect">${t("wallet.connect")}</button>`}
     <div id="msg">${hold ?? ""}</div>
     <div class="note">${t("bet.parimutuel")} <b>${t("bet.yourFee", { pct: fee / 100 })}</b>${discountLabel(Date.now() / 1000 < earlyBirdUntil(cfg, m), proof) ? ` (${discountLabel(Date.now() / 1000 < earlyBirdUntil(cfg, m), proof)})` : ""} ${t("bet.feeNote")}</div>
   </div>`;

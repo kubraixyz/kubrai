@@ -55,17 +55,3 @@ function renderList() {
   catch (e: any) { root.innerHTML = `<div class="msg err">${t("err.markets", { err: esc(e.message ?? e) })}</div>`; }
 })();
 
-// Android build row under the header (files served from /apk/, written by app/scripts/build-apk.sh). The API embeds
-// latest-<cluster>.json as __BOOT__.apk and un-hides the row server-side with the link already set; this adds the
-// version and size. The fetch is for the Vite dev server, which has no API.
-(async () => {
-  try {
-    let j = (globalThis as any).__BOOT__?.apk;
-    if (!j) { const r = await fetch("/apk/latest-" + (import.meta.env.VITE_CLUSTER ?? "devnet") + ".json", { cache: "no-store" }); if (!r.ok) return; j = await r.json(); }
-    const a = document.getElementById("apklink") as HTMLAnchorElement | null, meta = document.getElementById("apkmeta"), p = document.getElementById("apk");
-    if (!a || !meta || !p || !j?.file) return;
-    a.href = "/apk/" + j.file; a.title = "sha256 " + String(j.sha256 ?? "");
-    meta.textContent = t("apk.meta", { v: j.version, mb: (j.bytes / 1048576).toFixed(0) });
-    p.hidden = false;
-  } catch {}
-})();

@@ -43,10 +43,24 @@ export function poolsHtml(m: MarketView, highlight = -1) {
   return `<div class="pools n${m.nBuckets}">${cells}</div><div class="bar multi">${bar}</div>${m.seed ? `<div class="note">${t("pool.seed", { amt: fmtAmt(m.seed, 0), tok: TOKEN_SYMBOL })}</div>` : ""}`;
 }
 
+/** The system strip above the header: the test-network notice and the Android row. */
 export function mountNetBadge() {
-  const el = document.getElementById("netbadge"); if (!el) return;
-  if (IS_TEST) el.innerHTML = `<span class="testnet">${t("net.test", { net: CLUSTER })}</span>`;
-  mountLangPicker();
+  const el = document.getElementById("netbadge");
+  if (el && IS_TEST) el.innerHTML = `<span class="testnet">${t("net.test", { net: CLUSTER })}</span>`;
+  mountLangPicker(); mountApkRow();
+}
+// Android build row (files served from /apk/, written by app/scripts/build-apk.sh). The API embeds latest-<cluster>.json
+// as __BOOT__.apk and un-hides the row server-side with the link already set; this adds the version and size. The fetch
+// is for the Vite dev server, which has no API. With no build and no test badge (mainnet) the whole strip goes.
+async function mountApkRow() {
+  const p = document.getElementById("apk"), bar = document.getElementById("sysbar");
+  try {
+    const boot = (globalThis as any).__BOOT__; let j = boot?.apk;
+    if (!boot) { const r = await fetch("/apk/latest-" + CLUSTER + ".json", { cache: "no-store" }); if (r.ok) j = await r.json(); }
+    const a = document.getElementById("apklink") as HTMLAnchorElement | null, meta = document.getElementById("apkmeta");
+    if (p && a && meta && j?.file) { a.href = "/apk/" + j.file; a.title = "sha256 " + String(j.sha256 ?? ""); meta.textContent = t("apk.meta", { v: j.version, mb: (j.bytes / 1048576).toFixed(0) }); p.hidden = false; }
+  } catch {}
+  if (bar) bar.hidden = !IS_TEST && (!p || p.hidden);
 }
 
 let session: Session | null = null;
@@ -108,38 +122,54 @@ function mountLangPicker() {
   const sel = document.createElement("select"); sel.id = "lang"; sel.className = "lang"; sel.setAttribute("aria-label", t("lang.label"));
   sel.innerHTML = LANGS.map(([k, name]) => `<option value="${k}"${k === LANG ? " selected" : ""}>${name}</option>`).join("");
   sel.onchange = () => setLang(sel.value);
-  const badge = document.getElementById("netbadge"); (badge ?? host).before(sel);
+  const box = document.getElementById("wallet"); if (box) box.before(sel); else host.appendChild(sel);
 }
+// The wallet is a pill at the right of the header; clicking it opens a menu (SharePot-style): the connect list, or the
+// balance card with the faucet, Disconnect and links. Outside clicks and Escape close it.
+let menuOpen = false;
+export function openWalletMenu() { menuOpen = true; renderWallet(); document.getElementById("wmenu")?.scrollIntoView({ block: "nearest" }); }
+document.addEventListener("click", (e) => { const box = document.getElementById("wallet"); if (menuOpen && box && !box.contains(e.target as Node)) { menuOpen = false; renderWallet(); } });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && menuOpen) { menuOpen = false; renderWallet(); } });
 export function mountWallet() {
   renderWallet(); captureReferral(); mountFeedback();
   // auto-reconnect the last wallet
   try {
     const last = localStorage.getItem("kubrai.wallet");
-    if (last === "Test wallet (browser)") setSession(devWallet());
+    if (last === DEV_WALLET_LABEL) setSession(devWallet());
     else if (last) setTimeout(async () => { const w = listWallets().find((x) => x.name === last); if (w) try { setSession(await connectWallet(w)); } catch {} }, 300);
   } catch {}
 }
+const DEV_WALLET_LABEL = "Test wallet (browser)";
 function renderWallet() {
   const el = document.getElementById("wallet"); if (!el) return;
-  if (session) {
-    const lowSol = balances.loaded && balances.sol < 0.002;
-    const bal = balances.loaded ? `<span class="bal mono"><b>${fmtAmt(balances.token)} ${TOKEN_SYMBOL}</b> · ${balances.sol.toFixed(3)} SOL${lowSol ? ` <span class="warn">${t("wallet.lowSol")}</span>` : ""}</span>` : `<span class="bal note">${t("wallet.loading")}</span>`;
-    el.innerHTML = `<span class="mono note">${session.label} · ${short(session.publicKey)}</span>${bal}${IS_TEST && API_BASE ? `<button id="wfaucet" title="${esc(t("wallet.faucetTitle", { tok: TOKEN_SYMBOL }))}">${t("wallet.faucet")}</button>` : ""}<button id="wdis">${t("wallet.disconnect")}</button>`;
-    el.querySelector<HTMLButtonElement>("#wdis")!.onclick = async () => { await session?.disconnect(); setSession(null); };
-    const f = el.querySelector<HTMLButtonElement>("#wfaucet");
-    if (f) f.onclick = async () => {
-      f.disabled = true; f.textContent = t("wallet.sending");
-      let outcome = t("wallet.faucetUnreachable");
-      try { const r = await fetch(API_BASE + "/faucet", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: session!.publicKey.toBase58() }) }); const j = await r.json(); outcome = r.ok ? t("wallet.got", { what: j.tokens + (j.genesisToken && j.genesisToken !== "failed" ? " + " + t("wallet.testSgt") : "") }) : (j.error ?? t("wallet.failed")); }
-      catch {}
-      await refreshBalances();
-      const f2 = el.querySelector<HTMLButtonElement>("#wfaucet"); if (f2) { f2.disabled = true; f2.textContent = outcome; setTimeout(() => { f2.disabled = false; f2.textContent = t("wallet.faucet"); }, 5000); }
-      listeners.forEach((fn) => fn(session));
-    };
+  const toggle = (e: Event) => { e.stopPropagation(); menuOpen = !menuOpen; renderWallet(); };
+  if (!session) {
+    const wallets = listWallets();
+    el.innerHTML = `<button class="primary wbtn" id="wbtn">${t("wallet.connect")}</button>${menuOpen ? `<div class="menu" id="wmenu"><div class="mh">${t("wallet.connectTitle")}</div>${wallets.map((w, i) => `<button data-i="${i}">${esc(w.name)}</button>`).join("")}${IS_TEST ? `<button id="wdev" title="${esc(t("wallet.devTitle"))}">${t("wallet.dev")}</button>` : ""}${!wallets.length && !IS_TEST ? `<div class="note" style="padding:6px">${t("wallet.install")}</div>` : ""}</div>` : ""}`;
+    el.querySelector<HTMLButtonElement>("#wbtn")!.onclick = toggle;
+    el.querySelectorAll<HTMLButtonElement>("button[data-i]").forEach((b) => (b.onclick = async () => { try { setSession(await connectWallet(wallets[Number(b.dataset.i)])); } catch (e: any) { alert(e.message ?? e); } }));
+    const d = el.querySelector<HTMLButtonElement>("#wdev"); if (d) d.onclick = () => setSession(devWallet());
     return;
   }
-  const wallets = listWallets();
-  el.innerHTML = wallets.map((w, i) => `<button data-i="${i}">${w.name}</button>`).join("") + (IS_TEST ? `<button id="wdev" title="${esc(t("wallet.devTitle"))}">${t("wallet.dev")}</button>` : "") + (wallets.length === 0 && !IS_TEST ? `<span class="note">${t("wallet.install")}</span>` : "");
-  el.querySelectorAll<HTMLButtonElement>("button[data-i]").forEach((b) => (b.onclick = async () => { try { setSession(await connectWallet(wallets[Number(b.dataset.i)])); } catch (e: any) { alert(e.message ?? e); } }));
-  const d = el.querySelector<HTMLButtonElement>("#wdev"); if (d) d.onclick = () => setSession(devWallet());
+  const addr = session.publicKey.toBase58(), lowSol = balances.loaded && balances.sol < 0.002;
+  el.innerHTML = `<button class="wbtn" id="wbtn"><span class="dot"></span><span class="mono">${short(addr)}</span>${balances.loaded ? `<span class="note">${fmtAmt(balances.token, 0)} ${TOKEN_SYMBOL}</span>` : ""}</button>${menuOpen ? `<div class="menu wmenu" id="wmenu">
+    <div class="whead"><div><div class="mh">${esc(session.label === DEV_WALLET_LABEL ? t("wallet.dev") : session.label)}</div><button class="addr" id="wcopy" title="${esc(t("wallet.copyTitle"))}">${short(addr)}</button></div><button class="ghost" id="wdis">${t("wallet.disconnect")}</button></div>
+    <div class="wtotal"><span class="note">${t("wallet.balance", { tok: TOKEN_SYMBOL })}</span><span class="sol">${balances.loaded ? balances.sol.toFixed(3) + " SOL" : ""}</span><b>${balances.loaded ? fmtAmt(balances.token) : "…"}</b></div>
+    ${lowSol ? `<div class="note warn" style="padding:0 4px">${t("wallet.lowSol")}</div>` : ""}
+    ${IS_TEST && API_BASE ? `<button id="wfaucet" class="cta" title="${esc(t("wallet.faucetTitle", { tok: TOKEN_SYMBOL }))}">${t("wallet.faucet")}</button>` : ""}
+    <hr><a class="mi" href="/portfolio.html">${t("nav.mybets")}</a><a class="mi" href="/invite.html">${t("nav.invite")}</a></div>` : ""}`;
+  el.querySelector<HTMLButtonElement>("#wbtn")!.onclick = toggle;
+  const dis = el.querySelector<HTMLButtonElement>("#wdis"); if (dis) dis.onclick = async () => { await session?.disconnect(); setSession(null); };
+  const cp = el.querySelector<HTMLButtonElement>("#wcopy");
+  if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText(addr); cp.textContent = t("common.copied"); } catch { cp.textContent = addr; } setTimeout(() => { if (cp.isConnected) cp.textContent = short(addr); }, 1500); };
+  const f = el.querySelector<HTMLButtonElement>("#wfaucet");
+  if (f) f.onclick = async () => {
+    f.disabled = true; f.textContent = t("wallet.sending");
+    let outcome = t("wallet.faucetUnreachable");
+    try { const r = await fetch(API_BASE + "/faucet", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: addr }) }); const j = await r.json(); outcome = r.ok ? t("wallet.got", { what: j.tokens + (j.genesisToken && j.genesisToken !== "failed" ? " + " + t("wallet.testSgt") : "") }) : (j.error ?? t("wallet.failed")); }
+    catch {}
+    await refreshBalances();   // re-renders the menu; the button below is the new one
+    const f2 = el.querySelector<HTMLButtonElement>("#wfaucet"); if (f2) { f2.disabled = true; f2.textContent = outcome; setTimeout(() => { if (f2.isConnected) { f2.disabled = false; f2.textContent = t("wallet.faucet"); } }, 5000); }
+    listeners.forEach((fn) => fn(session));
+  };
 }
