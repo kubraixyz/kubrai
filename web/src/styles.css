@@ -65,7 +65,7 @@ h2.group+.note{margin:0 0 12px}
 .navmore{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:6px 10px;font-size:16px;line-height:1.2;color:var(--fg)}
 .navmenu{width:220px}
 .navmenu .langrow{padding:8px 6px 4px;border-top:1px solid var(--line);margin-top:4px}.navmenu .langrow select{width:100%}
-@media(max-width:600px){.nav{display:none}.navmorebox{display:block}header.top>select.lang{display:none}}
+@media(max-width:600px){.nav{display:none}.navmorebox{display:block;position:static}header.top{position:relative}.menu.navmenu{width:220px}header.top>select.lang{display:none}}   /* the menu hangs off the header's right edge, not the button's: anchored to the button it ran off the left of the screen */
 /* referral banner */
 .refbar{background:var(--accent-bg);color:var(--fg);border:1px solid var(--accent);border-radius:8px;padding:8px 12px;font-size:13px;margin:-8px 0 16px}
 /* leaderboard */
