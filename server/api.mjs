@@ -66,6 +66,20 @@ const DIAG_MAX = 32 * 1024;
 // (data-t markup swapped server-side, dictionary script added) and with the market list and config embedded as
 // window.__BOOT__, so the first paint needs no API round trip. Assets stay on the static server.
 const WEB_DIST = process.env.WEB_DIST ?? null;
+// The Android build: app/scripts/build-apk.sh drops the APKs and latest-<cluster>.json in APK_DIR (Caddy serves it as
+// /apk/). The manifest goes into __BOOT__ and the home page's download block is un-hidden at serve time, so the link
+// is in the first byte; no manifest (mainnet, for now) leaves the block hidden.
+const APK_DIR = process.env.APK_DIR ?? path.join(os.homedir(), "apps", "kubrai", "apk");
+let apkCache = { mtimeMs: null, info: null };
+function apkInfo() {
+  const f = path.join(APK_DIR, `latest-${CLUSTER}.json`); let st; try { st = fs.statSync(f); } catch { return null; }
+  if (apkCache.mtimeMs !== st.mtimeMs) {
+    let info = null;
+    try { const j = JSON.parse(fs.readFileSync(f, "utf8")); if (/^[\w.-]+\.apk$/.test(j.file ?? "")) info = { version: String(j.version ?? ""), cluster: String(j.cluster ?? CLUSTER), file: j.file, sha256: String(j.sha256 ?? ""), bytes: Number(j.bytes) || 0, builtAt: String(j.builtAt ?? "") }; } catch {}
+    apkCache = { mtimeMs: st.mtimeMs, info };
+  }
+  return apkCache.info;
+}
 const pageCache = new Map();   // file → { mtimeMs, html }
 function readPage(name) {
   if (!WEB_DIST) return null;
@@ -78,9 +92,11 @@ async function servePage(req, res, url) {
   if (!/^[a-z-]+\.html$/.test(name)) return false;
   const raw = readPage(name); if (!raw) return false;
   const { lang } = resolveLang(req, url);
-  let boot = "";
-  try { const st = await chainState(); boot = `<script>window.__BOOT__=${JSON.stringify({ at: st.at, markets: st.markets, config: st.config, metricCatalog: APP_METRIC_CATALOG }).replace(/</g, "\\u003c")};</script>`; } catch {}
-  const html = translateHtml(raw, lang).replace("</head>", () => boot + "</head>");
+  let boot = ""; const apk = apkInfo();
+  try { const st = await chainState(); boot = `<script>window.__BOOT__=${JSON.stringify({ at: st.at, markets: st.markets, config: st.config, metricCatalog: APP_METRIC_CATALOG, apk }).replace(/</g, "\\u003c")};</script>`; } catch {}
+  let html = translateHtml(raw, lang).replace("</head>", () => boot + "</head>");
+  // index.html's download block ships un-hidden and already pointing at the file (its script then adds version and size)
+  if (apk) html = html.replace(/(<section\b[^>]*\bid="apk"[^>]*?)\shidden(?=[\s>])/, "$1").replace(/(<a\b[^>]*\bid="apklink"[^>]*\bhref=")#(?=")/, (m, a) => a + "/apk/" + apk.file);
   res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "private, max-age=0, must-revalidate", vary: "Cookie, Accept-Language", "content-language": lang, "x-frame-options": "DENY", "content-security-policy": "frame-ancestors 'none'" });
   res.end(html); return true;
 }
