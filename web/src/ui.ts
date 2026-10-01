@@ -51,16 +51,15 @@ export function mountNetBadge() {
 }
 // Android build row (files served from /apk/, written by app/scripts/build-apk.sh). The API embeds latest-<cluster>.json
 // as __BOOT__.apk and un-hides the row server-side with the link already set; this adds the version and size. The fetch
-// is for the Vite dev server, which has no API. With no build and no test badge (mainnet) the whole strip goes.
+// is for the Vite dev server, which has no API. (CSS hides the strip when it holds nothing visible, e.g. mainnet phones.)
 async function mountApkRow() {
-  const p = document.getElementById("apk"), bar = document.getElementById("sysbar");
+  const p = document.getElementById("apk");
   try {
     const boot = (globalThis as any).__BOOT__; let j = boot?.apk;
     if (!boot) { const r = await fetch("/apk/latest-" + CLUSTER + ".json", { cache: "no-store" }); if (r.ok) j = await r.json(); }
     const a = document.getElementById("apklink") as HTMLAnchorElement | null, meta = document.getElementById("apkmeta");
     if (p && a && meta && j?.file) { a.href = "/apk/" + j.file; a.title = "sha256 " + String(j.sha256 ?? ""); meta.textContent = t("apk.meta", { v: j.version, mb: (j.bytes / 1048576).toFixed(0) }); p.hidden = false; }
   } catch {}
-  if (bar) bar.hidden = !IS_TEST && (!p || p.hidden);
 }
 
 let session: Session | null = null;
@@ -122,7 +121,10 @@ function mountLangPicker() {
   const sel = document.createElement("select"); sel.id = "lang"; sel.className = "lang"; sel.setAttribute("aria-label", t("lang.label"));
   sel.innerHTML = LANGS.map(([k, name]) => `<option value="${k}"${k === LANG ? " selected" : ""}>${name}</option>`).join("");
   sel.onchange = () => setLang(sel.value);
-  const box = document.getElementById("wallet"); if (box) box.before(sel); else host.appendChild(sel);
+  // Desktop: in the system strip, left of the Android row (the header row cannot fit links + picker + wallet in every
+  // language). Phones get the picker inside the ☰ menu instead (CSS hides this one below 960px).
+  const bar = document.getElementById("sysbar"), apk = document.getElementById("apk"), box = document.getElementById("wallet");
+  if (bar) { if (apk && apk.parentElement === bar) apk.before(sel); else bar.appendChild(sel); } else if (box) box.before(sel); else host.appendChild(sel);
 }
 // On phones the text links fold into a ☰ button next to the wallet (inline they ran to two rows); its menu also carries
 // the language picker. Desktop keeps the links inline and the picker beside the wallet (CSS decides which shows).
