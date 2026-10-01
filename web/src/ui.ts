@@ -23,15 +23,16 @@ export function statusPill(m: MarketView) {
 }
 export const timeLeft = timeLeftLocal;
 /** Human label of bucket i: "< t0", "t0 – t1", "≥ tlast". Yes/no markets read "No (< t)" / "Yes (≥ t)". Edges are printed
- *  exactly (fmtExact, never rounded); a middle range of a whole-number metric ends at the last whole number inside it, a
- *  scaled one (prices, SOL, SKR) is written "A – <B". */
+ *  exactly (fmtExact, never rounded); a middle range of a whole-number metric ends at the last whole number inside it ("11 – 12",
+ *  or "= 10" when only one number fits), a scaled one (prices, SOL, SKR) is written "A – <B". */
 export function bucketLabel(m: MarketView, i: number) {
   const f = (v: number) => fmtExact(m.metric, v).replace(/ [^ ]+$/, "");
   const th = m.thresholds, n = m.nBuckets, scaled = !!metricInfo(m.metric)?.scale;
   if (n === 2) return i === 1 ? `${t("bucket.yes")} · ≥ ${f(th[0])}` : `${t("bucket.no")} · < ${f(th[0])}`;
   if (i === 0) return `< ${f(th[0])}`;
   if (i === n - 1) return `≥ ${f(th[n - 2])}`;
-  return scaled ? `${f(th[i - 1])} – <${f(th[i])}` : `${f(th[i - 1])} – ${f(th[i] - 1)}`;
+  if (scaled) return `${f(th[i - 1])} – <${f(th[i])}`;
+  return th[i] - th[i - 1] === 1 ? `= ${f(th[i - 1])}` : `${f(th[i - 1])} – ${f(th[i] - 1)}`;
 }
 const BUCKET_COLORS = ["#c4553f", "#c98a3a", "#a3a03a", "#5f9f4a", "#0f8f7c", "#2f7fb8", "#6a5fb8", "#9a4f9a"];
 export const bucketColor = (m: MarketView, i: number) => (m.nBuckets === 2 ? (i === 1 ? "var(--yes)" : "var(--no)") : BUCKET_COLORS[Math.round((i * (BUCKET_COLORS.length - 1)) / Math.max(1, m.nBuckets - 1))]);
