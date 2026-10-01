@@ -128,7 +128,8 @@ function mountLangPicker() {
 // balance card with the faucet, Disconnect and links. Outside clicks and Escape close it.
 let menuOpen = false;
 export function openWalletMenu() { menuOpen = true; renderWallet(); document.getElementById("wmenu")?.scrollIntoView({ block: "nearest" }); }
-document.addEventListener("click", (e) => { const box = document.getElementById("wallet"); if (menuOpen && box && !box.contains(e.target as Node)) { menuOpen = false; renderWallet(); } });
+// composedPath, not contains: picking a wallet re-renders the menu before this runs, so the clicked button is detached by then
+document.addEventListener("click", (e) => { const box = document.getElementById("wallet"); if (menuOpen && box && !e.composedPath().includes(box)) { menuOpen = false; renderWallet(); } });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && menuOpen) { menuOpen = false; renderWallet(); } });
 export function mountWallet() {
   renderWallet(); captureReferral(); mountFeedback();
