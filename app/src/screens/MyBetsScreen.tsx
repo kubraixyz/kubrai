@@ -7,8 +7,8 @@ import { useMarkets, usePositions } from "../hooks/useKubrai";
 import { useAuthorization } from "../utils/useAuthorization";
 import { useMobileWallet } from "../utils/useMobileWallet";
 import { fetchSettled } from "../chain/api";
-import { metricLabel, fmtExact, fmtValue } from "../chain/metrics";
-import { bucketColor, bucketLabel, fmtAmt, fmtTs, statusLabel, timeLeft } from "../chain/format";
+import { fmtValue } from "../chain/metrics";
+import { bucketColor, bucketLabel, fmtAmt, fmtTs, question, statusLabel, timeLeft } from "../chain/format";
 import { NO_OUTCOME, payoutIfBucket, totalPool, type MarketView } from "../chain/kubrai";
 import { PoolBar } from "../components/PoolBar";
 import { nextStepText } from "../chain/timeline";
@@ -42,7 +42,6 @@ export function MyBetsScreen() {
   const card = (children: React.ReactNode, onPress?: () => void, key?: string) => (
     <Pressable key={key} onPress={onPress} style={({ pressed }) => [styles.card, { backgroundColor: theme.colors.elevation.level1, borderColor: pressed ? theme.colors.primary : theme.colors.outlineVariant }]}>{children}</Pressable>
   );
-  const title = (m: MarketView) => (m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥ ${fmtExact(m.metric, m.thresholds[0])}?` : `${metricLabel(m.metric)}: which range?`);
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
@@ -61,7 +60,7 @@ export function MyBetsScreen() {
         else { const best = Math.max(...myBuckets.map((b: any) => payoutIfBucket(m, p.amounts, feeBps, b.i).payout)); value = best; valueLabel = myBuckets.length > 1 ? "Best case" : "If it wins"; sub = `${timeLeft(m.closeTs)} · ${fmtAmt(totalPool(m) + m.seed, 0)} ${TOKEN_SYMBOL} in pot`; }
         return card(<>
           <View style={styles.row}><Chip compact mode="outlined">{statusLabel(m)}</Chip><Text variant="labelSmall" style={styles.dim}>#{m.id}</Text></View>
-          <Text variant="titleMedium" style={{ marginTop: 6 }}>{title(m)}</Text>
+          <Text variant="titleMedium" style={{ marginTop: 6 }}>{question(m)}</Text>
           <View style={{ marginTop: 10 }}><PoolBar m={m} compact highlight={w !== NO_OUTCOME ? w : myBuckets.length === 1 ? myBuckets[0].i : -1} /></View>
           <View style={styles.chips}>{myBuckets.map((b: any) => <View key={b.i} style={[styles.chip, { borderColor: bucketColor(m, b.i) }]}><View style={[styles.dot, { backgroundColor: bucketColor(m, b.i) }]} /><Text variant="labelMedium">{bucketLabel(m, b.i)} · {fmtAmt(b.a)}</Text></View>)}</View>
           <View style={styles.nums}>
@@ -82,7 +81,7 @@ export function MyBetsScreen() {
             <View style={[styles.badge, { backgroundColor: won ? GREEN : lost ? RED : theme.colors.elevation.level3 }]}><Text variant="labelMedium" style={{ color: won || lost ? "#fff" : theme.colors.onSurface }}>{won ? "WON" : lost ? "LOST" : "REFUNDED"}</Text></View>
             <Text variant="labelSmall" style={styles.dim}>#{s.id} · {fmtTs(Date.parse(s.at) / 1000)}</Text>
           </View>
-          <Text variant="titleMedium" style={{ marginTop: 6 }}>{m ? title(m) : s.metric}</Text>
+          <Text variant="titleMedium" style={{ marginTop: 6 }}>{m ? question(m) : s.metric}</Text>
           <Text variant="bodySmall" style={[styles.dim, { marginTop: 2 }]}>{s.status === 3 ? "Market voided" : `Result: ${m ? bucketLabel(m, s.outcome) : "bucket " + s.outcome} · observed ${m ? fmtValue(m.metric, Number(s.observed)) : s.observed}`}</Text>
           <View style={styles.nums}>
             <Big label="You staked" value={fmtAmt(staked)} />

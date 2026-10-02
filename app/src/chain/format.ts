@@ -1,5 +1,5 @@
 import { TOKEN_DECIMALS } from "../config";
-import { fmtExact, metricInfo } from "./metrics";
+import { bareTitle, countedWindow, fmtExact, metricInfo } from "./metrics";
 import type { MarketView } from "./kubrai";
 export const fmtAmt = (base: number, digits = 2) => (base / 10 ** TOKEN_DECIMALS).toLocaleString("en-US", { maximumFractionDigits: digits });
 // Every time the app shows is the phone's own clock with its zone named ("25 Sept 2026, 14:10 GMT+8"). Hermes' Intl
@@ -14,6 +14,17 @@ export function zoneLabel(d = new Date()) {
 export const fmtTs = (ts: number) => { const d = new Date(ts * 1000); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())} ${zoneLabel(d)}`; };
 /** "25 Sept, 14:10 GMT+8" */
 export const fmtTsShort = (ts: number) => { const d = new Date(ts * 1000); return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${pad(d.getHours())}:${pad(d.getMinutes())} ${zoneLabel(d)}`; };
+const NBSP = " ";
+/** "27 Sept, 08:00 – 28 Sept, 08:00 GMT+8": a window, zone named once. The only space a line may break at is the one
+ *  after the dash, so a wrapped title never splits "27 Sept" apart or starts a line with the dash. */
+export const fmtRange = (from: number, to: number) => { const d = new Date(from * 1000); return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${pad(d.getHours())}:${pad(d.getMinutes())} –`.replace(/ /g, NBSP) + " " + fmtTsShort(to).replace(/ /g, NBSP); };
+/** The question as the web asks it: the counted period on the phone's clock, never "today" / "tomorrow", so the days of
+ *  one question tell apart wherever they are listed.
+ *  "Jupiter: Jupiter swap volume, 27 Sept, 08:00 – 28 Sept, 08:00 GMT+8: which range?" */
+export function question(m: MarketView) {
+  const asked = `${bareTitle(m.metric)}, ${fmtRange(...countedWindow(m))}`;
+  return m.nBuckets === 2 ? `${asked}: ≥${NBSP}${fmtExact(m.metric, m.thresholds[0]).replace(/ /g, NBSP)}?` : `${asked}: which range?`;   // "≥ 4,259,675 JupSOL?" stays on one line
+}
 export const short = (s: string) => s.slice(0, 4) + "…" + s.slice(-4);
 export function timeLeft(ts: number) {
   const s = ts - Date.now() / 1000; if (s <= 0) return "closed";

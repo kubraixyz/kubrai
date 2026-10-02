@@ -5,11 +5,11 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { PublicKey } from "@solana/web3.js";
 import { useBalances, useConfig, useInvalidateAll, useMarket, usePositions } from "../hooks/useKubrai";
 import { useApplyInvite, usePendingReferral, type InviteNote } from "../hooks/useReferral";
-import { metricInfo, metricLabel, fmtExact, fmtValue, SOURCE_LABEL } from "../chain/metrics";
+import { metricInfo, fmtValue, SOURCE_LABEL } from "../chain/metrics";
 import { PoolBar } from "../components/PoolBar";
 import { Timeline } from "../components/Timeline";
 import { DayStrip } from "../components/DayStrip";
-import { bucketColor, bucketLabel, fmtAmt, fmtTs, fmtTsShort, short, statusLabel, timeLeft } from "../chain/format";
+import { bucketColor, bucketLabel, fmtAmt, fmtTs, fmtTsShort, question, short, statusLabel, timeLeft } from "../chain/format";
 import { NO_OUTCOME, buildPlaceBetTx, waitForSignature, impliedPayout, earlyBirdUntil, programId } from "../chain/kubrai";
 import { explorerTxUrl } from "../chain/explorer";
 import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type HolderProof } from "../chain/holder";
@@ -128,7 +128,7 @@ function Market({ id, onBetting }: { id: number; onBetting: (on: boolean) => voi
   return (
     <View>
       <View style={styles.row}><Chip compact mode="outlined">{statusLabel(m)}</Chip><Text variant="labelSmall" style={styles.dim}>Market #{m.id} · {m.status === 0 ? timeLeft(m.closeTs) : ""}</Text></View>
-      <Text variant="headlineSmall" style={{ marginVertical: 8 }}>{m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥ ${fmtExact(m.metric, m.thresholds[0])}?` : `${metricLabel(m.metric)}: which range?`}</Text>
+      <Text variant="titleLarge" style={{ marginVertical: 8 }}>{question(m)}</Text>
       <Text variant="bodyMedium" style={[styles.dim, { marginBottom: 10 }]}>{info?.how}</Text>
       <KV k="Data source" v={SOURCE_LABEL[info?.source ?? "thirdparty"]} />
       <View style={{ marginVertical: 12 }}><PoolBar m={m} highlight={highlight} /></View>

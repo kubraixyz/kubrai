@@ -58,6 +58,9 @@ export function metricInfo(id: string): MetricInfo | undefined {
   return { title: `${b.level[0].toUpperCase()}${b.level.slice(1)} (${w})`, unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
 }
 export const metricLabel = (id: string) => metricInfo(id)?.title ?? id;
+/** A metric's title without its "today" / "this week" (or the older "24 h after close"): for wherever the period is
+ *  written out beside it (format.ts question). */
+export const bareTitle = (id: string) => metricLabel(id).split(WINDOW.day).join("").split(WINDOW.week).join("").replace("(24 h after close)", "").replace(/\(\s*\)/g, "").replace(/\s+/g, " ").trim();
 /** The period a market counts (mirrors server/history.mjs countedWindow): betting closes at 12:00 UTC (the schedule
  *  since 2026-09-26) → the whole UTC day it closes in; an older "_next" market → the 24 h after close; else open → close. */
 export function countedWindow(m: { metric: string; openTs: number; closeTs: number }): [number, number] {

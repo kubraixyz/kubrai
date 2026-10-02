@@ -4,19 +4,19 @@ import { ActivityIndicator, Chip, Text, useTheme } from "react-native-paper";
 import MaterialCommunityIcon from "@expo/vector-icons/MaterialCommunityIcons";
 import { useNavigation } from "@react-navigation/native";
 import { useMarkets } from "../hooks/useKubrai";
-import { metricCategory, CATEGORY_ORDER, catalogEntry, metricInfo, metricLabel, fmtExact } from "../chain/metrics";
+import { metricCategory, CATEGORY_ORDER, catalogEntry, metricLabel } from "../chain/metrics";
 import { PoolBar } from "../components/PoolBar";
-import { fmtAmt, fmtTsShort, statusLabel, timeLeft } from "../chain/format";
+import { fmtAmt, fmtTsShort, question, timeLeft } from "../chain/format";
 import { totalPool, type MarketView } from "../chain/kubrai";
 import { IS_TEST, TOKEN_SYMBOL } from "../config";
 import { recordError } from "../utils/errorLog";
 
 // Search, as on the web home: every word typed has to begin a word ("ore" finds ORE, not "Store") in what a card says
-// (its title, the app, the category), the market's number ("#139") or its metric id.
+// (its question with the day it counts, the app, the category), the market's number ("#139") or its metric id.
 const catName = (c: string) => (c === "Chain" ? "Solana" : c);
 function searchText(m: MarketView) {
   const base = m.metric.replace(/_(next|today|day|week|dmed|wmed|med7)$/, ""), c = metricCategory(m.metric);
-  return [`#${m.id}`, metricLabel(m.metric), catalogEntry(base)?.app ?? "", c, catName(c), base].join(" ").toLowerCase();
+  return [`#${m.id}`, question(m), metricLabel(m.metric), catalogEntry(base)?.app ?? "", c, catName(c), base].join(" ").toLowerCase();
 }
 
 const finder = (w: string) => { if (!/^[a-z0-9]/.test(w)) return (h: string) => h.includes(w); const re = new RegExp("(?:^|[^a-z0-9])" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); return (h: string) => re.test(h); };
@@ -50,11 +50,10 @@ export function MarketsScreen() {
   const when = (m: MarketView) => (stage === "open" ? timeLeft(m.closeTs) : stage === "awaiting" ? `closed ${fmtTsShort(m.closeTs)} · result soon` : stage === "proposed" ? `proposed ${fmtTsShort(m.proposedAt)}` : `closed ${fmtTsShort(m.closeTs)}`);
   const highlight = (m: MarketView) => (m.status === 2 || m.status === 4 ? m.outcome : m.status === 1 ? m.proposedOutcome : -1);
   const card = ({ item: m }: { item: MarketView }) => {
-    const info = metricInfo(m.metric);
     return (
       <Pressable onPress={() => nav.navigate("Market", { id: m.id })} style={({ pressed }) => [styles.card, { backgroundColor: theme.colors.elevation.level1, borderColor: pressed ? theme.colors.primary : theme.colors.outlineVariant }]}>
-        <Text variant="labelSmall" style={styles.dim}>{/_next$/.test(m.metric) ? "tomorrow" : /_(week|wmed)$/.test(m.metric) ? "weekly" : "daily"} · {when(m)}</Text>
-        <Text variant="titleMedium" style={{ marginVertical: 6 }}>{m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥ ${fmtExact(m.metric, m.thresholds[0])}?` : `${metricLabel(m.metric)}: which range?`}</Text>
+        <Text variant="labelSmall" style={styles.dim}>{when(m)}</Text>
+        <Text variant="titleMedium" style={{ marginVertical: 6 }}>{question(m)}</Text>
         <View style={{ marginTop: 8 }}><PoolBar m={m} compact highlight={highlight(m)} /></View>
         <Text variant="labelSmall" style={[styles.dim, { marginTop: 6 }]}>{m.positions} bettors · {fmtAmt(totalPool(m) + m.seed, 0)} {TOKEN_SYMBOL} in pot</Text>
       </Pressable>
