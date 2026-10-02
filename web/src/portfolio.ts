@@ -25,7 +25,8 @@ async function render(owner: PublicKey | null) {
   // "1 if < 10" and "2 if = 10" until the page was loaded again. The markets still open for bets are read from the
   // chain as well (one request for all of them); if that fails the cached pools stand.
   try {
-    const live = await fetchMarketsFresh(rows.filter((x) => x.m.status === 0).map((x) => x.m.pubkey));
+    // the public RPC can leave a request hanging for good: after 4 s the cached pools stand, as they do when it fails
+    const live = (await Promise.race([fetchMarketsFresh(rows.filter((x) => x.m.status === 0).map((x) => x.m.pubkey)), new Promise<null>((r) => setTimeout(() => r(null), 4000))])) ?? [];
     const liveByKey = new Map(live.map((m) => [m.pubkey.toBase58(), m]));
     for (const x of rows) x.m = liveByKey.get(x.m.pubkey.toBase58()) ?? x.m;
   } catch (e) { console.warn("live pools unavailable, showing cached ones", e); }
