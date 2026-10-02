@@ -60,6 +60,9 @@ const fromApi = async (p: string) => {
   if (boot && Date.now() - boot.at < 30_000) { if (p === "/markets") return { at: boot.at, markets: boot.markets }; if (p === "/config") return { at: boot.at, config: boot.config }; const mm = p.match(/^\/markets\/(\d+)$/); if (mm) { const m = boot.markets.find((x) => x.id === Number(mm[1])); if (m) return { at: boot.at, market: m, config: boot.config }; } }
   if (!API_BASE) throw new Error("no api"); const r = await fetch(API_BASE + p); if (!r.ok) throw new Error("api " + r.status); return r.json(); };
 const viewFromJson = (j: any): MarketView => ({ ...j, pubkey: new PublicKey(j.pubkey) });
+/** The market list the page was served with, at any age (null when the page came without one): enough for whatever
+ *  only needs which markets exist and how they ended, with no request and no wait. */
+export const bootMarkets = (): MarketView[] | null => (boot?.markets ? boot.markets.map(viewFromJson) : null);
 const cfgFromJson = (c: any) => ({ ...c, admin: new PublicKey(c.admin), proposer: new PublicKey(c.proposer), treasury: new PublicKey(c.treasury), mint: new PublicKey(c.mint), earlyBirdSecs: new BN(c.earlyBirdSecs), disputeWindowSecs: new BN(c.disputeWindowSecs), minBet: new BN(c.minBet), marketCount: new BN(c.marketCount) });
 export const feeTiersPda = PublicKey.findProgramAddressSync([Buffer.from("fee_tiers")], programId)[0];
 const tiersView = (t: any) => t ? { sgtGroupMint: t.sgtGroupMint.toBase58(), sgtDiscountBps: t.sgtDiscountBps, stakeProgram: t.stakeProgram.toBase58(), stakeOwnerOffset: t.stakeOwnerOffset, stakeAmountOffset: t.stakeAmountOffset, stakeMinAmount: t.stakeMinAmount.toNumber(), stakeDiscountBps: t.stakeDiscountBps, minFeeBps: t.minFeeBps } : null;

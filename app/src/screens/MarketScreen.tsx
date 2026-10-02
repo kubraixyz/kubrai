@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Linking, ScrollView, StyleSheet, View } from "react-native";
 import { ActivityIndicator, Button, Chip, Divider, Text, TextInput, useTheme } from "react-native-paper";
-import { useRoute } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { PublicKey } from "@solana/web3.js";
 import { useBalances, useConfig, useInvalidateAll, useMarket, usePositions } from "../hooks/useKubrai";
 import { useApplyInvite, usePendingReferral, type InviteNote } from "../hooks/useReferral";
 import { metricInfo, metricLabel, fmtExact, fmtValue, SOURCE_LABEL } from "../chain/metrics";
 import { PoolBar } from "../components/PoolBar";
 import { Timeline } from "../components/Timeline";
+import { DayStrip } from "../components/DayStrip";
 import { bucketColor, bucketLabel, fmtAmt, fmtTs, fmtTsShort, short, statusLabel, timeLeft } from "../chain/format";
 import { NO_OUTCOME, buildPlaceBetTx, waitForSignature, impliedPayout, earlyBirdUntil, programId } from "../chain/kubrai";
 import { explorerTxUrl } from "../chain/explorer";
@@ -23,8 +24,20 @@ const OK_GREEN = "#0f8f7c";
 /** "wait" = sent, neither confirmed nor rejected yet: neutral, and the bet button stays locked. `sig` adds an explorer link. */
 type BetMsg = { kind: "ok" | "err" | "info" | "wait"; text: string; sig?: string };
 
+/** One screen for every day of a question: the row of days stays in place while the market under it is swapped. The
+ *  market is keyed by its id, so the bet form, messages and lock of one day never carry over to another; while a bet is
+ *  on its way the row does not switch days (the form that is waiting on it would be thrown away). */
 export function MarketScreen() {
-  const { params } = useRoute<any>(); const id = Number(params?.id);
+  const { params } = useRoute<any>(); const nav = useNavigation<any>(); const id = Number(params?.id);
+  const [betting, setBetting] = useState(false);
+  return (
+    <ScrollView contentContainerStyle={styles.screen}>
+      <DayStrip id={id} disabled={betting} onPick={(day) => nav.setParams({ id: day })} />
+      <Market key={id} id={id} onBetting={setBetting} />
+    </ScrollView>
+  );
+}
+function Market({ id, onBetting }: { id: number; onBetting: (on: boolean) => void }) {
   const theme = useTheme(); const { connection } = useConnection();
   const { selectedAccount } = useAuthorization(); const { connect, signAndSendTransaction, signTransaction, signMessage } = useMobileWallet();
   const [dispute, setDispute] = useState<{ open: boolean; reason: string; claimed: string; msg: string; busy: boolean }>({ open: false, reason: "", claimed: "", msg: "", busy: false });
@@ -53,7 +66,7 @@ export function MarketScreen() {
   async function placeBet() {
     if (!m || !cfg) return;
     if (a < cfg.minBet.toNumber()) { setMsg({ kind: "err", text: `Minimum bet is ${fmtAmt(cfg.minBet.toNumber())} ${TOKEN_SYMBOL}.` }); return; }
-    setBusy(true); setMsg({ kind: "info", text: "Confirm in your wallet…" }); setInviteNote(null);
+    setBusy(true); onBetting(true); setMsg({ kind: "info", text: "Confirm in your wallet…" }); setInviteNote(null);
     try {
       const account = selectedAccount ?? (await connect());
       const p = await holderProof(connection, programId, account.publicKey, cfg.feeTiers ?? null);
@@ -92,7 +105,7 @@ export function MarketScreen() {
       const raw = String(e?.message ?? e);
       const friendly = /Cancellation/i.test(raw) ? "The wallet cancelled the request before signing. If you saw no wallet screen at all, the wallet may not accept devnet — try Phantom or Solflare with Testnet mode on." : /User declined|rejected/i.test(raw) ? "You declined the request in the wallet." : raw;
       setMsg({ kind: "err", text: friendly + (friendly !== raw ? `\n(${raw})` : "") });
-    } finally { setBusy(false); }
+    } finally { setBusy(false); onBetting(false); }
   }
 
   async function fileDispute() {
@@ -113,7 +126,7 @@ export function MarketScreen() {
   const highlight = m.status >= 1 && m.proposedOutcome !== NO_OUTCOME ? m.proposedOutcome : -1;
   const txLink = msg?.sig ? explorerTxUrl(msg.sig) : null;
   return (
-    <ScrollView contentContainerStyle={styles.screen}>
+    <View>
       <View style={styles.row}><Chip compact mode="outlined">{statusLabel(m)}</Chip><Text variant="labelSmall" style={styles.dim}>Market #{m.id} · {m.status === 0 ? timeLeft(m.closeTs) : ""}</Text></View>
       <Text variant="headlineSmall" style={{ marginVertical: 8 }}>{m.nBuckets === 2 ? `${metricLabel(m.metric)} ≥ ${fmtExact(m.metric, m.thresholds[0])}?` : `${metricLabel(m.metric)}: which range?`}</Text>
       <Text variant="bodyMedium" style={[styles.dim, { marginBottom: 10 }]}>{info?.how}</Text>
@@ -174,14 +187,14 @@ export function MarketScreen() {
         </View>
       )}
       <KV k="Market account" v={m.pubkey.toBase58()} mono />
-    </ScrollView>
+    </View>
   );
 }
 function KV({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   return <View style={styles.kv}><Text variant="labelMedium" style={[styles.dim, { width: 120 }]}>{k}</Text><Text variant="bodyMedium" style={[{ flex: 1 }, mono && { fontSize: 11, fontFamily: "monospace" }]}>{v}</Text></View>;
 }
 const styles = StyleSheet.create({
-  screen: { padding: 16, paddingBottom: 48 }, center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  screen: { padding: 16, paddingBottom: 48 }, center: { paddingVertical: 96, alignItems: "center" },
   row: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }, dim: { opacity: 0.7 }, mono: { fontVariant: ["tabular-nums"] },
   h2: { letterSpacing: 1, opacity: 0.7, marginBottom: 8, fontSize: 13 }, kv: { flexDirection: "row", gap: 12, marginBottom: 6 },
   buckets: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, bucketBtn: { flexGrow: 1, flexBasis: "45%" }, quote: { borderRadius: 8, padding: 12, gap: 2 },

@@ -22,6 +22,8 @@ export const fmtRangeHtml = (from: number, to: number) => { const [a, b] = fmtRa
 export const fmtHm = (ts: number) => tidy(at(ts).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 }));
 /** "Fri 25 Sept", the viewer's calendar day */
 export const fmtDay = (ts: number) => at(ts).toLocaleDateString(LOCALE, { weekday: "short", month: "short", day: "numeric" });
+/** "14–21 Sept": the first and last day of a window longer than a day */
+export const fmtDays = (from: number, to: number) => { const f = new Intl.DateTimeFormat(LOCALE, { month: "short", day: "numeric" }) as any; return f.formatRange ? f.formatRange(at(from), at(to)) : `${f.format(at(from))} – ${f.format(at(to))}`; };
 /** The viewer's zone, e.g. "Asia/Taipei" */
 export const zoneName = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone ?? t("time.local"); } catch { return t("time.local"); } };
 

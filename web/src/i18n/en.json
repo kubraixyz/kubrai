@@ -395,5 +395,6 @@
  "mkt.headNext": "{step} {in}",
  "bet.slow": "Still waiting for confirmation — signature {sig}. Do not bet again until it shows up.",
  "bet.unconfirmed": "Still unconfirmed after {min} minutes — check the explorer link before betting again: {sig}",
- "ref.signNote": "One more signature applies your invite — it costs nothing and moves no funds."
+ "ref.signNote": "One more signature applies your invite — it costs nothing and moves no funds.",
+ "days.aria": "The same market on other days"
 }

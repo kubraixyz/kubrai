@@ -1,7 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { bs58 } from "./wallet";
-import { NO_OUTCOME, buildPlaceBetTx, confirmBySig, earlyBirdUntil, fetchConfig, fetchMarket, fetchPosition, impliedPayout, totalPool, type MarketView } from "./kubrai";
-import { SOURCE_LABEL, fmtExact, fmtValue, metricInfo, metricLabel, question } from "./metrics";
+import { NO_OUTCOME, bootMarkets, buildPlaceBetTx, confirmBySig, earlyBirdUntil, fetchConfig, fetchMarket, fetchMarkets, fetchPosition, impliedPayout, totalPool, type MarketView } from "./kubrai";
+import { SOURCE_LABEL, bareTitle, fmtExact, fmtValue, metricInfo, question } from "./metrics";
 import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, openWalletMenu, poolsHtml, refreshBalances, statusPill } from "./ui";
 import { API_BASE, CLUSTER, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type HolderProof } from "./holder";
@@ -10,6 +10,7 @@ import { nextStepHead, timelineGrid } from "./timeline";
 import { bindReferralAfterBet } from "./referral";
 import { explorerTx } from "./explorer";
 import { fmtRange, fmtTsShort, inWords, zoneName, zoneShort } from "./time";
+import { dayName, daysHtml, placeDays, seriesOf } from "./series";
 import { t } from "./i18n";
 
 mountNetBadge(); mountWallet();
@@ -46,7 +47,7 @@ function render() {
   const earlyUntil = earlyBirdUntil(cfg, m), early = now < earlyUntil;
   const fee = feeWithDiscounts(cfg.feeBps, early, cfg.earlyBirdDiscountBps, proof);
   const tiers = cfg.feeTiers;
-  document.title = `Kubrai · ${metricLabel(m.metric)}`;
+  document.title = `Kubrai · ${bareTitle(m)} · ${dayName(m)}`;   // with its day: the tabs and history entries of one question were all alike
   root.innerHTML = `
     <div class="mtop">${statusPill(m)}<span>${t("mkt.n", { id: m.id })}</span></div>
     <h1>${question(m, `<span class="mono">${fmtExact(m.metric, m.thresholds[0])}</span>`)}</h1>
@@ -119,6 +120,8 @@ function renderBet(open: boolean, fee: number) {
     const sess = getSession()!; const a = Math.round((Number(amtEl.value) || 0) * 10 ** TOKEN_DECIMALS), side = bucket;
     if (a < cfg.minBet.toNumber()) { msg.innerHTML = `<div class="msg err">${t("bet.min", { amt: fmtAmt(cfg.minBet.toNumber()), tok: TOKEN_SYMBOL })}</div>`; return; }
     go.disabled = true; msg.innerHTML = `<div class="msg">${t("bet.confirm")}</div>`;
+    // While the bet is on its way the row of days does not respond: a day switched and switched back is a fresh page, with the button unlocked.
+    const days = document.getElementById("days"); days?.toggleAttribute("inert", true);
     // The box may have been re-rendered while we waited (wallet events do that): always write to the elements on the page.
     const msgNow = () => document.getElementById("msg") ?? msg, goNow = () => (document.getElementById("go") as HTMLButtonElement | null) ?? go;
     const sigLink = (sig: string) => `<a class="mono" style="word-break:break-all" href="${explorerTx(sig)}" target="_blank" rel="noopener">${esc(sig)}</a>`;
@@ -151,6 +154,7 @@ function renderBet(open: boolean, fee: number) {
       if (st === "confirmed") { await landed(); return; }
       setHold(`<div class="msg">${t("bet.unconfirmed", { min: 6, sig: sigLink(sig) })}</div>`);   // stays locked until the page is reloaded
     } catch (e: any) { hold = null; msgNow().innerHTML = `<div class="msg err">${esc(e?.message ?? e)}</div>`; goNow().disabled = false; }
+    finally { days?.toggleAttribute("inert", false); }
   };
 }
 async function showPosition() {
@@ -162,6 +166,17 @@ async function showPosition() {
   document.getElementById("bet")!.appendChild(el);
 }
 onSession(() => { if (m) { render(); showPosition(); } });
+// The other days of this question, in a row above the market (series.ts). It is drawn from the market list the page
+// arrived with, so it is there before the market itself and never holds the page up; a question asked only once, or no
+// list at all, leaves the row out.
+async function showDays() {
+  const box = document.getElementById("days"); if (!box) return;
+  let all = bootMarkets(); if (!all) { try { all = await fetchMarkets(); } catch { return; } }
+  const cur = all.find((x) => x.id === id), days = cur ? seriesOf(all, cur) : [];
+  if (!cur || days.length < 2) return;
+  box.innerHTML = daysHtml(days, cur); placeDays(box.firstElementChild as HTMLElement);
+}
+void showDays();
 load().catch((e) => (root.innerHTML = `<div class="msg err">${t("err.market", { id: esc(id), err: esc(e.message ?? e) })}</div>`));
 
 /** The hourly snapshots behind this market, with their values, so nobody has to dig through the API.

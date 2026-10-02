@@ -67,12 +67,13 @@ export const countedWindow = (m: { metric: string; openTs: number; closeTs: numb
   if (m.closeTs % 86400 === 12 * 3600) { const d = m.closeTs - 12 * 3600; return [d, d + 86400]; }
   return /_next$/.test(m.metric) ? [m.closeTs, m.closeTs + 86400] : [m.openTs, m.closeTs];
 };
+/** A metric's title without its "today" / "this week": for wherever the period is written out beside it. */
+export const bareTitle = (m: { metric: string; closeTs: number }) => (metricInfo(m.metric, m.closeTs)?.title ?? t("m.unknown")).split(WINDOW.day).join("").split(WINDOW.week).join("").replace(/[（(]\s*[）)]/g, "").replace(/\s+/g, " ").trim();
 /** The question as SharePot asks it: the period on the viewer's clock, never "today"/"tomorrow".
  *  "Jupiter swap volume, 27 Sept, 08:00 – 28 Sept, 08:00 GMT+8: which range?" (value/threshold HTML is the caller's) */
 export function question(m: { metric: string; openTs: number; closeTs: number; nBuckets: number }, vHtml: string) {
-  const bare = (metricInfo(m.metric, m.closeTs)?.title ?? t("m.unknown")).split(WINDOW.day).join("").split(WINDOW.week).join("").replace(/[（(]\s*[）)]/g, "").replace(/\s+/g, " ").trim();
   const range = fmtRangeHtml(...countedWindow(m));
-  return m.nBuckets === 2 ? t("q.yesnoAt", { q: bare, range, v: vHtml }) : t("q.rangeAt", { q: bare, range });
+  return m.nBuckets === 2 ? t("q.yesnoAt", { q: bareTitle(m), range, v: vHtml }) : t("q.rangeAt", { q: bareTitle(m), range });
 }
 export const metricLabel = (id: string) => metricInfo(id)?.title ?? t("m.unknown");
 export const metricCadence = (id: string): Cadence => metricInfo(id)?.cadence ?? "other";

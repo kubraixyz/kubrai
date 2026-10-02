@@ -395,5 +395,6 @@
  "mkt.headNext": "{step} {in}",
  "bet.slow": "Aún esperando la confirmación — firma {sig}. No vuelvas a apostar hasta que aparezca en la cadena.",
  "bet.unconfirmed": "Sigue sin confirmarse tras {min} minutos — revisa el enlace del explorador antes de volver a apostar: {sig}",
- "ref.signNote": "Una firma más aplica tu invitación — no cuesta nada y no mueve fondos."
+ "ref.signNote": "Una firma más aplica tu invitación — no cuesta nada y no mueve fondos.",
+ "days.aria": "El mismo mercado en otros días"
 }
