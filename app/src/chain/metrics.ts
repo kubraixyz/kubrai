@@ -35,6 +35,7 @@ const LEGACY: Record<string, MetricInfo> = {
 type CatalogEntry = { id: string; category?: string; app: string; noun: string; level: string; unit: string; scale: number; digits: number; source: SourceKind; how: string; pushCost?: string | null };
 let catalog: Record<string, CatalogEntry> = {};
 export async function loadMetricCatalog(apiBase: string) { try { const r = await fetch(apiBase + "/metrics"); if (r.ok) catalog = (await r.json()).metrics ?? {}; } catch {} }
+export const catalogEntry = (id: string): CatalogEntry | undefined => catalog[id];
 export function metricInfo(id: string): MetricInfo | undefined {
   if (LEGACY[id]) return LEGACY[id];
   const td = id.match(/^(.+)_today$/);
