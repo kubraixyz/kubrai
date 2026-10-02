@@ -15,6 +15,7 @@ import { leaderboard, readSettlements } from "./points.mjs";
 import { resolveLang, translateHtml, langScript, LANGS } from "./i18n.mjs";
 import { APP_METRIC_CATALOG } from "./app-metrics.mjs";
 import * as referrals from "./referrals.mjs";
+import { clientIp } from "./client-ip.mjs";
 import anchor from "@coral-xyz/anchor";
 
 const PORT = Number(process.env.API_PORT ?? 8787);
@@ -176,10 +177,8 @@ const seenAddr = new Map(), seenIp = new Map(), seenDisputeSig = new Set(); let 
 const FEEDBACK_DAILY_GLOBAL = Number(process.env.FEEDBACK_DAILY_GLOBAL ?? 200), FEEDBACK_BYTES_DAILY = Number(process.env.FEEDBACK_BYTES_DAILY ?? 300 * 1024 * 1024), DISPUTES_DAILY_GLOBAL = Number(process.env.DISPUTES_DAILY_GLOBAL ?? 100);
 const dayKey = () => new Date().toISOString().slice(0, 10);
 function rollDay() { const d = dayKey(); if (d !== seenDay) { seenDay = d; seenAddr.clear(); seenIp.clear(); seenFb.clear(); seenDisputeSig.clear(); seenLookup.clear(); betCache.clear(); faucetToday = 0; feedbackToday = 0; feedbackBytesToday = 0; disputesToday = 0; } }
-// Only Caddy talks to this socket; Caddy replaces X-Forwarded-For for untrusted clients, so its first hop is the real client
-// (checked 2026-09-28 against Caddy 2.11: a spoofed X-Forwarded-For comes through as the peer address). Do NOT switch to
-// CF-Connecting-IP here: kubrai.xyz is not behind Cloudflare, and Caddy passes that header through untouched.
-const clientIp = (req) => String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "?").split(",")[0].trim();
+// The caller's address for the per-address limits is worked out in client-ip.mjs (direct callers and callers that come
+// through Cloudflare are told apart there; the first hop of X-Forwarded-For, used here before, can be forged through it).
 
 // Devnet only: the faucet also hands out a stand-in Seeker Genesis Token (a member of the mock Token-2022 group whose
 // authority is the faucet key), so testers can see the holder discount. Reads the group mint from SGT_GROUP_MINT or
