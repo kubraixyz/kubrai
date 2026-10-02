@@ -12,7 +12,7 @@ import path from "node:path";
 import { parseMetric, dailyReadTs, DAY_LOCK_SECS, DAY_OPEN_LEAD_SECS } from "./history.mjs";
 import { APP_METRIC_CATALOG } from "./app-metrics.mjs";
 import { makeEvaluator } from "./evaluate.mjs";
-import { lastLookAction, comparisonAction, LAST_LOOK_SECS } from "./verify-rules.mjs";
+import { lastLookAction, lastLook, comparisonAction, LAST_LOOK_SECS } from "./verify-rules.mjs";
 
 const T = (s) => Date.parse(s) / 1000;
 const market = (day) => { const D = T(day + "T00:00:00Z"); return { D, open: D - DAY_OPEN_LEAD_SECS, close: D + DAY_LOCK_SECS }; };
@@ -97,6 +97,45 @@ test("last look: void only when the source has moved the day into another range"
   assert.equal(lastLookAction(1, 150, null, thr).action, "no-data");
   assert.equal(lastLookAction(1, 150, { value: 0 }, thr).action, "no-data", "a 0 is a source gap, not a new number");
   assert.equal(lastLookAction(0, 1, { value: 5 }, [3]).action, "void-drift");   // yes/no market
+});
+
+// The whole last-look step with the chain, the pager and the state file replaced by recorders.
+function harness(prior = { id: 7, action: "agree", final: true }) {
+  const calls = { voided: [], paged: [], logged: [], saved: [] };
+  const io = { voidMarket: async (why) => { calls.voided.push(why); return "SIG"; }, notify: async (...a) => { calls.paged.push(a); }, log: (l) => calls.logged.push(l), setState: (v) => calls.saved.push(v) };
+  const p = (latest, over = {}) => ({ id: 7, metric: "jup_perps_fees_today", key: "7:1000", prior, thresholds: [100, 200, 300], proposedValue: 150, proposedBucket: 1, latest, dry: false, cluster: "devnet", ...over });
+  return { calls, io, p };
+}
+
+test("last look, end to end: an unchanged number is noted once and nothing is voided", async () => {
+  const h = harness(); const same = { value: 150, slot: "2026-10-05T12", day: "2026-10-04" };
+  await lastLook(h.p(same), h.io);
+  assert.equal(h.calls.voided.length, 0); assert.equal(h.calls.paged.length, 0); assert.equal(h.calls.logged.length, 1);
+  assert.equal(h.calls.saved.length, 1); assert.equal(h.calls.saved[0].lastLook.action, "same"); assert.equal(h.calls.saved[0].voidSig, undefined);
+  assert.equal(h.calls.saved[0].action, "agree", "the first verdict stays in the record");
+  // the next 10-minute run sees the same bundle: silent
+  const again = harness(h.calls.saved[0]); await lastLook(again.p(same), again.io);
+  assert.equal(again.calls.logged.length, 0); assert.equal(again.calls.saved.length, 0);
+  // a newer bundle with the number moved inside the range: said once, still not voided
+  const moved = harness(h.calls.saved[0]); await lastLook(moved.p({ value: 180, slot: "2026-10-05T13", day: "2026-10-04" }), moved.io);
+  assert.equal(moved.calls.voided.length, 0); assert.equal(moved.calls.logged.length, 1); assert.equal(moved.calls.saved[0].lastLook.action, "moved-same-range");
+});
+
+test("last look, end to end: a number moved into another range voids once, pages once, and is remembered", async () => {
+  const h = harness(); const drift = { value: 250, slot: "2026-10-05T12", day: "2026-10-04" };
+  const r = await lastLook(h.p(drift), h.io);
+  assert.equal(r.action, "void-drift"); assert.equal(h.calls.voided.length, 1); assert.equal(h.calls.paged.length, 1);
+  assert.match(h.calls.paged[0][1], /150 → 格 1[\s\S]*250 → 格 2/);
+  assert.equal(h.calls.saved.length, 1); assert.equal(h.calls.saved[0].voidSig, "SIG"); assert.equal(h.calls.saved[0].lastLook.bucket, 2);
+  // verify-proposals.mjs skips a record that carries voidSig, so a second void is never sent
+});
+
+test("last look, end to end: no recent reading changes nothing, and a dry run acts on nothing", async () => {
+  const none = harness(); await lastLook(none.p(null), none.io);
+  assert.equal(none.calls.voided.length, 0); assert.equal(none.calls.saved[0].lastLook.action, "no-data");
+  const dry = harness(); dry.io.voidMarket = async (why) => { dry.calls.voided.push(why); return null; };   // what the script's voidMarket does under DRY_RUN
+  await lastLook(dry.p({ value: 250, slot: "2026-10-05T12", day: "2026-10-04" }, { dry: true }), dry.io);
+  assert.equal(dry.calls.saved.length, 0, "a dry run leaves verified.json alone"); assert.equal(dry.calls.paged.length, 0, "and pages nobody"); assert.equal(dry.calls.logged.length, 1);
 });
 
 test("verifier: its first judgement is unchanged, and the last look fits inside the window", () => {

@@ -10,7 +10,8 @@
 //
 // Env: CLUSTER, CLUSTER_RPC, SNAPSHOT_DIR (this host's own bundles, taken with MEMO_DISABLED=1), VERIFIER_KEYPAIR
 //      (or ADMIN_KEYPAIR: the admin may sign the same instruction; before the Roles account exists it falls back to
-//      void_market), API (the app host's public API, for the proposal file), VOID_UNVERIFIED=1|0 (default 1), DRY_RUN=1.
+//      void_market), API (the app host's public API, for the proposal file), VOID_UNVERIFIED=1|0 (default 1), DRY_RUN=1,
+//      and with DRY_RUN=1 only: REPLAY=<market ids> REPLAY_NOW=<unix> to run past markets through it again.
 // State: <SNAPSHOT_DIR>/verified.json remembers each (market, proposedAt) verdict so a proposal is judged once (and
 //        what the last look saw, so the log says it once).
 import fs from "node:fs";
@@ -20,8 +21,8 @@ import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import idlJson from "../idl/kubrai.json" with { type: "json" };
 import { makeEvaluator } from "./evaluate.mjs";
 import { parseMetric, countedWindow } from "./history.mjs";
-import { comparisonAction, lastLookAction, LAST_LOOK_SECS } from "./verify-rules.mjs";
-import { notify } from "./notify.mjs";
+import { comparisonAction, lastLook, LAST_LOOK_SECS } from "./verify-rules.mjs";
+import { notify as sendPage } from "./notify.mjs";
 
 const { AnchorProvider, Program, Wallet } = anchor;
 const CLUSTER = process.env.CLUSTER ?? "devnet";
@@ -29,6 +30,10 @@ const RPC = process.env.CLUSTER_RPC ?? process.env.DEVNET_RPC ?? "https://api.de
 const SNAP = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "verify-snapshots");
 const API = process.env.API ?? (CLUSTER === "mainnet" ? "https://api.kubrai.xyz" : "https://api-devnet.kubrai.xyz");
 const DRY = process.env.DRY_RUN === "1";
+// Replay, dry runs only: judge the markets in REPLAY=<id,id> whatever their status, with the clock at REPLAY_NOW=<unix>
+// (default now) — the way to run this script over a past day's markets. Pages become log lines.
+const REPLAY = DRY && process.env.REPLAY ? new Set(process.env.REPLAY.split(",").map(Number)) : null;
+const notify = REPLAY ? async (title) => { console.log(new Date().toISOString(), `(replay: would page) ${title}`); } : sendPage;
 const VOID_UNVERIFIED = process.env.VOID_UNVERIFIED !== "0";
 const UNVERIFIED_GRACE_SECS = 45 * 60;      // window closes within this and we still have no verdict → void
 const STATE = path.join(SNAP, "verified.json");
@@ -60,9 +65,9 @@ async function voidMarket(publicKey, m, why) {
   log(`market #${m.id}: VOIDED ${sig} (${why})`); return sig;
 }
 const win = cfg.disputeWindowSecs.toNumber();
-const markets = (await program.account.market.all([{ dataSize: program.account.market.size }])).filter((x) => x.account.status === 1);
-const now = Math.floor(Date.now() / 1000);
-log(`cluster=${CLUSTER} proposed=${markets.length} snapshots=${SNAP} dry=${DRY}`);
+const markets = (await program.account.market.all([{ dataSize: program.account.market.size }])).filter((x) => (REPLAY ? REPLAY.has(x.account.id.toNumber()) && x.account.proposedAt.toNumber() > 0 : x.account.status === 1));
+const now = REPLAY && process.env.REPLAY_NOW ? Number(process.env.REPLAY_NOW) : Math.floor(Date.now() / 1000);
+log(`cluster=${CLUSTER} proposed=${markets.length} snapshots=${SNAP} dry=${DRY}${REPLAY ? ` REPLAY of ${[...REPLAY].join(",")} at ${new Date(now * 1000).toISOString()}` : ""}`);
 for (const { publicKey, account: m } of markets) {
   const key = `${m.id.toNumber()}:${m.proposedAt.toNumber()}`;
   const metric = tag(m.metric), n = m.nBuckets, thr = m.thresholds.slice(0, n - 1).map((t) => t.toNumber());
@@ -72,20 +77,15 @@ for (const { publicKey, account: m } of markets) {
     // Last look (verify-rules.mjs lastLookAction): a DefiLlama number can still be changed by its source after it was
     // read. From half an hour before the window closes until the proposal is finalized, read the day's number again
     // from this host's newest bundle. Same range → the proposal stands. Another range → void, everyone is refunded.
+    // Only those markets: every other kind settles on our own hourly snapshots, which nobody can change afterwards.
     const s = state[key];
-    if (!s.voidSig && (s.action === "agree" || s.uncovered) && closesAt - now <= LAST_LOOK_SECS) {
-      let latest = null; try { latest = dailyLatest(metric, m.openTs.toNumber(), m.closeTs.toNumber(), now); } catch (e) { log(`market #${m.id} (${metric}): last look failed — ${String(e?.message ?? e)}`); }
-      const ll = lastLookAction(proposedBucket, proposedValue, latest, thr);
-      const seen = latest ? `${latest.slot}:${latest.value}` : null;
-      if (ll.action === "void-drift") {
-        log(`market #${m.id} (${metric}): LAST LOOK — proposed ${proposedValue} → range ${proposedBucket}; the source now reports ${latest.value} for ${latest.day} (bundle ${latest.slot}) → range ${ll.bucket}`);
-        const sig = await voidMarket(publicKey, m, "the source changed the day's number into another range before the proposal was final");
-        await notify("↩️ 來源在定案前改了數字,已作廢退款", `${CLUSTER} #${m.id} ${metric}\n提案時讀到 ${proposedValue} → 格 ${proposedBucket}\n定案前東京再讀(${latest.slot}):${latest.value} → 格 ${ll.bucket}\n${sig ? `void tx ${sig}` : "(DRY RUN)"}\n來源在 6 小時內把那一天的數字改到別的區間:不派彩,全額退款。常發生就把這個指標的讀取時間(app-metrics.json readAfterHours)往後調。`, `verify-drift:${key}`, 60);
-        if (!DRY) { state[key] = { ...s, lastLook: { at: new Date().toISOString(), seen, action: ll.action, bucket: ll.bucket }, voidSig: sig }; save(); }
-      } else if (s.lastLook?.seen !== seen || s.lastLook?.action !== ll.action) {
-        log(`market #${m.id} (${metric}): last look — ${ll.action === "no-data" ? "no recent bundle carries the day; the proposal stands" : ll.action === "same" ? `the source still reports ${latest.value} (bundle ${latest.slot}); the proposal stands` : `the source now reports ${latest.value} (bundle ${latest.slot}), proposed ${proposedValue}: still range ${proposedBucket}; the proposal stands`}`);
-        if (!DRY) { state[key] = { ...s, lastLook: { at: new Date().toISOString(), seen, action: ll.action } }; save(); }
-      }
+    if (!s.voidSig && (s.action === "agree" || s.uncovered) && closesAt - now <= LAST_LOOK_SECS && parseMetric(metric)?.kind === "daily") {
+      // Whatever goes wrong here must not stop the loop: judging the proposals that have no verdict yet comes first.
+      try {
+        const latest = dailyLatest(metric, m.openTs.toNumber(), m.closeTs.toNumber(), now);
+        await lastLook({ id: m.id.toNumber(), metric, key, prior: s, thresholds: thr, proposedValue, proposedBucket, latest, dry: DRY, cluster: CLUSTER },
+          { voidMarket: (why) => voidMarket(publicKey, m, why), notify, log, setState: (v) => { state[key] = v; save(); } });
+      } catch (e) { log(`market #${m.id} (${metric}): last look failed — ${String(e?.message ?? e).split("\n")[0]}`); }
     }
     continue;
   }
