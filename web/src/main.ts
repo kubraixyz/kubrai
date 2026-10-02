@@ -30,10 +30,19 @@ let stage: Stage = (STAGES.some(([k]) => k === new URLSearchParams(location.sear
 const segEl = document.getElementById("stages")!;
 let all: MarketView[] = [];
 function setStage(k: Stage) { stage = k; const u = new URL(location.href); if (stage === "open") u.searchParams.delete("status"); else u.searchParams.set("status", stage); history.replaceState(null, "", u); renderStages(); renderList(); }
+// The tabs and the category chips are rows that scroll sideways on a phone, and every redraw starts such a row at its
+// left end again: the tab just picked (Settled is the fourth) went straight back out of sight. After a redraw the
+// selected one is brought to the middle of its row whenever it is not fully in it. Only the row moves, never the page.
+function keepOnInView(row: HTMLElement | null) {
+  const on = row?.querySelector<HTMLElement>(".on"); if (!row || !on) return;
+  const o = on.getBoundingClientRect(), r = row.getBoundingClientRect();
+  if (o.left < r.left || o.right > r.right) row.scrollLeft += o.left - r.left - (r.width - o.width) / 2;
+}
 function renderStages() {
   const now = Date.now() / 1000, hits = found(all); const count = (k: Stage) => hits.filter((m) => stageOf(m, now) === k).length;   // with a search running the tabs count its matches
   segEl.innerHTML = `<div class="seg" role="tablist">${STAGES.map(([k, label]) => `<button role="tab" data-s="${k}" class="${k === stage ? "on" : ""}">${label}<small>${count(k)}</small></button>`).join("")}</div>`;
   segEl.querySelectorAll<HTMLButtonElement>("button[data-s]").forEach((b) => (b.onclick = () => setStage(b.dataset.s as Stage)));
+  keepOnInView(segEl.querySelector<HTMLElement>(".seg"));
 }
 // Search (the box beside the stage tabs). A query is matched against what a card says — its question in the viewer's
 // language and clock, the app, the category — plus the market's number ("#139") and its metric id, case, accents and
@@ -87,6 +96,7 @@ function renderList() {
   if (!cats.includes(cat)) cat = cats[0] ?? "";
   catEl.innerHTML = cats.length ? `<div class="chips" role="tablist">${cats.map((c) => `<button role="tab" data-c="${esc(c)}" class="chip${c === cat ? " on" : ""}">${esc(catLabel(c))}<small>${inStage.filter((m) => metricCategory(m.metric) === c).length}</small></button>`).join("")}</div>` : "";
   catEl.querySelectorAll<HTMLButtonElement>("button[data-c]").forEach((b) => (b.onclick = () => { cat = b.dataset.c!; const u = new URL(location.href); u.searchParams.set("cat", cat); history.replaceState(null, "", u); renderList(); }));
+  keepOnInView(catEl.querySelector<HTMLElement>(".chips"));
   const items = inStage.filter((m) => metricCategory(m.metric) === cat);
   const html = (stage === "open" && items.length ? `<p class="note">${t("group.dayBlurb")}</p>` : "") + (items.length ? `<div class="grid">${items.map(card).join("")}</div>` : "");
   root.innerHTML = html || `<div class="note">${EMPTY[stage]}</div>`; localizeUtc(root);

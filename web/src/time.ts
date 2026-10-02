@@ -1,25 +1,30 @@
 // Every time the site shows — timestamps and the rules' wording alike — is the viewer's own clock, with its zone named
 // ("25 Sept 2026, 14:10 GMT+8"). Nobody should have to convert from UTC in their head.
 const at = (ts: number) => new Date(ts * 1000);
-const tidy = (s: string) => s.replace(/\[(GMT[^\]]*)\]/, "$1");
 // 24-hour clock everywhere (several locales default to a 12-hour one)
 const H23 = { hourCycle: "h23" } as const;
 import { DATE_LOCALE, t } from "./i18n";
 const LOCALE = DATE_LOCALE;
+// The zone is always written last, after the time ("14:10 GMT+8"), and is read from the formatter's parts rather than
+// cut out of a formatted string: where a locale puts it differs. Simplified Chinese writes it before the time with
+// nothing in between, which gave "10月3日 GMT+2 02:00" in titles and "GMT+205:41:05" for the zone on its own;
+// Traditional Chinese wraps it in brackets.
+const zoneAt = (d: Date) => { try { return new Intl.DateTimeFormat(LOCALE, { hour: "2-digit", timeZoneName: "shortOffset", ...H23 }).formatToParts(d).find((p) => p.type === "timeZoneName")?.value ?? ""; } catch { return ""; } };
+const withZone = (d: Date, o: Intl.DateTimeFormatOptions) => `${d.toLocaleString(LOCALE, { ...o, ...H23 })} ${zoneAt(d)}`.trim();
 /** "25 Sept 2026, 14:10 GMT+8" */
-export const fmtTs = (ts: number) => tidy(at(ts).toLocaleString(LOCALE, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 }));
+export const fmtTs = (ts: number) => withZone(at(ts), { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 /** "25 Sept, 14:10 GMT+8": for tight spots where the year is obvious */
-export const fmtTsShort = (ts: number) => tidy(at(ts).toLocaleString(LOCALE, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 }));
+export const fmtTsShort = (ts: number) => withZone(at(ts), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 /** "27 Sept, 08:00 – 28 Sept, 08:00 GMT+8": a window, zone named once */
 export const fmtRange = (from: number, to: number) => `${at(from).toLocaleString(LOCALE, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", ...H23 })} – ${fmtTsShort(to)}`;
 /** "Sun 27 Sept, 08:00" without the zone: for places that name the zone once (the market timeline) */
 export const fmtStamp = (ts: number) => at(ts).toLocaleString(LOCALE, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", ...H23 });
 /** The viewer's zone as the site writes it: "GMT+8" */
-export const zoneShort = () => tidy(at(Date.now() / 1000).toLocaleTimeString(LOCALE, { timeZoneName: "shortOffset", ...H23 })).replace(/^.*?(GMT[^\s]*|UTC[^\s]*)$/, "$1");
+export const zoneShort = () => zoneAt(new Date());
 /** fmtRange as HTML whose two ends never wrap inside themselves (a title must not break "26 Sept" apart) */
 export const fmtRangeHtml = (from: number, to: number) => { const [a, b] = fmtRange(from, to).split(" – "); return `<span class="nw">${a}</span> – <span class="nw">${b}</span>`; };
 /** "14:10 GMT+8" */
-export const fmtHm = (ts: number) => tidy(at(ts).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit", timeZoneName: "shortOffset", ...H23 }));
+export const fmtHm = (ts: number) => withZone(at(ts), { hour: "2-digit", minute: "2-digit" });
 /** "Fri 25 Sept", the viewer's calendar day */
 export const fmtDay = (ts: number) => at(ts).toLocaleDateString(LOCALE, { weekday: "short", month: "short", day: "numeric" });
 /** "14–21 Sept": the first and last day of a window longer than a day */

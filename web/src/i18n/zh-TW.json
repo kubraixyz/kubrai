@@ -27,7 +27,7 @@
  "search.elsewhere": "這些分頁有：",
  "search.none": "全部 {total} 個市場都沒有符合「{q}」的。",
  "group.day": "每日市場",
- "group.dayBlurb": "每個市場算的是完整的一天，題目上寫著這一天的時段（你的當地時間）。前一天晚上 <span data-utc=\"11:00\">11:00 UTC</span> 開放下注，到這一天過一半的 <span data-utc=\"12:00\">12:00 UTC</span> 截止，所以沒有人能看過大半天的數字才下注。下一天的市場會提早一小時開，隨時都有盤可押。",
+ "group.dayBlurb": "每個市場算的是完整的一天，題目上寫著這一天的時段（你的當地時間）。這一天開始前 13 小時、也就是 <span data-utc=\"11:00\">11:00 UTC</span> 開放下注，到這一天過一半的 <span data-utc=\"12:00\">12:00 UTC</span> 截止，所以沒有人能看過大半天的數字才下注。下一天的市場會提早一小時開，隨時都有盤可押。",
  "group.week": "每週市場",
  "group.weekBlurb": "為期一週；每週一 <span data-utc=\"00:00\">00:00 UTC</span>（你的當地時間）開新盤。",
  "group.other": "其他市場",

@@ -39,7 +39,7 @@ function refreshProof(rerender = true) {
   return job;
 }
 
-async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); render(); void refreshProof(); }
+async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); render(); void refreshProof(); void loadPosition(); }
 onSession(() => { if (!cfg) return; proof = { ...proof, accounts: [], sgt: false, stake: false }; render(); void refreshProof(); });
 function render() {
   const copy = metricInfo(m.metric, m.closeTs);
@@ -95,7 +95,7 @@ async function mountDispute() {
 function renderBet(open: boolean, fee: number) {
   const box = document.getElementById("bet")!;
   const s = getSession();
-  if (!open) { box.innerHTML = `<div class="note">${m.status === 0 && Date.now() / 1000 < m.openTs ? t("bet.notOpen") : t("bet.closed")}</div>`; return; }
+  if (!open) { box.innerHTML = `<div class="note">${m.status === 0 && Date.now() / 1000 < m.openTs ? t("bet.notOpen") : t("bet.closed")}</div>`; drawPosition(); return; }
   box.innerHTML = `<div class="betbox">
     <div class="sides">${m.pools.map((_, i) => `<button class="${bucket === i ? "on" : ""}" style="--c:${bucketColor(m, i)}" data-b="${i}">${bucketLabel(m, i)}</button>`).join("")}</div>
     <div class="amtrow"><input id="amt" type="number" min="${cfg.minBet.toNumber() / 10 ** TOKEN_DECIMALS}" step="1" placeholder="${esc(t("bet.amountPh", { tok: TOKEN_SYMBOL }))}">${s ? `<button id="max" type="button" title="${esc(t("bet.maxTitle", { tok: TOKEN_SYMBOL }))}">${t("bet.max")}</button>` : ""}</div>
@@ -108,11 +108,11 @@ function renderBet(open: boolean, fee: number) {
   const amtEl = box.querySelector<HTMLInputElement>("#amt")!, quote = box.querySelector("#quote")!;
   const upd = () => {
     const a = Math.round((Number(amtEl.value) || 0) * 10 ** TOKEN_DECIMALS);
-    if (!a) { quote.innerHTML = `<span class="note">${t("bet.enterAmount", { b: bucketLabel(m, bucket) })}</span>`; return; }
+    if (!(a > 0)) { quote.innerHTML = `<span class="note">${t("bet.enterAmount", { b: bucketLabel(m, bucket) })}</span>`; return; }   // a typed "-1" used to be quoted: "you receive -1"
     const q = impliedPayout(m, bucket, a, fee);
     quote.innerHTML = `<span>${t("bet.ifWins", { b: `<b>${bucketLabel(m, bucket)}</b>` })}</span><span class="big">${fmtAmt(q.total)} ${TOKEN_SYMBOL}</span><span class="note">${t("bet.breakdown", { stake: fmtAmt(a), losers: fmtAmt(q.fromLosers), fee: fmtAmt(q.fee) })}${q.fromSeed ? ` ${t("bet.plusSeed", { seed: fmtAmt(q.fromSeed) })}` : ""}. ${t("bet.otherLoses", { stake: fmtAmt(a) })}</span>`;
   };
-  amtEl.oninput = upd; upd();
+  amtEl.oninput = upd; upd(); drawPosition();
   const mx = box.querySelector<HTMLButtonElement>("#max"); if (mx) mx.onclick = () => { amtEl.value = String(Math.floor(balances.token / 10 ** TOKEN_DECIMALS)); upd(); };
   box.querySelectorAll<HTMLButtonElement>(".sides button").forEach((b) => (b.onclick = () => { bucket = Number(b.dataset.b); renderBet(open, fee); }));
   const go = box.querySelector<HTMLButtonElement>("#go"), msg = box.querySelector("#msg")!;
@@ -132,7 +132,7 @@ function renderBet(open: boolean, fee: number) {
       const cur = msgNow(); cur.innerHTML = okHtml;
       try {
         const refNote = await bindReferralAfterBet(sess, cur);
-        await refreshBalances(); await load(true); await showPosition();
+        await refreshBalances(); await load(true); await loadPosition();
         // load() re-rendered the page: keep the confirmation visible in the fresh bet box
         const fresh = document.getElementById("msg"); if (fresh) fresh.innerHTML = okHtml;
         if (refNote) { const b = document.getElementById("bet"); if (b) b.insertAdjacentHTML("beforeend", `<div class="msg ok" style="margin-top:8px">${esc(refNote)}</div>`); }
@@ -157,15 +157,29 @@ function renderBet(open: boolean, fee: number) {
     finally { days?.toggleAttribute("inert", false); }
   };
 }
-async function showPosition() {
-  const s = getSession(); if (!s) return;
-  const p = await fetchPosition(m.pubkey, s.publicKey); if (!p) return;
-  const el = document.createElement("div"); el.className = "kv"; el.style.marginTop = "12px";
-  const parts = (p.amounts as any[]).slice(0, m.nBuckets).map((x, i) => [x.toNumber(), i]).filter(([x]) => x > 0).map(([x, i]) => `${bucketLabel(m, i)}: ${fmtAmt(x)}`);
+// The connected wallet's own stake on this market, one number per range (null: no wallet, or nothing staked here).
+// It is held apart from the bet box because the box is redrawn many times over (a wallet event, the discount lookup
+// answering, another range picked) and each redraw puts the line back. It used to be added once, right after a bet:
+// whoever came back to a market they had already bet on saw no sign of it, and a redraw wiped it even then.
+let myPos: number[] | null = null, posOwner = "";
+function drawPosition() {
+  const box = document.getElementById("bet"); if (!box) return;
+  box.querySelector("#mypos")?.remove();
+  if (!myPos) return;
+  const parts = myPos.slice(0, m.nBuckets).map((x, i) => [x, i]).filter(([x]) => x > 0).map(([x, i]) => `${bucketLabel(m, i)}: ${fmtAmt(x)}`);
+  const el = document.createElement("div"); el.id = "mypos"; el.className = "kv"; el.style.marginTop = "12px";
   el.innerHTML = `<b>${t("bet.position")}</b><span>${parts.length ? parts.join(" · ") + " " + TOKEN_SYMBOL : t("bet.none")}</span>`;
-  document.getElementById("bet")!.appendChild(el);
+  box.appendChild(el);
 }
-onSession(() => { if (m) { render(); showPosition(); } });
+async function loadPosition() {
+  const s = getSession(), owner = s ? s.publicKey.toBase58() : "";
+  if (owner !== posOwner) { myPos = null; posOwner = owner; drawPosition(); }   // one wallet's stake never stays up while another's is fetched
+  if (!s || !m) return;
+  const p = await fetchPosition(m.pubkey, s.publicKey);
+  if ((getSession()?.publicKey.toBase58() ?? "") !== owner) return;             // the wallet changed while we waited
+  if (p) { myPos = (p.amounts as any[]).map((x) => x.toNumber()); drawPosition(); }   // no answer (an RPC hiccup reads the same as no position) leaves what is shown alone
+}
+onSession(() => { if (m) { render(); void loadPosition(); } });
 // The other days of this question, in a row above the market (series.ts). It is drawn from the market list the page
 // arrived with, so it is there before the market itself and never holds the page up; a question asked only once, or no
 // list at all, leaves the row out.

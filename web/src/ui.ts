@@ -87,7 +87,10 @@ function setSession(s: Session | null) { session = s; try { s ? localStorage.set
  *  page it was written on, plus the wallet address when one happens to be connected. Same endpoint the app uses. */
 export function mountFeedback() {
   if (!API_BASE || document.getElementById("fbbtn")) return;
-  const btn = document.createElement("button"); btn.id = "fbbtn"; btn.className = "fbbtn"; btn.textContent = t("fb.button");
+  // On a phone the pill with the word on it sat on top of the text being read (it has no margin to float in there), so
+  // below 600px it is a small round button with a speech bubble; the word stays as its accessible name.
+  const btn = document.createElement("button"); btn.id = "fbbtn"; btn.className = "fbbtn"; btn.setAttribute("aria-label", t("fb.button")); btn.title = t("fb.button");
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><span>${esc(t("fb.button"))}</span>`;
   document.body.appendChild(btn);
   btn.onclick = () => {
     if (document.getElementById("fbbox")) return;
@@ -120,10 +123,20 @@ export function mountFeedback() {
 function mountLangPicker() {
   const host = document.querySelector("header.top"); if (!host || document.getElementById("lang")) return;
   const sel = document.createElement("select"); sel.id = "lang"; sel.className = "lang"; sel.setAttribute("aria-label", t("lang.label"));
+  sel.autocomplete = "off";   // or the browser puts back the option that was selected when the page was left (see pageshow below)
   sel.innerHTML = LANGS.map(([k, name]) => `<option value="${k}"${k === LANG ? " selected" : ""}>${name}</option>`).join("");
   sel.onchange = () => setLang(sel.value);
   const box = document.getElementById("wallet"); if (box) box.before(sel); else host.appendChild(sel);
 }
+// Back / Forward after a change of language. The browser either redraws the page from its cache exactly as it was left
+// (the old language throughout) or fetches it again in the new language but restores the picker to the option it showed
+// before, so the picker read "Español" over an English page. The picker always says what the page is written in; a
+// cached page in a language other than the one chosen since is loaded again.
+addEventListener("pageshow", (e) => {
+  const chosen = document.cookie.match(/(?:^|;\s*)kb_lang=([^;]+)/)?.[1];
+  if ((e as PageTransitionEvent).persisted && chosen && chosen !== LANG && LANGS.some(([k]) => k === chosen)) { location.reload(); return; }
+  document.querySelectorAll<HTMLSelectElement>("select.lang").forEach((s) => { s.value = LANG; });
+});
 // The header is one row: brand + tagline, links and picker (or ☰), wallet. When a language needs more than the row has
 // (Japanese and Spanish links beside a connected wallet; Spanish on a phone) the tagline gives way instead of the row
 // breaking in two (CSS header.top.tight). With the links inline the wallet is measured as a connected pill from the

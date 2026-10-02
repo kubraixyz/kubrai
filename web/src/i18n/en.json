@@ -27,7 +27,7 @@
  "search.elsewhere": "Found under:",
  "search.none": "No market matches “{q}”; all {total} were checked.",
  "group.day": "Daily markets",
- "group.dayBlurb": "Each market counts one full day, named in the question in your time. Betting opens the evening before, at <span data-utc=\"11:00\">11:00 UTC</span> (your time), and stops halfway through the day, at <span data-utc=\"12:00\">12:00 UTC</span>, so nobody bets having seen more than half of it. The next day's markets open an hour before that, so there is always one to bet on.",
+ "group.dayBlurb": "Each market counts one full day, named in the question in your time. Betting opens 13 hours before that day begins, at <span data-utc=\"11:00\">11:00 UTC</span> (your time), and stops halfway through it, at <span data-utc=\"12:00\">12:00 UTC</span>, so nobody bets having seen more than half of it. The next day's markets open an hour before that, so there is always one to bet on.",
  "group.week": "Weekly markets",
  "group.weekBlurb": "Run for a week; new ones open every Monday at <span data-utc=\"00:00\">00:00 UTC</span> (your time).",
  "group.other": "Other markets",

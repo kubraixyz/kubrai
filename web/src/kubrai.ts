@@ -81,6 +81,13 @@ export async function fetchMarket(id: number, opts: { fresh?: boolean } = {}): P
   if (!opts.fresh) { try { return viewFromJson((await fromApi("/markets/" + id)).market); } catch {} }
   const pk = marketPda(id); return toView(pk, await (program.account as any).market.fetch(pk));
 }
+/** These markets as the chain has them right now, in one request (a market that cannot be read is left out). For
+ *  figures set against the viewer's own stake, which is always read from the chain: the cached list can be a bet behind. */
+export async function fetchMarketsFresh(pubkeys: PublicKey[]): Promise<MarketView[]> {
+  if (!pubkeys.length) return [];
+  const accts: any[] = await (program.account as any).market.fetchMultiple(pubkeys);
+  return accts.flatMap((a, i) => (a ? [toView(pubkeys[i], a)] : []));
+}
 /** All open positions of a wallet (owner sits at offset 8 + 32 in Position). */
 export async function fetchPositionsByOwner(u: PublicKey) {
   const all = await (program.account as any).position.all([{ dataSize: (program.account as any).position.size }, { memcmp: { offset: 40, bytes: u.toBase58() } }]);

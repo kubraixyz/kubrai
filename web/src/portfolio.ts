@@ -1,5 +1,5 @@
 import { PublicKey } from "@solana/web3.js";
-import { NO_OUTCOME, fetchConfig, fetchMarkets, fetchPositionsByOwner, payoutIfBucket, type MarketView } from "./kubrai";
+import { NO_OUTCOME, fetchConfig, fetchMarkets, fetchMarketsFresh, fetchPositionsByOwner, payoutIfBucket, type MarketView } from "./kubrai";
 import { metricLabel } from "./metrics";
 import { bucketLabel, esc, fmtAmt, fmtTs, isBase58, mountNetBadge, mountWallet, onSession, statusPill } from "./ui";
 import { API_BASE, TOKEN_SYMBOL } from "./config";
@@ -16,6 +16,15 @@ async function render(owner: PublicKey | null) {
   const [markets, positions, cfg] = await Promise.all([fetchMarkets(), fetchPositionsByOwner(owner), fetchConfig()]);
   const byKey = new Map(markets.map((m) => [m.pubkey.toBase58(), m]));
   const rows = positions.map((p: any) => ({ p, m: byKey.get(p.market.toBase58()) })).filter((x: any) => x.m) as { p: any; m: MarketView }[];
+  // "Now worth" divides the pools by the wallet's own stake. The stake comes straight from the chain and the pools from
+  // a list that may be half a minute old, so just after a bet the two disagreed: two equal bets on one market read
+  // "1 if < 10" and "2 if = 10" until the page was loaded again. The markets still open for bets are read from the
+  // chain as well (one request for all of them); if that fails the cached pools stand.
+  try {
+    const live = await fetchMarketsFresh(rows.filter((x) => x.m.status === 0).map((x) => x.m.pubkey));
+    const liveByKey = new Map(live.map((m) => [m.pubkey.toBase58(), m]));
+    for (const x of rows) x.m = liveByKey.get(x.m.pubkey.toBase58()) ?? x.m;
+  } catch (e) { console.warn("live pools unavailable, showing cached ones", e); }
   if (!rows.length) openEl.innerHTML = `<div class="note">${t("pf.noOpen")}</div>`;
   else openEl.innerHTML = `<div class="scroll"><table class="tbl"><thead><tr><th>${t("pf.colMarket")}</th><th>${t("pf.colBets")}</th><th>${t("pf.colStatus")}</th><th class="r">${t("pf.colWorth")}</th></tr></thead><tbody>${rows.map(({ p, m }) => {
     const feeBps = p.amounts.map((a: number, i: number) => (a ? Number(BigInt(p.feeW[i].toString()) / BigInt(a)) : 0));
