@@ -44,6 +44,13 @@ export function inWords(ts: number) {
   return d > 0 ? t("time.inDh", { d, h }) : h > 0 ? t("time.inHm", { h, m }) : t("time.inM", { m: Math.max(1, m) });
 }
 
+/** A wait written out: "6 hours", "1 day", "2 days": whole days when it is whole days, hours otherwise. */
+export function fmtWait(secs: number) {
+  const h = Math.max(1, Math.round(secs / 3600));
+  if (h % 24 === 0) return h === 24 ? t("dur.day1") : t("dur.days", { n: h / 24 });
+  return h === 1 ? t("dur.hour1") : t("dur.hours", { n: h });
+}
+
 /** Static copy writes fixed daily UTC times as <span data-utc="00:00">00:00 UTC</span>; rewrite them in the viewer's zone. */
 export function localizeUtc(root: ParentNode = document) {
   const today = Math.floor(Date.now() / 86400000) * 86400;

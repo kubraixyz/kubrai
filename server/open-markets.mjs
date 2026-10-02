@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import anchor from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { windowValues, quantileThresholds, parseMetric, valueIn, loadSlots, roundToDisplay, DAY_LOCK_SECS, DAY_OPEN_LEAD_SECS } from "./history.mjs";
+import { windowValues, quantileThresholds, parseMetric, valueIn, loadSlots, roundToDisplay, dailyReadTs, DAY_LOCK_SECS, DAY_OPEN_LEAD_SECS } from "./history.mjs";
 
 const { BN } = anchor;
 const SNAP = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots");
@@ -65,10 +65,13 @@ for (const t of tpl.templates) {
   const thrArr = Array.from({ length: 7 }, (_, i) => new BN(thresholds[i] ?? 0));
   const metricBytes = Array.from(Buffer.from(t.metric.padEnd(32, "\0").slice(0, 32)));
   const qhash = Array.from(createHash("sha256").update(t.question).digest());
-  log(`${DRY ? "would open" : "opening"} #${id} ${t.metric} (${cadence}) thresholds ${thresholds.join("/")} [${how}] open ${new Date(openTs * 1000).toISOString()} close ${new Date(closeTs * 1000).toISOString()} seed ${t.seedSkr} SKR`);
+  // The answer is read when D has ended: at once from our own snapshots, or (a DefiLlama number) the configured hours
+  // later, once the source has stopped moving it. Written on-chain here, it is this market's rule from now on.
+  const resolveAfterTs = spec.kind === "daily" ? dailyReadTs(spec, openTs, closeTs) : dStart + 86400;
+  log(`${DRY ? "would open" : "opening"} #${id} ${t.metric} (${cadence}) thresholds ${thresholds.join("/")} [${how}] open ${new Date(openTs * 1000).toISOString()} close ${new Date(closeTs * 1000).toISOString()} answer read ${new Date(resolveAfterTs * 1000).toISOString()} seed ${t.seedSkr} SKR`);
   if (DRY) { opened.push({ id: id.toNumber(), metric: t.metric, dry: true }); continue; }
   try {
-    await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, thresholds: thrArr, nBuckets, openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(spec.kind === "daily" ? dStart + 86400 * (1 + spec.lagDays) : dStart + 86400), baseline: new BN(baseline) })
+    await program.methods.createMarket({ metric: metricBytes, questionHash: qhash, thresholds: thrArr, nBuckets, openTs: new BN(openTs), closeTs: new BN(closeTs), resolveAfterTs: new BN(resolveAfterTs), baseline: new BN(baseline) })
       .accounts({ config: configPda, market, vault, mint: cfg.mint, signer, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId }).rpc();
     nextId = id.addn(1);
     // No house prize unless SEED_MARKETS=1 (a test network can still show one): pools are only what bettors put in.

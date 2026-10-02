@@ -10,7 +10,7 @@ import { createInitializeMemberInstruction } from "@solana/spl-token-group";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
 import { notify } from "./notify.mjs";
-import { parseMetric, loadSlots, valueIn, median, dailyDayStart, countedWindow } from "./history.mjs";
+import { parseMetric, loadSlots, valueIn, median, dailyDayStart, dailyReadTs, countedWindow } from "./history.mjs";
 import { leaderboard, readSettlements } from "./points.mjs";
 import { resolveLang, translateHtml, langScript, LANGS } from "./i18n.mjs";
 import { APP_METRIC_CATALOG } from "./app-metrics.mjs";
@@ -397,7 +397,12 @@ reason=${reason}`;
         const ser = last ? slots.get(last).metrics[spec.src].raw.series : [], src = last ? slots.get(last).metrics[spec.src].source : null;
         let resolution = null; const rf = id && /^\d+$/.test(id) ? path.join(SNAP, `resolution-${id}.json`) : null;
         if (rf && fs.existsSync(rf)) { const r = JSON.parse(fs.readFileSync(rf, "utf8")); resolution = { observed: r.observed, bucket: r.bucket, detail: r.detail, evidenceHash: r.evidenceHash, at: r.at, slot: (r.slots ?? [])[0] ?? null }; }
-        return json(res, 200, { metric, kind: "daily", day: D, lagDays: spec.lagDays, source: src, latestSlot: last ?? null, recent: ser.slice(-7), reported: ser.find(([d]) => d === D)?.[1] ?? null, resolution }, { "cache-control": "public, max-age=60" });
+        // When the number is read is the market's own resolve_after (history.mjs dailyReadTs): the page sends it; a
+        // client that does not (app builds up to 0.1.38) gets it looked up by id; only without both is it today's config.
+        let ra = Number(url.searchParams.get("resolveAfter") ?? 0);
+        if (!(ra > 0) && id && /^\d+$/.test(id)) { try { ra = (await chainState()).markets.find((x) => x.id === Number(id))?.resolveAfterTs ?? 0; } catch {} }
+        const readAt = dailyReadTs(spec, openTs, closeTs, ra), readAfterHours = (readAt - dailyDayStart(spec, openTs, closeTs) - 86400) / 3600;
+        return json(res, 200, { metric, kind: "daily", day: D, readAt, readAfterHours, lagDays: readAfterHours / 24, source: src, latestSlot: last ?? null, recent: ser.slice(-7), reported: ser.find(([d]) => d === D)?.[1] ?? null, resolution }, { "cache-control": "public, max-age=60" });
       }
       const slots = loadSlots(SNAP); const slotOf = (ts) => new Date(ts * 1000).toISOString().slice(0, 13);
       if (spec.kind !== "med7" && spec.kind !== "close") { const w = countedWindow(spec, openTs, closeTs); openTs = w.from; closeTs = w.to; }   // the counted period, not the betting window

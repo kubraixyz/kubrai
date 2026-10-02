@@ -5,7 +5,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { PublicKey } from "@solana/web3.js";
 import { useBalances, useConfig, useInvalidateAll, useMarket, usePositions } from "../hooks/useKubrai";
 import { useApplyInvite, usePendingReferral, type InviteNote } from "../hooks/useReferral";
-import { metricInfo, fmtValue, SOURCE_LABEL } from "../chain/metrics";
+import { metricInfo, fmtValue, fmtWait, SOURCE_LABEL } from "../chain/metrics";
 import { PoolBar } from "../components/PoolBar";
 import { Timeline } from "../components/Timeline";
 import { DayStrip } from "../components/DayStrip";
@@ -49,9 +49,9 @@ function Market({ id, onBetting }: { id: number; onBetting: (on: boolean) => voi
   // Invite code waiting on this phone (Settings / ?ref= link): bound right after this wallet's first bet (hooks/useReferral).
   const [inviteNote, setInviteNote] = useState<InviteNote | null>(null);
   const pendingInvite = usePendingReferral(); const applyInvite = useApplyInvite();
-  const info = m ? metricInfo(m.metric) : undefined;
+  const info = m ? metricInfo(m.metric, m.closeTs, m.resolveAfterTs) : undefined;
   const [ev, setEv] = useState<any>(null);
-  useEffect(() => { if (!m) return; fetch(`${APP.apiBase}/evidence?metric=${encodeURIComponent(m.metric)}&open=${m.openTs}&close=${m.closeTs}&baseline=${m.baseline}&id=${m.id}`).then((r) => (r.ok ? r.json() : null)).then(setEv).catch(() => setEv(null)); }, [m?.pubkey?.toBase58?.()]);
+  useEffect(() => { if (!m) return; fetch(`${APP.apiBase}/evidence?metric=${encodeURIComponent(m.metric)}&open=${m.openTs}&close=${m.closeTs}&baseline=${m.baseline}&id=${m.id}&resolveAfter=${m.resolveAfterTs}`).then((r) => (r.ok ? r.json() : null)).then(setEv).catch(() => setEv(null)); }, [m?.pubkey?.toBase58?.()]);
   const slotLabel = (slot: string) => fmtTsShort(Date.parse(slot + ":00:00Z") / 1000);
   const NO_PROOF: HolderProof = { accounts: [], sgt: false, stake: false, sgtDiscountBps: 0, stakeDiscountBps: 0, minFeeBps: 0, stakeLabel: "" };
   const [proof, setProof] = useState<HolderProof>(NO_PROOF);
@@ -130,7 +130,7 @@ function Market({ id, onBetting }: { id: number; onBetting: (on: boolean) => voi
       <View style={styles.row}><Chip compact mode="outlined">{statusLabel(m)}</Chip><Text variant="labelSmall" style={styles.dim}>Market #{m.id} · {m.status === 0 ? timeLeft(m.closeTs) : ""}</Text></View>
       <Text variant="titleLarge" style={{ marginVertical: 8 }}>{question(m)}</Text>
       <Text variant="bodyMedium" style={[styles.dim, { marginBottom: 10 }]}>{info?.how}</Text>
-      <KV k="Data source" v={SOURCE_LABEL[info?.source ?? "thirdparty"]} />
+      <KV k="Data source" v={info?.sourceLabel ?? SOURCE_LABEL[info?.source ?? "thirdparty"]} />
       <View style={{ marginVertical: 12 }}><PoolBar m={m} highlight={highlight} /></View>
 
       <Text variant="titleMedium" style={styles.h2}>BET</Text>
@@ -170,7 +170,11 @@ function Market({ id, onBetting }: { id: number; onBetting: (on: boolean) => voi
       <KV k="Result proposed" v={m.proposedAt ? `${fmtTs(m.proposedAt)} · observed ${fmtValue(m.metric, m.proposedValue, m.thresholds)} → ${bucketLabel(m, m.proposedOutcome)}` : "after close (see the timeline above)"} />
       {m.nBuckets > 2 && <KV k="How ranges are set" v="Cut at the quantiles of the recent history of this metric, so every range started out roughly equally likely." />}
       {cfg && <KV k="Dispute window" v={`${cfg.disputeWindowSecs.toNumber() / 3600} h after the proposal; anyone can then finalize`} />}
-      {ev ? (ev.kind === "cum"
+      {ev ? (ev.kind === "daily"
+        // a number its source publishes once a day: what the source shows now, and when the market reads it. Until
+        // 0.1.39 these markets fell into the median branch below and printed "Samples undefined of undefined".
+        ? <KV k="Snapshots" v={[ev.resolution ? `Result ${fmtValue(m.metric, ev.resolution.observed, m.thresholds)}${ev.resolution.slot ? ` · ${slotLabel(ev.resolution.slot)}` : ""}` : `Reported so far ${ev.reported != null ? fmtValue(m.metric, ev.reported, m.thresholds) : "not published yet"}`, ev.resolution ? null : `Read for settlement ${fmtTs(ev.readAt ?? m.resolveAfterTs)}: ${fmtWait((ev.readAt ?? m.resolveAfterTs) - (Date.parse(ev.day + "T00:00:00Z") / 1000 + 86400))} after the day ends; the market settles on what the source shows at that moment`, ev.source ?? null].filter(Boolean).join("\n")} />
+        : ev.kind === "cum"
         ? <KV k="Snapshots" v={[`Opening ${ev.opening ? fmtValue(m.metric, ev.opening.value, m.thresholds) : "—"}${ev.opening?.slot && ev.opening.slot !== "on-chain" ? ` · ${slotLabel(ev.opening.slot)}` : ev.opening ? " · fixed on-chain at creation" : ""}`, ev.resolution ? `Closing ${ev.closing?.value != null ? fmtValue(m.metric, ev.closing.value, m.thresholds) : "—"} · ${slotLabel(ev.closeSlot)}` : ev.latest ? `Latest ${fmtValue(m.metric, ev.latest.value, m.thresholds)} · ${slotLabel(ev.latest.slot)}` : null, ev.resolution ? `Result ${fmtValue(m.metric, ev.resolution.observed, m.thresholds)}` : ev.soFar != null ? `So far ${fmtValue(m.metric, ev.soFar, m.thresholds)}` : null].filter(Boolean).join("\n")} />
         : <KV k="Snapshots" v={[`Samples ${ev.samples} of ${ev.expected} hourly snapshots`, ev.resolution ? `Result (median) ${fmtValue(m.metric, ev.resolution.observed, m.thresholds)}` : ev.soFar != null ? `Median so far ${fmtValue(m.metric, ev.soFar, m.thresholds)}` : null].filter(Boolean).join("\n")} />) : null}
       <KV k="Evidence hash" v={m.proposedAt ? m.snapshotHash : "written on-chain with the result"} mono />

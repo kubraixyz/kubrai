@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { parseMetric, dailyDayStart, countedWindow } from "./history.mjs";
+import { parseMetric, dailyDayStart, dailyReadTs, countedWindow } from "./history.mjs";
 
 export function makeEvaluator({ snapDir, conn }) {
   const SNAP = snapDir;
@@ -43,7 +43,9 @@ export function makeEvaluator({ snapDir, conn }) {
   const median = (vals) => { const s = [...vals].sort((x, y) => x - y); return s.length % 2 ? s[(s.length - 1) / 2] : Math.floor((s[s.length / 2 - 1] + s[s.length / 2]) / 2); };
   const addHours = (slot, n) => new Date(Date.parse(slot + ":00:00Z") + n * 3600e3).toISOString().slice(0, 13);
 
-  function evaluate(metric, openTs, closeTs, baseline) {
+  /** resolveAfterTs: the market's on-chain resolve_after. Only daily (DefiLlama) markets use it: it is the hour their
+   *  number is read, fixed when the market opened (history.mjs dailyReadTs). */
+  function evaluate(metric, openTs, closeTs, baseline, resolveAfterTs) {
     const spec = parseMetric(metric); if (!spec) return { ok: false, reason: `unknown metric ${metric}` };
     // everything below reads the counted period (history.mjs countedWindow), which is open→close only for older markets
     if (spec.kind !== "med7" && spec.kind !== "close" && spec.kind !== "daily") { const w = countedWindow(spec, openTs, closeTs); openTs = w.from; closeTs = w.to; }
@@ -57,8 +59,10 @@ export function makeEvaluator({ snapDir, conn }) {
     }
     if (kind === "daily") {
       // the number reported for day D (the betting day for _today, the day after close for _next), read from the first
-      // snapshot at or after resolve_after (start of D + (1 + lag) days) that carries D; later revisions do not count
-      const d0 = dailyDayStart(spec, openTs, closeTs); const D = new Date(d0 * 1000).toISOString().slice(0, 10); const from = slotOf(d0 + 86400 * (1 + spec.lagDays));
+      // snapshot at or after the market's resolve_after that carries D; what the source changes later does not count.
+      // The hour comes from the market, not from today's config: a market opened with a 2-day wait is read 2 days after
+      // its day even once new markets wait 6 hours (2026-10-03), and both hosts derive the same hour from the chain.
+      const d0 = dailyDayStart(spec, openTs, closeTs); const D = new Date(d0 * 1000).toISOString().slice(0, 10); const from = slotOf(dailyReadTs(spec, openTs, closeTs, resolveAfterTs));
       for (let i = 0; i < 48; i++) {
         const sl = addHours(from, i); const b = readSlot(sl); const ser = b?.metrics?.[src]?.raw?.series; if (!ser) continue;
         const hit = ser.find(([d]) => d === D); /* a 0 is a source gap, not a result: keep waiting */ if (hit && hit[1] > 0) { used.push(sl); return { ok: true, value: hit[1], used, detail: { day: D, slot: sl, source: b.metrics[src].source, neighbours: ser.filter(([d]) => d >= D).slice(0, 3) } }; }
@@ -81,9 +85,21 @@ export function makeEvaluator({ snapDir, conn }) {
     const v = valueAt(sClose, src); if (v == null) return { ok: false, reason: `missing snapshot ${sClose}` };
     used.push(sClose); return { ok: true, value: v, used, detail: {} };
   }
+  /** What the source says NOW about a daily market's day: its number in the newest bundle (this hour, or up to
+   *  `hours` back) that carries the day. The verifier's last look before a proposal becomes final compares it with
+   *  the proposed value. null for other kinds of market, or when no recent bundle has the day. */
+  function dailyLatest(metric, openTs, closeTs, nowTs = Date.now() / 1000, hours = 6) {
+    const spec = parseMetric(metric); if (spec?.kind !== "daily") return null;
+    const D = new Date(dailyDayStart(spec, openTs, closeTs) * 1000).toISOString().slice(0, 10);
+    for (let i = 0; i < hours; i++) {
+      const sl = addHours(slotOf(nowTs), -i); const hit = readSlot(sl)?.metrics?.[spec.src]?.raw?.series?.find(([d]) => d === D);
+      if (hit && hit[1] > 0) return { value: hit[1], slot: sl, day: D };
+    }
+    return null;
+  }
   // Evidence hash = sha256 over the (verified) per-day bundle hashes, in the order used.
   const evidenceHash = (used, shas) => createHash("sha256").update(used.map((d) => `${d}:${shas[d]}`).join("\n")).digest();
 
 
-  return { evaluate, verifySlot, parseMetric, valueAt, slotOf, evidenceHash };
+  return { evaluate, dailyLatest, verifySlot, parseMetric, valueAt, slotOf, evidenceHash };
 }

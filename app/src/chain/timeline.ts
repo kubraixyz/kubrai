@@ -4,10 +4,12 @@
 // Same rules as web/src/timeline.ts.
 import type { MarketView } from "./kubrai";
 import { fmtTs, inWords } from "./format";
-import { countedWindow } from "./metrics";
+import { catalogEntry, countedWindow } from "./metrics";
 
 export type Step = { key: string; label: string; ts: number; note?: string; estimate?: boolean; state: "done" | "next" | "later" };
 const SNAPSHOT_LAG = 60, RESOLVER_MINUTE = 20 * 60;
+/** A market on a number its source publishes once a day (DefiLlama): <id>_today, or the retired <id>_next. */
+const isDailySource = (metric: string) => { const x = metric.match(/^(.+)_(today|next)$/); return !!x && !!catalogEntry(x[1]); };
 const nextResolverRun = (ts: number) => { const h = Math.floor(ts / 3600) * 3600; return ts <= h + RESOLVER_MINUTE ? h + RESOLVER_MINUTE : h + 3600 + RESOLVER_MINUTE; };
 
 export function timelineSteps(m: MarketView, disputeWindowSecs: number | null): Step[] {
@@ -29,7 +31,7 @@ export function timelineSteps(m: MarketView, disputeWindowSecs: number | null): 
     const estProposal = nextResolverRun(Math.max(m.resolveAfterTs, countEnd + SNAPSHOT_LAG));
     steps.push(proposedAt
       ? { key: "propose", label: "Result proposed", ts: proposedAt, note: "the observed value and the evidence hash are on-chain; the winning range follows from the value" }
-      : { key: "propose", label: "Result proposed", ts: estProposal, note: "the resolver runs hourly; proposes once the closing snapshot is verified against its on-chain hash", estimate: true });
+      : { key: "propose", label: "Result proposed", ts: estProposal, note: isDailySource(m.metric) ? "the source's number is read at this hour; the resolver proposes it once that snapshot is verified against its on-chain hash" : "the resolver runs hourly; proposes once the closing snapshot is verified against its on-chain hash", estimate: true });
     const finalAt = (proposedAt ?? estProposal) + win;
     steps.push({ key: "final", label: "Dispute window ends", ts: finalAt, note: `${win / 3600} h in which anyone can dispute the proposed result; then it is final`, estimate: !proposedAt });
     steps.push({ key: "payout", label: m.status === 4 ? "Paid out" : "Payout", ts: nextResolverRun(finalAt + 1), note: "winners are paid, losers' rent refunded, pushed by the crank; nothing to claim", estimate: m.status < 4 });

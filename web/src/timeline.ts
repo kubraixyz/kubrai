@@ -5,10 +5,12 @@ import type { MarketView } from "./kubrai";
 import { fmtStamp, fmtTs, inWords } from "./time";
 import { esc } from "./ui";
 import { t } from "./i18n";
-import { countedWindow } from "./metrics";
+import { catalogEntry, countedWindow } from "./metrics";
 
 export type Step = { key: string; label: string; ts: number; note?: string; estimate?: boolean };
 const SNAPSHOT_LAG = 60, RESOLVER_MINUTE = 20 * 60;
+/** A market on a number its source publishes once a day (DefiLlama): <id>_today, or the retired <id>_next. */
+const isDailySource = (metric: string) => { const x = metric.match(/^(.+)_(today|next)$/); return !!x && !!catalogEntry(x[1]); };
 /** First resolver run at or after `ts` (cron :20 every hour). */
 const nextResolverRun = (ts: number) => { const h = Math.floor(ts / 3600) * 3600; return ts <= h + RESOLVER_MINUTE ? h + RESOLVER_MINUTE : h + 3600 + RESOLVER_MINUTE; };
 
@@ -31,7 +33,8 @@ export function timelineSteps(m: MarketView, cfg: { disputeWindowSecs: { toNumbe
   const estProposal = nextResolverRun(Math.max(m.resolveAfterTs, countEnd + SNAPSHOT_LAG));
   steps.push(proposedAt
     ? { key: "propose", label: t("tl.propose"), ts: proposedAt, note: t("tl.proposeNote") }
-    : { key: "propose", label: t("tl.propose"), ts: estProposal, note: t("tl.proposeEst"), estimate: true });
+    // a daily-source market is proposed at the hour its number is read from the source, not when its day ends
+    : { key: "propose", label: t("tl.propose"), ts: estProposal, note: t(isDailySource(m.metric) ? "tl.proposeEstDaily" : "tl.proposeEst"), estimate: true });
   const finalAt = (proposedAt ?? estProposal) + win;
   steps.push({ key: "final", label: t("tl.final"), ts: finalAt, note: t("tl.finalNote", { h: win / 3600 }), estimate: !proposedAt });
   steps.push({ key: "payout", label: m.status === 4 ? t("tl.paid") : t("tl.payout"), ts: nextResolverRun(finalAt + 1), note: t("tl.payoutNote"), estimate: m.status < 4 });

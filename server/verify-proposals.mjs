@@ -5,11 +5,14 @@
 // is: the market is voided (full refunds) and the operator is paged; nobody re-judges by hand (guardrails are
 // automatic). No usable local data → a note only, unless the dispute window is about to close, in which case the
 // unverified proposal is voided too (a result nobody could check must not pay out).
+// A market that settles on a DefiLlama number gets a second, last look just before its proposal becomes final: if the
+// source has since moved that day's number into another range, the market is voided as well (2026-10-03).
 //
 // Env: CLUSTER, CLUSTER_RPC, SNAPSHOT_DIR (this host's own bundles, taken with MEMO_DISABLED=1), VERIFIER_KEYPAIR
 //      (or ADMIN_KEYPAIR: the admin may sign the same instruction; before the Roles account exists it falls back to
 //      void_market), API (the app host's public API, for the proposal file), VOID_UNVERIFIED=1|0 (default 1), DRY_RUN=1.
-// State: <SNAPSHOT_DIR>/verified.json remembers each (market, proposedAt) verdict so a proposal is judged once.
+// State: <SNAPSHOT_DIR>/verified.json remembers each (market, proposedAt) verdict so a proposal is judged once (and
+//        what the last look saw, so the log says it once).
 import fs from "node:fs";
 import path from "node:path";
 import anchor from "@coral-xyz/anchor";
@@ -17,6 +20,7 @@ import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import idlJson from "../idl/kubrai.json" with { type: "json" };
 import { makeEvaluator } from "./evaluate.mjs";
 import { parseMetric, countedWindow } from "./history.mjs";
+import { comparisonAction, lastLookAction, LAST_LOOK_SECS } from "./verify-rules.mjs";
 import { notify } from "./notify.mjs";
 
 const { AnchorProvider, Program, Wallet } = anchor;
@@ -36,16 +40,10 @@ const [configPda] = PublicKey.findProgramAddressSync([Buffer.from("config")], pr
 const [rolesPda] = PublicKey.findProgramAddressSync([Buffer.from("roles")], program.programId);
 const tag = (b) => Buffer.from(b).toString("utf8").replace(/\0+$/, "");
 const log = (...a) => console.log(new Date().toISOString(), ...a);
-const { evaluate, slotOf } = makeEvaluator({ snapDir: SNAP, conn });
+const { evaluate, dailyLatest, slotOf } = makeEvaluator({ snapDir: SNAP, conn });
 const earliestSlot = fs.readdirSync(SNAP).filter((f) => /^\d{4}-\d{2}-\d{2}(T\d{2})?\.json$/.test(f)).map((f) => f.slice(0, -5)).sort()[0] ?? null;
 let state = {}; try { state = JSON.parse(fs.readFileSync(STATE, "utf8")); } catch (e) { if (e?.code !== "ENOENT") throw e; }
 const save = () => { const tmp = STATE + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(state, null, 1)); fs.renameSync(tmp, STATE); };
-
-/** Pure decision: what to do with a proposal given our own reading. */
-export function comparisonAction(proposedBucket, ourBucket) {
-  if (ourBucket == null) return "unknown";
-  return proposedBucket === ourBucket ? "agree" : "void-mismatch";
-}
 
 const cfg = await program.account.config.fetch(configPda);
 // program.account.roles only exists once idl/kubrai.json carries the Roles account (the upgrade that added the role);
@@ -67,13 +65,33 @@ const now = Math.floor(Date.now() / 1000);
 log(`cluster=${CLUSTER} proposed=${markets.length} snapshots=${SNAP} dry=${DRY}`);
 for (const { publicKey, account: m } of markets) {
   const key = `${m.id.toNumber()}:${m.proposedAt.toNumber()}`;
-  if (state[key]?.final) continue;
   const metric = tag(m.metric), n = m.nBuckets, thr = m.thresholds.slice(0, n - 1).map((t) => t.toNumber());
   const proposedValue = m.proposedValue.toNumber(), proposedBucket = m.proposedOutcome;
   const closesAt = m.proposedAt.toNumber() + win;
+  if (state[key]?.final) {
+    // Last look (verify-rules.mjs lastLookAction): a DefiLlama number can still be changed by its source after it was
+    // read. From half an hour before the window closes until the proposal is finalized, read the day's number again
+    // from this host's newest bundle. Same range → the proposal stands. Another range → void, everyone is refunded.
+    const s = state[key];
+    if (!s.voidSig && (s.action === "agree" || s.uncovered) && closesAt - now <= LAST_LOOK_SECS) {
+      let latest = null; try { latest = dailyLatest(metric, m.openTs.toNumber(), m.closeTs.toNumber(), now); } catch (e) { log(`market #${m.id} (${metric}): last look failed — ${String(e?.message ?? e)}`); }
+      const ll = lastLookAction(proposedBucket, proposedValue, latest, thr);
+      const seen = latest ? `${latest.slot}:${latest.value}` : null;
+      if (ll.action === "void-drift") {
+        log(`market #${m.id} (${metric}): LAST LOOK — proposed ${proposedValue} → range ${proposedBucket}; the source now reports ${latest.value} for ${latest.day} (bundle ${latest.slot}) → range ${ll.bucket}`);
+        const sig = await voidMarket(publicKey, m, "the source changed the day's number into another range before the proposal was final");
+        await notify("↩️ 來源在定案前改了數字,已作廢退款", `${CLUSTER} #${m.id} ${metric}\n提案時讀到 ${proposedValue} → 格 ${proposedBucket}\n定案前東京再讀(${latest.slot}):${latest.value} → 格 ${ll.bucket}\n${sig ? `void tx ${sig}` : "(DRY RUN)"}\n來源在 6 小時內把那一天的數字改到別的區間:不派彩,全額退款。常發生就把這個指標的讀取時間(app-metrics.json readAfterHours)往後調。`, `verify-drift:${key}`, 60);
+        if (!DRY) { state[key] = { ...s, lastLook: { at: new Date().toISOString(), seen, action: ll.action, bucket: ll.bucket }, voidSig: sig }; save(); }
+      } else if (s.lastLook?.seen !== seen || s.lastLook?.action !== ll.action) {
+        log(`market #${m.id} (${metric}): last look — ${ll.action === "no-data" ? "no recent bundle carries the day; the proposal stands" : ll.action === "same" ? `the source still reports ${latest.value} (bundle ${latest.slot}); the proposal stands` : `the source now reports ${latest.value} (bundle ${latest.slot}), proposed ${proposedValue}: still range ${proposedBucket}; the proposal stands`}`);
+        if (!DRY) { state[key] = { ...s, lastLook: { at: new Date().toISOString(), seen, action: ll.action } }; save(); }
+      }
+    }
+    continue;
+  }
   let ours = null, reason = null;
   try {
-    const ev = evaluate(metric, m.openTs.toNumber(), m.closeTs.toNumber(), m.baseline.toNumber());
+    const ev = evaluate(metric, m.openTs.toNumber(), m.closeTs.toNumber(), m.baseline.toNumber(), m.resolveAfterTs.toNumber());
     if (ev.ok) ours = { value: ev.value, bucket: thr.filter((t) => ev.value >= t).length, detail: ev.detail };
     else reason = ev.reason;
   } catch (e) { reason = String(e?.message ?? e); }

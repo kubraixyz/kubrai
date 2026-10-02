@@ -4,11 +4,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { APP_SLUGS } from "./metrics.mjs";
-import { APP_METRICS, APP_METRIC_CATALOG } from "./app-metrics.mjs";
-const DAILY = Object.fromEntries(APP_METRICS.filter((m) => m.kind === "defillama_daily").map((m) => [m.id, m.lagDays ?? 2]));
+import { APP_METRICS, APP_METRIC_CATALOG, readAfterHours } from "./app-metrics.mjs";
+const DAILY = Object.fromEntries(APP_METRICS.filter((m) => m.kind === "defillama_daily").map((m) => [m.id, readAfterHours(m)]));
 /** DefiLlama-style daily metrics, one number per UTC day:
  *   <id>_today = the day the market is open for bets (the same 24 hours as every other daily market; from 2026-09-27)
- *   <id>_next  = the day that starts at the market close (retired: bettors found "today vs tomorrow" confusing) */
+ *   <id>_next  = the day that starts at the market close (retired: bettors found "today vs tomorrow" confusing)
+ *  dailyLag: hours after that day ends at which today's config reads the number (a market keeps the one it opened with). */
 export const dailyLag = (id) => DAILY[id];
 /** The period a market counts, [from, to) in unix seconds. One rule for the opener, resolver, verifier, API and pages:
  *   - betting closes at 12:00 UTC (the schedule since 2026-09-26, SharePot's): the whole UTC day it closes in. Bets
@@ -21,8 +22,13 @@ export function countedWindow(spec, openTs, closeTs) {
   if (spec?.kind === "daily" && spec.dayFrom === "close") return { from: closeTs, to: closeTs + 86400 };
   return { from: openTs, to: closeTs };
 }
-/** Start (unix s) of the UTC day a daily (DefiLlama) market is about; the day's number is read (1 + lag) days after that. */
+/** Start (unix s) of the UTC day a daily (DefiLlama) market is about. */
 export const dailyDayStart = (spec, openTs, closeTs) => countedWindow(spec, openTs, closeTs).from;
+/** When a daily (DefiLlama) market's number is read, unix s. It is the market's own resolve_after: the wait is fixed
+ *  on-chain when the market opens (2–3 days for markets opened up to 2026-10-02, 6–48 hours after), so changing the
+ *  config never moves the hour an existing market reads. Without a market (resolveAfterTs absent or 0) it is what a
+ *  market opened now would get: the end of the day plus the configured hours. */
+export const dailyReadTs = (spec, openTs, closeTs, resolveAfterTs) => (resolveAfterTs > 0 ? resolveAfterTs : dailyDayStart(spec, openTs, closeTs) + 86400 + spec.lagHours * 3600);
 export const seriesIn = (b, src) => b?.metrics?.[src]?.raw?.series ?? null;
 
 export const BASE = { ...Object.fromEntries(APP_METRICS.map((m) => [m.id, m.id])), sgt: "sgt_total", skr_ids: "skr_ids_onchain", dapps: "dapp_store_active_apps", reviews: "store_reviews_total", reviewers: "reviewers_7d", skr_staked: "skr_staked", das: "das", skr_price: "skr_price_usd_e8", ore_sol: "ore_deployed_cum", ore_hits: "ore_motherlode_cum", ore_cost: "ore_cost_ema" };
@@ -30,7 +36,7 @@ const LEGACY = { skr_staked_med7: { kind: "med7", src: "skr_staked", hours: 168 
 export function parseMetric(metric) {
   if (LEGACY[metric]) return LEGACY[metric];
   let m = metric.match(/^rev_(week|day):(.+)$/); if (m) return APP_SLUGS[m[2]] ? { kind: "cum", src: "rev:" + m[2], hours: m[1] === "day" ? 24 : 168 } : null;
-  const n = metric.match(/^(.+)_(next|today)$/); if (n && DAILY[n[1]] != null) return { kind: "daily", src: n[1], hours: 24, lagDays: DAILY[n[1]], dayFrom: n[2] === "today" ? "open" : "close" };
+  const n = metric.match(/^(.+)_(next|today)$/); if (n && DAILY[n[1]] != null) return { kind: "daily", src: n[1], hours: 24, lagHours: DAILY[n[1]], dayFrom: n[2] === "today" ? "open" : "close" };
   m = metric.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASE[m[1]]) return null;
   return { kind: m[2] === "day" || m[2] === "week" ? "cum" : "med", src: BASE[m[1]], hours: m[2] === "day" || m[2] === "dmed" ? 24 : 168 };
 }

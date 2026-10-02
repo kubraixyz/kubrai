@@ -149,7 +149,7 @@
    "seedSkr": 0
   },
   {
-   "metric": "jito_tips_today",
+   "metric": "jito_mev_tips_today",
    "cadence": "day",
    "question": "",
    "buckets": 4,
@@ -177,7 +177,7 @@
  "minWindows": 8,
  "_retired": "2026-09-25: every review-count market (reviews_day/week, rev_week:<app>) retired. One verified Seeker may review each of the 1,300+ listed apps once, so a single device can move the store-wide count by hundreds in a day; the bettors are exactly the people who own Seekers. reviewers_7d (distinct devices) would be the honest version if a review market is ever wanted.",
  "_rule": "Only apps listed in the Solana dApp Store (package names in app-metrics.json), plus the Seeker/SKR/Solana numbers themselves.",
- "_doc_today": "<id>_today: the number the source reports for the UTC day the market is open (the same 24 hours as every daily market); 4 ranges cut at the quantiles of the source's last 28 days (gap days of 0 left out); read lagDays after that day ends. (<id>_next, the day after close, was retired 2026-09-27.)",
+ "_doc_today": "<id>_today: the number the source reports for the UTC day the market is open (the same 24 hours as every daily market); 4 ranges cut at the quantiles of the source's last 28 days (gap days of 0 left out); read readAfterHours (app-metrics.json) after that day ends, which is the market's resolve_after. (<id>_next, the day after close, was retired 2026-09-27.)",
  "_paused_week": {
   "_doc": "Weekly markets paused 2026-09-26 at the user's request; move these back into templates to reopen them (Mondays 00:00 UTC).",
   "templates": [

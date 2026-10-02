@@ -4,12 +4,15 @@
 //       rev_day:<app> / rev_week:<app> (per-app store reviews, cumulative), plus a few legacy ids.
 // `scale` divides the on-chain integer threshold/observed value for display.
 import { t } from "./i18n";
-import { fmtRange, fmtRangeHtml } from "./time";
+import { fmtRange, fmtRangeHtml, fmtWait } from "./time";
 export type SourceKind = "onchain" | "store" | "thirdparty";
 export type Cadence = "day" | "week" | "other";
 export const SOURCE_LABEL: Record<SourceKind, string> = { onchain: t("srcl.onchain"), store: t("srcl.store"), thirdparty: t("srcl.thirdparty") };
+/** The source line of a market page names the third party. The broad kind alone printed "third-party aggregator
+ *  (seekertracker.com)" on every DefiLlama and Jupiter-price market until 2026-10-03. `kind` is the catalog's reader. */
+const sourceLabelOf = (source: SourceKind, kind?: string) => (kind?.startsWith("defillama") ? t("srcl.defillama") : kind === "jup_price" ? t("srcl.jupprice") : SOURCE_LABEL[source]);
 export const APP_NAMES: Record<string, string> = { jupiter: "Jupiter Mobile", tokenrun: "TokenRun", mattle: "MattleFun", cherry: "Cherry Messenger", seedvault: "Seed Vault Wallet", lootgo: "LootGO", jito: "Jito", sleepagotchi: "Sleepagotchi", moonwalk: "Moonwalk", ore: "ORE" };
-export type MetricInfo = { title: string; unit: string; how: string; scale?: number; digits?: number; source: SourceKind; cumulative?: boolean; cadence: Cadence; key?: string };
+export type MetricInfo = { title: string; unit: string; how: string; scale?: number; digits?: number; source: SourceKind; sourceLabel?: string; cumulative?: boolean; cadence: Cadence; key?: string };
 const WINDOW = { day: t("win.day"), week: t("win.week") };
 const MEDIAN_WINDOW = { dmed: t("win.dmed"), wmed: t("win.wmed") };
 const KEYS: Record<string, string> = { sgt: "sgt_total", skr_staked: "skr_staked", reviews: "store_reviews_total", dapps: "dapp_store_active_apps", reviewers: "reviewers_7d", skr_ids: "skr_ids_onchain", das: "das", skr_price: "skr_price_usd_e8", ore_sol: "ore_deployed_cum", ore_hits: "ore_motherlode_cum", ore_cost: "ore_cost_ema" };
@@ -31,34 +34,40 @@ const BASES: Record<string, { noun: string; unit: string; source: SourceKind; sc
 const LEGACY: Record<string, MetricInfo> = {
   skr_staked_med7: { title: t("m.skr_staked_med7.title"), unit: t("u.SKR"), scale: 1_000_000, source: "onchain", cadence: "week", how: t("m.skr_staked_med7.how") },
   das_med7: { title: t("m.das_med7.title"), unit: t("u.IDs"), source: "thirdparty", cadence: "week", how: t("m.das_med7.how") },
-  skr_price_close: { title: t("m.skr_price_close.title"), unit: t("u.USD"), scale: 100_000_000, source: "thirdparty", cadence: "other", how: t("m.skr_price_close.how") },
+  skr_price_close: { title: t("m.skr_price_close.title"), unit: t("u.USD"), scale: 100_000_000, source: "thirdparty", sourceLabel: t("srcl.jupprice"), cadence: "other", how: t("m.skr_price_close.how") },
 };
 // Per-app metrics are configured on the server (server/app-metrics.json) and described by /metrics; the page gets that
 // catalog embedded (window.__BOOT__.metricCatalog). Unknown ids resolve through it, so a new app market needs no web build.
-type CatalogEntry = { id: string; category?: string; lagDays?: number; app: string; noun: string; level: string; unit: string; scale: number; digits: number; source: SourceKind; how: string; pushCost?: string | null };
+type CatalogEntry = { id: string; category?: string; kind?: string; readAfterHours?: number; lagDays?: number; app: string; noun: string; level: string; unit: string; scale: number; digits: number; source: SourceKind; how: string; pushCost?: string | null };
 const catalog: Record<string, CatalogEntry> = ((globalThis as any).__BOOT__?.metricCatalog as Record<string, CatalogEntry>) ?? {};
 export const catalogEntry = (id: string) => catalog[id];
-/** closeTs (when known) lets a "tomorrow" market name its day as the viewer's own clock shows it, not as a UTC date. */
-export function metricInfo(id: string, closeTs?: number): MetricInfo | undefined {
+/** How long after its day ends a DefiLlama market's number is read, in seconds. It is the market's own: the gap
+ *  between the end of the counted day and its on-chain resolve_after (2–3 days for markets opened up to 2026-10-02,
+ *  6–48 hours since). Without a market it is what the catalog says a market opened now would get. */
+const dailyWait = (c: CatalogEntry, dayEnd?: number, resolveAfterTs?: number) => (dayEnd && resolveAfterTs && resolveAfterTs >= dayEnd ? resolveAfterTs - dayEnd : (c.readAfterHours ?? (c.lagDays ?? 2) * 24) * 3600);
+/** closeTs (when known) lets a "tomorrow" market name its day as the viewer's own clock shows it, not as a UTC date;
+ *  with resolveAfterTs as well, a daily-source market states its own wait. */
+export function metricInfo(id: string, closeTs?: number, resolveAfterTs?: number): MetricInfo | undefined {
   if (LEGACY[id]) return LEGACY[id];
   const td = id.match(/^(.+)_today$/);
-  if (td && catalog[td[1]]) { const c = catalog[td[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: "day", key: c.id, how: `${c.how} ${t("m.todayHow", { lag: c.lagDays ?? 2 })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
+  if (td && catalog[td[1]]) { const c = catalog[td[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} ${t("m.todayHow", { wait: fmtWait(dailyWait(c, closeTs && closeTs % 86400 === 12 * 3600 ? closeTs + 12 * 3600 : undefined, resolveAfterTs)) })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
   const nx = id.match(/^(.+)_next$/);   // retired 2026-09-27 (the day after close); kept for the markets opened before
-  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: "day", key: c.id, how: `${c.how} ${t("m.nextHow", { lag: c.lagDays ?? 2, window: closeTs ? fmtRange(closeTs, closeTs + 86400) : t("m.nextWindowGeneric") })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
+  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} ${t("m.nextHow", { lag: Math.round(dailyWait(c, closeTs ? closeTs + 86400 : undefined, resolveAfterTs) / 86400), window: closeTs ? fmtRange(closeTs, closeTs + 86400) : t("m.nextWindowGeneric") })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
   const cm = id.match(/^(.+)_(day|week|dmed|wmed)$/);
   if (cm && catalog[cm[1]]) {
     const c = catalog[cm[1]], k = cm[2];
-    if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: t("m.appChange", { noun: c.noun }), w: WINDOW[k] }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cumulative: true, cadence: k, key: c.id, how: `${c.how} ${t("m.appCumHow", { w: WINDOW[k] })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
+    if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: t("m.appChange", { noun: c.noun }), w: WINDOW[k] }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cumulative: true, cadence: k, key: c.id, how: `${c.how} ${t("m.appCumHow", { w: WINDOW[k] })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
     const w = MEDIAN_WINDOW[k as "dmed" | "wmed"];
-    return { title: t("m.medTitle", { level: c.level.includes(c.app) ? c.level : `${c.app} · ${c.level}`, w }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: k === "dmed" ? "day" : "week", key: c.id, how: `${c.how} ${t("m.appMedHow", { w })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
+    return { title: t("m.medTitle", { level: c.level.includes(c.app) ? c.level : `${c.app} · ${c.level}`, w }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: k === "dmed" ? "day" : "week", key: c.id, how: `${c.how} ${t("m.appMedHow", { w })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
   }
   let m = id.match(/^rev_(week|day):(.+)$/);
   if (m) { const app = APP_NAMES[m[2]] ?? m[2]; const w = WINDOW[m[1] as "day" | "week"]; return { title: t("m.rev.title", { app, w }), unit: t("u.reviews"), cumulative: true, source: "store", cadence: m[1] as Cadence, key: "rev:" + m[2], how: t("m.rev.how", { app, w }) }; }
   m = id.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASES[m[1]]) return undefined;
   const b = BASES[m[1]], k = m[2];
-  if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: b.noun, w: WINDOW[k] }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, cumulative: true, cadence: k, key: KEYS[m[1]], how: b.cum(WINDOW[k]) };
+  const sourceLabel = m[1] === "skr_price" ? t("srcl.jupprice") : undefined;   // the one built-in number that is a Jupiter quote
+  if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: b.noun, w: WINDOW[k] }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, sourceLabel, cumulative: true, cadence: k, key: KEYS[m[1]], how: b.cum(WINDOW[k]) };
   const w = MEDIAN_WINDOW[k as "dmed" | "wmed"]; const cadence: Cadence = k === "dmed" ? "day" : "week";
-  return { title: t("m.medTitle", { level: b.level[0].toUpperCase() + b.level.slice(1), w }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
+  return { title: t("m.medTitle", { level: b.level[0].toUpperCase() + b.level.slice(1), w }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, sourceLabel, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
 }
 /** The period whose number decides the market (mirrors server/history.mjs countedWindow):
  *  betting closes at 12:00 UTC (the schedule since 2026-09-26) → the whole UTC day it closes in; an older "_next" market →

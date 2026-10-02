@@ -67,7 +67,7 @@ async function propose(markets, now) {
    try {
     if (m.status !== 0 || now < m.resolveAfterTs.toNumber()) continue;
     const metric = tag(m.metric);
-    const ev = evaluate(metric, m.openTs.toNumber(), m.closeTs.toNumber(), m.baseline.toNumber());
+    const ev = evaluate(metric, m.openTs.toNumber(), m.closeTs.toNumber(), m.baseline.toNumber(), m.resolveAfterTs.toNumber());
     if (!ev.ok) { log(`market #${m.id} (${metric}): cannot resolve yet — ${ev.reason}`); continue; }
     if (!Number.isInteger(ev.value)) { log(`market #${m.id}: observed value ${ev.value} is not an integer — refusing to propose`); continue; }
     const shas = {}; let bad = null;

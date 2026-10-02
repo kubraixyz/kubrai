@@ -7,9 +7,14 @@
 //   account_u64      { address, offset, decimals } a u64 field inside an account (stake-pool totals, program counters)
 //   defillama_tvl    { slug }                      protocol TVL in USD (DefiLlama, third-party aggregator)
 //   defillama_dex    { slug, category? }           last-24h volume in USD (DefiLlama; category dexs | aggregators | derivatives)
-//   defillama_daily  { path, lagDays? }             one number per UTC day from DefiLlama (fees, revenue, volume...), e.g. path
+//   defillama_daily  { path, readAfterHours? }      one number per UTC day from DefiLlama (fees, revenue, volume...), e.g. path
 //                                                  "summary/fees/pump.fun?dataType=dailyRevenue". Stores the last 120 days as
-//                                                  raw.series [[YYYY-MM-DD, value]]; markets on it are <id>_next (see history.mjs).
+//                                                  raw.series [[YYYY-MM-DD, value]]; markets on it are <id>_today (see history.mjs).
+//                                                  readAfterHours = how long after the day ends its number is read: past the
+//                                                  hour the source stops moving it (measured 2026-09-25..10-02 from our hourly
+//                                                  bundles: fees appear once at +1..+4 h; rolling wallets settle by +4 h;
+//                                                  Jupiter volume appears at +12 h; Jupiter revenue is revised at +14..+15 h
+//                                                  and once at +38 h).
 //   jup_price        { mint, decimals? }           Jupiter price v3 in USD (third-party quote), stored ×1e8
 //   program_tx       { program }                   running count of confirmed transactions that touched a program (cursor kept
 //                                                  on disk; a gap longer than what the RPC still holds fails loudly instead of guessing)
@@ -24,8 +29,12 @@ const UA = "kubrai-snapshot/0.1 (+https://kubrai.xyz)";
 const CFG = process.env.APP_METRICS ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "app-metrics.json");
 const KIND_SOURCE = { defillama_daily: "thirdparty", token_supply: "onchain", token_balance: "onchain", sol_balance: "onchain", account_u64: "onchain", program_tx: "onchain", defillama_tvl: "thirdparty", defillama_dex: "thirdparty", jup_price: "thirdparty" };
 export const APP_METRICS = fs.existsSync(CFG) ? JSON.parse(fs.readFileSync(CFG, "utf8")).metrics : [];
-/** id → copy for the web/app (title, unit, scale, source, how); the API serves it as /metrics. */
-export const APP_METRIC_CATALOG = Object.fromEntries(APP_METRICS.map((m) => [m.id, { id: m.id, category: m.category ?? "Other", app: m.app, package: m.package ?? null, noun: m.noun, level: m.level ?? m.noun, unit: m.unit, scale: m.scale ?? 1, digits: m.digits ?? 0, source: m.source ?? KIND_SOURCE[m.kind], how: m.how ?? "", pushCost: m.pushCost ?? null, kind: m.kind, lagDays: m.lagDays ?? 2 }]));
+/** Hours after the counted UTC day ends at which a defillama_daily number is read (lagDays, in days, is the spelling
+ *  the config used until 2026-10-02). It becomes resolve_after when a market opens; a market already open keeps its own. */
+export const readAfterHours = (m) => m.readAfterHours ?? (m.lagDays ?? 2) * 24;
+/** id → copy for the web/app (title, unit, scale, source, how); the API serves it as /metrics.
+ *  lagDays stays for app builds up to 0.1.38, which print it; everything newer reads the market's own resolve_after. */
+export const APP_METRIC_CATALOG = Object.fromEntries(APP_METRICS.map((m) => [m.id, { id: m.id, category: m.category ?? "Other", app: m.app, package: m.package ?? null, noun: m.noun, level: m.level ?? m.noun, unit: m.unit, scale: m.scale ?? 1, digits: m.digits ?? 0, source: m.source ?? KIND_SOURCE[m.kind], how: m.how ?? "", pushCost: m.pushCost ?? null, kind: m.kind, ...(m.kind === "defillama_daily" ? { readAfterHours: readAfterHours(m), lagDays: readAfterHours(m) / 24 } : {}) }]));
 
 async function getJson(url, timeoutMs = 30000, retries = 1) {
   for (let attempt = 0; ; attempt++) {

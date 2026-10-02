@@ -6,8 +6,18 @@
 export type SourceKind = "onchain" | "store" | "thirdparty";
 export type Cadence = "day" | "week" | "other";
 export const SOURCE_LABEL: Record<SourceKind, string> = { onchain: "on-chain, anyone can recompute", store: "Solana dApp Store API (first-party, off-chain), snapshot hash on-chain", thirdparty: "third-party aggregator (seekertracker.com), snapshot hash on-chain" };
+/** The source line names the third party. The broad kind alone printed "third-party aggregator (seekertracker.com)"
+ *  on every DefiLlama and Jupiter-price market until 0.1.39. `kind` is the catalog's reader. Same as the web. */
+const SRC_DEFILLAMA = "DefiLlama (third-party aggregator), snapshot hash on-chain", SRC_JUPPRICE = "Jupiter price API (third-party quote), snapshot hash on-chain";
+const sourceLabelOf = (source: SourceKind, kind?: string) => (kind?.startsWith("defillama") ? SRC_DEFILLAMA : kind === "jup_price" ? SRC_JUPPRICE : SOURCE_LABEL[source]);
+/** A wait written out: "6 hours", "1 day", "2 days": whole days when it is whole days, hours otherwise. */
+export function fmtWait(secs: number) {
+  const h = Math.max(1, Math.round(secs / 3600));
+  if (h % 24 === 0) return h === 24 ? "1 day" : `${h / 24} days`;
+  return h === 1 ? "1 hour" : `${h} hours`;
+}
 export const APP_NAMES: Record<string, string> = { jupiter: "Jupiter Mobile", tokenrun: "TokenRun", mattle: "MattleFun", cherry: "Cherry Messenger", seedvault: "Seed Vault Wallet", lootgo: "LootGO", jito: "Jito", sleepagotchi: "Sleepagotchi", moonwalk: "Moonwalk", ore: "ORE" };
-export type MetricInfo = { title: string; unit: string; how: string; scale?: number; digits?: number; source: SourceKind; cumulative?: boolean; cadence: Cadence; key?: string };
+export type MetricInfo = { title: string; unit: string; how: string; scale?: number; digits?: number; source: SourceKind; sourceLabel?: string; cumulative?: boolean; cadence: Cadence; key?: string };
 const WINDOW = { day: "today", week: "this week" } as const;
 const MEDIAN_WINDOW = { dmed: "24-hour median", wmed: "7-day median" } as const;
 const KEYS: Record<string, string> = { sgt: "sgt_total", skr_staked: "skr_staked", reviews: "store_reviews_total", dapps: "dapp_store_active_apps", reviewers: "reviewers_7d", skr_ids: "skr_ids_onchain", das: "das", skr_price: "skr_price_usd_e8", ore_sol: "ore_deployed_cum", ore_hits: "ore_motherlode_cum", ore_cost: "ore_cost_ema" };
@@ -32,30 +42,36 @@ const LEGACY: Record<string, MetricInfo> = {
   skr_price_close: { title: "SKR price at close", unit: "USD", scale: 100_000_000, source: "thirdparty", cadence: "other", how: "Jupiter price v3 at the closing snapshot." },
 };
 // Per-app metrics are configured on the server; the app loads the catalog once (loadMetricCatalog) and resolves unknown ids through it.
-type CatalogEntry = { id: string; category?: string; app: string; noun: string; level: string; unit: string; scale: number; digits: number; source: SourceKind; how: string; pushCost?: string | null };
+type CatalogEntry = { id: string; category?: string; kind?: string; readAfterHours?: number; lagDays?: number; app: string; noun: string; level: string; unit: string; scale: number; digits: number; source: SourceKind; how: string; pushCost?: string | null };
 let catalog: Record<string, CatalogEntry> = {};
 export async function loadMetricCatalog(apiBase: string) { try { const r = await fetch(apiBase + "/metrics"); if (r.ok) catalog = (await r.json()).metrics ?? {}; } catch {} }
 export const catalogEntry = (id: string): CatalogEntry | undefined => catalog[id];
-export function metricInfo(id: string): MetricInfo | undefined {
+/** How long after its day ends a DefiLlama market's number is read, in seconds: the gap between the end of the counted
+ *  day and the market's own on-chain resolve_after (2–3 days for markets opened up to 2026-10-02, 6–48 hours since).
+ *  Without a market it is what the catalog says a market opened now would get. Same as the web. */
+const dailyWait = (c: CatalogEntry, dayEnd?: number, resolveAfterTs?: number) => (dayEnd && resolveAfterTs && resolveAfterTs >= dayEnd ? resolveAfterTs - dayEnd : (c.readAfterHours ?? (c.lagDays ?? 2) * 24) * 3600);
+/** With closeTs and resolveAfterTs (the market page) a daily-source market states its own wait. */
+export function metricInfo(id: string, closeTs?: number, resolveAfterTs?: number): MetricInfo | undefined {
   if (LEGACY[id]) return LEGACY[id];
   const td = id.match(/^(.+)_today$/);
-  if (td && catalog[td[1]]) { const c = catalog[td[1]]; return { title: `${c.app}: ${c.noun}`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: "day", key: c.id, how: `${c.how} Counts the 24 hours the market is open. The source publishes a day's number about ${(c as any).lagDays ?? 2} days after it ends; the first figure settles the market, later revisions do not count.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` }; }
+  if (td && catalog[td[1]]) { const c = catalog[td[1]]; return { title: `${c.app}: ${c.noun}`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} The day's number is read ${fmtWait(dailyWait(c, closeTs && closeTs % 86400 === 12 * 3600 ? closeTs + 12 * 3600 : undefined, resolveAfterTs))} after the day ends: whatever the source shows at that moment settles the market, and later revisions do not count. If the source moves that day's number into another range before the result is final, the market is voided and every stake is refunded.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` }; }
   const nx = id.match(/^(.+)_next$/);   // retired 2026-09-27; the markets opened before still use it
-  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: `${c.app}: ${c.noun} (24 h after close)`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: "day", key: c.id, how: `${c.how} Counts the 24 hours that start when betting closes; it is read ${(c as any).lagDays ?? 2} days after that day ends, later revisions do not count.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` }; }
+  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: `${c.app}: ${c.noun} (24 h after close)`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} Counts the 24 hours that start when betting closes; it is read ${Math.round(dailyWait(c, closeTs ? closeTs + 86400 : undefined, resolveAfterTs) / 86400)} days after that day ends, later revisions do not count.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` }; }
   const cm = id.match(/^(.+)_(day|week|dmed|wmed)$/);
   if (cm && catalog[cm[1]]) {
     const c = catalog[cm[1]], k = cm[2];
-    if (k === "day" || k === "week") return { title: `Change in ${c.noun} ${WINDOW[k]}`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cumulative: true, cadence: k, key: c.id, how: `${c.how} Resolves on the change between the opening hour's snapshot and the closing hour's.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` };
+    if (k === "day" || k === "week") return { title: `Change in ${c.noun} ${WINDOW[k]}`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cumulative: true, cadence: k, key: c.id, how: `${c.how} Resolves on the change between the opening hour's snapshot and the closing hour's.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` };
     const w = MEDIAN_WINDOW[k as "dmed" | "wmed"];
-    return { title: `${c.level.includes(c.app) ? c.level : `${c.app} · ${c.level}`} (${w})`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, cadence: k === "dmed" ? "day" : "week", key: c.id, how: `${c.how} Resolves on the ${w} of every hourly reading inside the window.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` };
+    return { title: `${c.level.includes(c.app) ? c.level : `${c.app} · ${c.level}`} (${w})`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: k === "dmed" ? "day" : "week", key: c.id, how: `${c.how} Resolves on the ${w} of every hourly reading inside the window.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` };
   }
   let m = id.match(/^rev_(week|day):(.+)$/);
   if (m) { const app = APP_NAMES[m[2]] ?? m[2]; const w = WINDOW[m[1] as "day" | "week"]; return { title: `New ${app} reviews ${w}`, unit: "reviews", cumulative: true, source: "store", cadence: m[1] as Cadence, key: "rev:" + m[2], how: `Increase in ${app}'s total dApp Store reviews between the opening baseline and the closing snapshot (${w}), read directly from the Solana dApp Store API. Reviews can only be written from a Seeker device, one per device per app, so each extra review costs a phone.` }; }
   m = id.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASES[m[1]]) return undefined;
   const b = BASES[m[1]], k = m[2];
-  if (k === "day" || k === "week") return { title: `${b.noun} ${WINDOW[k]}`, unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, cumulative: true, cadence: k, key: KEYS[m[1]], how: b.cum(WINDOW[k]) };
+  const sourceLabel = m[1] === "skr_price" ? SRC_JUPPRICE : undefined;   // the one built-in number that is a Jupiter quote
+  if (k === "day" || k === "week") return { title: `${b.noun} ${WINDOW[k]}`, unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, sourceLabel, cumulative: true, cadence: k, key: KEYS[m[1]], how: b.cum(WINDOW[k]) };
   const w = MEDIAN_WINDOW[k as "dmed" | "wmed"]; const cadence: Cadence = k === "dmed" ? "day" : "week";
-  return { title: `${b.level[0].toUpperCase()}${b.level.slice(1)} (${w})`, unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
+  return { title: `${b.level[0].toUpperCase()}${b.level.slice(1)} (${w})`, unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, sourceLabel, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
 }
 export const metricLabel = (id: string) => metricInfo(id)?.title ?? id;
 /** A metric's title without its "today" / "this week" (or the older "24 h after close"): for wherever the period is

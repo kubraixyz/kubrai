@@ -9,7 +9,7 @@ import { connection, programId } from "./kubrai";
 import { nextStepHead, timelineGrid } from "./timeline";
 import { bindReferralAfterBet } from "./referral";
 import { explorerTx } from "./explorer";
-import { fmtRange, fmtTsShort, inWords, zoneName, zoneShort } from "./time";
+import { fmtRange, fmtTsShort, fmtWait, inWords, zoneName, zoneShort } from "./time";
 import { dayName, daysHtml, placeDays, seriesOf } from "./series";
 import { t } from "./i18n";
 
@@ -43,7 +43,7 @@ function refreshProof(rerender = true) {
 async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); render(); void refreshProof(); void loadPosition(); }
 onSession(() => { if (!cfg) return; proof = { ...proof, accounts: [], sgt: false, stake: false }; render(); void refreshProof(); });
 function render() {
-  const copy = metricInfo(m.metric, m.closeTs);
+  const copy = metricInfo(m.metric, m.closeTs, m.resolveAfterTs);
   const now = Date.now() / 1000, open = m.status === 0 && now >= m.openTs && now < m.closeTs;
   const earlyUntil = earlyBirdUntil(cfg, m), early = now < earlyUntil;
   const fee = feeWithDiscounts(cfg.feeBps, early, cfg.earlyBirdDiscountBps, proof);
@@ -55,7 +55,7 @@ function render() {
     <div class="mnow"><b>${esc(open ? t("mkt.headOpen", { in: inWords(m.closeTs) }) : nextStepHead(m, cfg))}</b><span>${t("card.inPot", { amt: fmtAmt(totalPool(m), 0), tok: TOKEN_SYMBOL })}</span><span>${t("card.bettors", { n: m.positions })}</span><span class="zone" title="${esc(zoneName())}">${t("mkt.zoneShort", { z: esc(zoneShort()) })}</span></div>
     ${timelineGrid(m, cfg)}
     <p class="lead">${copy?.how ?? ""}</p>
-    <div class="kv" style="margin-bottom:16px"><b>${t("mkt.source")}</b><span>${SOURCE_LABEL[copy?.source ?? "thirdparty"]}</span></div>
+    <div class="kv" style="margin-bottom:16px"><b>${t("mkt.source")}</b><span>${copy?.sourceLabel ?? SOURCE_LABEL[copy?.source ?? "thirdparty"]}</span></div>
     ${poolsHtml(m, m.status >= 1 && m.proposedOutcome !== NO_OUTCOME ? m.proposedOutcome : -1)}
     <h2>${t("mkt.bet")}</h2>
     <div id="bet"></div>
@@ -208,7 +208,7 @@ else load().catch((e) => {
 async function loadEvidence() {
   const el = document.getElementById("evidence"); if (!el) return;
   try {
-    const r = await fetch(`${API_BASE}/evidence?metric=${encodeURIComponent(m.metric)}&open=${m.openTs}&close=${m.closeTs}&baseline=${m.baseline}&id=${m.id}`);
+    const r = await fetch(`${API_BASE}/evidence?metric=${encodeURIComponent(m.metric)}&open=${m.openTs}&close=${m.closeTs}&baseline=${m.baseline}&id=${m.id}&resolveAfter=${m.resolveAfterTs}`);
     if (!r.ok) { el.textContent = t("ev.none"); return; }
     const e = await r.json(); const fv = (v: number | null | undefined) => (v == null ? "—" : fmtValue(m.metric, v, m.thresholds));
     const when = (slot?: string | null) => !slot ? "" : slot === "on-chain" ? t("ev.onchainBaseline") : `<a href="${API_BASE}/snapshots/${slot}" target="_blank" rel="noopener" title="${esc(t("ev.rawSnapshot"))}">${esc(fmtTsShort(Date.parse(slot + ":00:00Z") / 1000))}</a>`;
@@ -219,7 +219,14 @@ async function loadEvidence() {
       const dayWin = (d: string) => { const s = Date.parse(d + "T00:00:00Z") / 1000; return esc(fmtRange(s, s + 86400)); };
       rows.push(row(t("ev.dailyDay"), dayWin(e.day), null));
       if (e.resolution) rows.push(row(t("ev.result"), fv(e.resolution.observed), e.resolution.slot ? { slot: e.resolution.slot } : null));
-      else rows.push(row(t("ev.dailyReported"), e.reported != null ? fv(e.reported) : t("ev.dailyNotYet", { lag: e.lagDays }), null));
+      else {
+        // Not read yet. The source usually shows the day's number long before the market reads it, and a page that
+        // prints that number without saying when it is read looks like a market that forgot to settle (2026-10-02).
+        const dayEnd = Date.parse(e.day + "T00:00:00Z") / 1000 + 86400, readAt: number = e.readAt ?? m.resolveAfterTs, wait = fmtWait(readAt - dayEnd);
+        rows.push(row(t("ev.dailyReported"), e.reported != null ? fv(e.reported) : t("ev.dailyNotYet", { wait }), null));
+        rows.push(row(t("ev.dailyReadAt"), esc(fmtTs(readAt)), null));
+        rows.push(`<div class="note">${esc(t("ev.dailyReadNote", { wait }))}</div>`);
+      }
       if (e.recent?.length) rows.push(`<details><summary>${t("ev.dailyRecent")}</summary>${e.recent.map(([d, v]: [string, number]) => row(dayWin(d), fv(v), null)).join("")}</details>`);
       if (e.source) rows.push(`<div class="note">${esc(e.source)}</div>`);
       el.innerHTML = rows.join(""); return;
