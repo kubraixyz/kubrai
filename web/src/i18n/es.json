@@ -396,5 +396,7 @@
  "bet.slow": "Aún esperando la confirmación — firma {sig}. No vuelvas a apostar hasta que aparezca en la cadena.",
  "bet.unconfirmed": "Sigue sin confirmarse tras {min} minutos — revisa el enlace del explorador antes de volver a apostar: {sig}",
  "ref.signNote": "Una firma más aplica tu invitación — no cuesta nada y no mueve fondos.",
- "days.aria": "El mismo mercado en otros días"
+ "days.aria": "El mismo mercado en otros días",
+ "err.marketMissing": "No existe el mercado #{id}. Puede que el enlace esté mal escrito o sea antiguo.",
+ "err.marketNoId": "Este enlace no indica qué mercado abrir."
 }

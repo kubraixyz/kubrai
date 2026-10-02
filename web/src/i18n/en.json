@@ -396,5 +396,7 @@
  "bet.slow": "Still waiting for confirmation — signature {sig}. Do not bet again until it shows up.",
  "bet.unconfirmed": "Still unconfirmed after {min} minutes — check the explorer link before betting again: {sig}",
  "ref.signNote": "One more signature applies your invite — it costs nothing and moves no funds.",
- "days.aria": "The same market on other days"
+ "days.aria": "The same market on other days",
+ "err.marketMissing": "There is no market #{id}. The link may be mistyped or out of date.",
+ "err.marketNoId": "This link does not say which market to open."
 }

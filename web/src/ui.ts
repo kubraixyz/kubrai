@@ -83,39 +83,46 @@ export const onSession = (fn: (s: Session | null) => void) => { listeners.push(f
 export const getSession = () => session;
 function setSession(s: Session | null) { session = s; try { s ? localStorage.setItem("kubrai.wallet", s.label) : localStorage.removeItem("kubrai.wallet"); } catch {} balances.loaded = false; listeners.forEach((f) => f(s)); renderWallet(); refreshBalances(); if (s) bindIfPending(s); }
 
-/** Feedback: a small button pinned to the corner of every page. No wallet needed; the note goes to /feedback with the
- *  page it was written on, plus the wallet address when one happens to be connected. Same endpoint the app uses. */
+/** Feedback. No wallet needed; the note goes to /feedback with the page it was written on, plus the wallet address
+ *  when one happens to be connected. Same endpoint the app uses.
+ *  Where the page is wider than its column (above 960px) the way in is a pill floating in the margin. Below that there
+ *  is no margin: floating, it lay on top of the text being read, as a pill and then as a small round button too. There
+ *  the way in is a line in the ☰ menu and a link in the footer of every page (CSS shows one or the other). */
 export function mountFeedback() {
   if (!API_BASE || document.getElementById("fbbtn")) return;
-  // On a phone the pill with the word on it sat on top of the text being read (it has no margin to float in there), so
-  // below 600px it is a small round button with a speech bubble; the word stays as its accessible name.
-  const btn = document.createElement("button"); btn.id = "fbbtn"; btn.className = "fbbtn"; btn.setAttribute("aria-label", t("fb.button")); btn.title = t("fb.button");
-  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg><span>${esc(t("fb.button"))}</span>`;
-  document.body.appendChild(btn);
-  btn.onclick = () => {
-    if (document.getElementById("fbbox")) return;
-    const box = document.createElement("div"); box.id = "fbbox"; box.className = "fbbox";
-    box.innerHTML = `<div class="fbhead"><b>${t("fb.head")}</b><button class="ghost" id="fbx" aria-label="${esc(t("common.close"))}">\u2715</button></div>
-      <textarea id="fbmsg" rows="5" maxlength="4000" placeholder="${esc(t("fb.msgPh"))}"></textarea>
-      <input id="fbcontact" maxlength="200" placeholder="${esc(t("fb.contactPh"))}">
-      <input id="fbweb" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px">
-      <div class="fbrow"><span class="note" id="fbnote">${t("fb.orEmail")}</span><button class="primary" id="fbsend">${t("fb.send")}</button></div>`;
-    document.body.appendChild(box);
-    const $ = <T extends HTMLElement>(id: string) => box.querySelector<T>("#" + id)!;
-    const msg = $<HTMLTextAreaElement>("fbmsg"), send = $<HTMLButtonElement>("fbsend"), note = $("fbnote");
-    msg.focus(); $("fbx").onclick = () => box.remove();
-    send.onclick = async () => {
-      if ($<HTMLInputElement>("fbweb").value) { box.remove(); return; }   // honeypot
-      if (msg.value.trim().length < 5) { note.textContent = t("fb.tooShort"); return; }
-      send.disabled = true; send.textContent = t("fb.sending");
-      try {
-        const r = await fetch(API_BASE + "/feedback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: msg.value, wallet: session ? session.publicKey.toBase58() : null, diagnostics: { app: "web", page: location.pathname + location.search, contact: $<HTMLInputElement>("fbcontact").value.slice(0, 200), ua: navigator.userAgent.slice(0, 200), lang: navigator.language } }) });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(j.error ?? "HTTP " + r.status);
-        box.innerHTML = `<div class="fbhead"><b>${t("fb.thanks")}</b></div><div class="note">${t("fb.thanksNote")}</div>`;
-        setTimeout(() => box.remove(), 2500);
-      } catch (e: any) { note.textContent = t("fb.fail", { err: String(e?.message ?? e) }); send.disabled = false; send.textContent = t("fb.send"); }
-    };
+  const btn = document.createElement("button"); btn.id = "fbbtn"; btn.className = "fbbtn"; btn.textContent = t("fb.button");
+  document.body.appendChild(btn); btn.onclick = openFeedback;
+  const foot = document.querySelector("footer");
+  if (foot) {
+    // the dot that separates it from the footer's text sits beside the button, not inside it: a button is named by all it holds
+    const wrap = document.createElement("span"); wrap.className = "fbfoot"; wrap.append(" \u00b7 ");
+    const link = document.createElement("button"); link.id = "fblink"; link.className = "fblink"; link.textContent = t("fb.button"); link.onclick = openFeedback;
+    wrap.appendChild(link); foot.appendChild(wrap);
+  }
+}
+function openFeedback() {
+  if (document.getElementById("fbbox")) return;
+  const box = document.createElement("div"); box.id = "fbbox"; box.className = "fbbox";
+  box.innerHTML = `<div class="fbhead"><b>${t("fb.head")}</b><button class="ghost" id="fbx" aria-label="${esc(t("common.close"))}">\u2715</button></div>
+    <textarea id="fbmsg" rows="5" maxlength="4000" placeholder="${esc(t("fb.msgPh"))}"></textarea>
+    <input id="fbcontact" maxlength="200" placeholder="${esc(t("fb.contactPh"))}">
+    <input id="fbweb" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px">
+    <div class="fbrow"><span class="note" id="fbnote">${t("fb.orEmail")}</span><button class="primary" id="fbsend">${t("fb.send")}</button></div>`;
+  document.body.appendChild(box);
+  const $ = <T extends HTMLElement>(id: string) => box.querySelector<T>("#" + id)!;
+  const msg = $<HTMLTextAreaElement>("fbmsg"), send = $<HTMLButtonElement>("fbsend"), note = $("fbnote");
+  msg.focus(); $("fbx").onclick = () => box.remove();
+  send.onclick = async () => {
+    if ($<HTMLInputElement>("fbweb").value) { box.remove(); return; }   // honeypot
+    if (msg.value.trim().length < 5) { note.textContent = t("fb.tooShort"); return; }
+    send.disabled = true; send.textContent = t("fb.sending");
+    try {
+      const r = await fetch(API_BASE + "/feedback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note: msg.value, wallet: session ? session.publicKey.toBase58() : null, diagnostics: { app: "web", page: location.pathname + location.search, contact: $<HTMLInputElement>("fbcontact").value.slice(0, 200), ua: navigator.userAgent.slice(0, 200), lang: navigator.language } }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error ?? "HTTP " + r.status);
+      box.innerHTML = `<div class="fbhead"><b>${t("fb.thanks")}</b></div><div class="note">${t("fb.thanksNote")}</div>`;
+      setTimeout(() => box.remove(), 2500);
+    } catch (e: any) { note.textContent = t("fb.fail", { err: String(e?.message ?? e) }); send.disabled = false; send.textContent = t("fb.send"); }
   };
 }
 /** Language picker in the header, left of the wallet; the choice is a cookie so the server renders the next page in it.
@@ -163,8 +170,9 @@ function renderNavMenu() {
   if (!navOpen) return;
   const links = [...document.querySelectorAll<HTMLAnchorElement>("header.top .nav a")].map((a) => `<a class="mi" href="${esc(a.getAttribute("href") ?? "/")}">${esc(a.textContent ?? "")}</a>`).join("");
   const menu = document.createElement("div"); menu.className = "menu navmenu"; menu.id = "navmenu";
-  menu.innerHTML = `${links}<div class="langrow"><select id="lang2" class="lang" aria-label="${esc(t("lang.label"))}">${LANGS.map(([k, name]) => `<option value="${k}"${k === LANG ? " selected" : ""}>${name}</option>`).join("")}</select></div>`;
+  menu.innerHTML = `${links}${API_BASE ? `<button class="mi" id="navfb">${esc(t("fb.button"))}</button>` : ""}<div class="langrow"><select id="lang2" class="lang" aria-label="${esc(t("lang.label"))}">${LANGS.map(([k, name]) => `<option value="${k}"${k === LANG ? " selected" : ""}>${name}</option>`).join("")}</select></div>`;
   menu.querySelector<HTMLSelectElement>("#lang2")!.onchange = (e) => setLang((e.target as HTMLSelectElement).value);
+  const fb = menu.querySelector<HTMLButtonElement>("#navfb"); if (fb) fb.onclick = () => { closeNav(); openFeedback(); };
   box.appendChild(menu);
 }
 function closeNav() { if (navOpen) { navOpen = false; renderNavMenu(); } }

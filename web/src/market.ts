@@ -16,7 +16,8 @@ import { t } from "./i18n";
 mountNetBadge(); mountWallet();
 document.addEventListener("click", (e) => { if ((e.target as HTMLElement | null)?.id === "goconnect") openWalletMenu(); });
 const root = document.getElementById("market")!;
-const id = Number(new URLSearchParams(location.search).get("id"));
+const idParam = new URLSearchParams(location.search).get("id");
+const id = idParam != null && /^\d{1,9}$/.test(idParam) ? Number(idParam) : NaN;
 let m: MarketView, cfg: any, bucket = 0;
 // A bet the chain has not answered for after the first minute of waiting. While set, every render of the bet box shows
 // this note and draws the bet button disabled — wallet events re-render the box, and a fresh enabled button would invite
@@ -191,7 +192,16 @@ async function showDays() {
   box.innerHTML = daysHtml(days, cur); placeDays(box.firstElementChild as HTMLElement);
 }
 void showDays();
-load().catch((e) => (root.innerHTML = `<div class="msg err">${t("err.market", { id: esc(id), err: esc(e.message ?? e) })}</div>`));
+// A link with no market number in it, or with one that no market has (mistyped, or cut short when it was shared), says
+// so in plain words and offers the way back. It used to show whatever the decoder threw: "Could not load market #NaN:
+// Trying to access beyond buffer length".
+const missingHtml = (key: string) => `<div class="msg">${t(key, { id: esc(idParam ?? "") })}</div><p><a href="/">${t("nav.all")}</a></p>`;
+if (Number.isNaN(id)) root.innerHTML = missingHtml(idParam ? "err.marketMissing" : "err.marketNoId");
+else load().catch((e) => {
+  const known = bootMarkets();   // the list the page arrived with: a number that is not in it is not a market
+  const gone = (known ? !known.some((x) => x.id === id) : false) || /does not exist|has no data|beyond buffer/i.test(String(e?.message ?? e));
+  root.innerHTML = gone ? missingHtml("err.marketMissing") : `<div class="msg err">${t("err.market", { id: esc(id), err: esc(e.message ?? e) })}</div>`;
+});
 
 /** The hourly snapshots behind this market, with their values, so nobody has to dig through the API.
  *  One format everywhere: "<label>  <value>  <snapshot hour, local time>  sha256 <prefix>  memo tx". */
