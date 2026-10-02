@@ -8,6 +8,7 @@ import os from "node:os";
 import { createHash } from "node:crypto";
 import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction, sendAndConfirmTransaction } from "@solana/web3.js";
 import { HOURLY_METRICS, DAILY_METRICS } from "./metrics.mjs";
+import { SOFT_APP_METRICS } from "./app-metrics.mjs";
 
 const OUT = process.env.SNAPSHOT_DIR ?? path.join(process.cwd(), "snapshots");
 const CLUSTER = process.env.CLUSTER ?? "devnet";
@@ -28,7 +29,7 @@ for (const [name, fn] of Object.entries(METRICS)) {
   catch (e) { bundle.errors[name] = String(e?.message ?? e); console.error(`${name}: FAILED ${bundle.errors[name]}`); }
 }
 // Third-party design-aid metrics (no market settles on them) fail quietly; anything a market can depend on pages the operator.
-const SOFT_METRICS = new Set(["das", "skr_ids_total"]);
+const SOFT_METRICS = new Set(["das", "skr_ids_total", ...SOFT_APP_METRICS]);
 const hardErrors = Object.entries(bundle.errors).filter(([k]) => !SOFT_METRICS.has(k));
 if (hardErrors.length && process.env.MEMO_DISABLED !== "1") {
   try { const { notify } = await import("./notify.mjs"); await notify(`Snapshot ${slot}: ${hardErrors.length} metric(s) failed`, hardErrors.map(([k, v]) => `${k}: ${v}`).join("\n").slice(0, 1500), "snapshot-fail", 0); } catch (e) { console.error("notify failed:", e?.message ?? e); }

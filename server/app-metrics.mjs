@@ -15,20 +15,29 @@
 //                                                  bundles: fees appear once at +1..+4 h; rolling wallets settle by +4 h;
 //                                                  Jupiter volume appears at +12 h; Jupiter revenue is revised at +14..+15 h
 //                                                  and once at +38 h).
+//   jito_tip_accounts  {}                         SOL arriving in Jito's per-validator tip distribution accounts, running
+//                                                  total in lamports (onchain-counters.mjs)
+//   jup_perps_pool     {}                          fees realised into the Jupiter Perps pool, running total in micro-USD
+//                                                  (onchain-counters.mjs)
 //   jup_price        { mint, decimals? }           Jupiter price v3 in USD (third-party quote), stored ×1e8
 //   program_tx       { program }                   running count of confirmed transactions that touched a program (cursor kept
 //                                                  on disk; a gap longer than what the RPC still holds fails loudly instead of guessing)
 // Each fetcher returns { value, raw, source } like the built-in ones, so the bundle carries evidence.
+// "soft": true marks a number that is only being collected (no market settles on it yet): when its read fails the
+// snapshot records the error like any other, but nobody is paged.
 import fs from "node:fs";
 import path from "node:path";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { fileURLToPath } from "node:url";
+import { jitoTipAccounts, jupPerpsPool } from "./onchain-counters.mjs";
 
 const MAINNET = process.env.MAINNET_RPC ?? "https://api.mainnet-beta.solana.com";
 const UA = "kubrai-snapshot/0.1 (+https://kubrai.xyz)";
 const CFG = process.env.APP_METRICS ?? path.join(path.dirname(fileURLToPath(import.meta.url)), "app-metrics.json");
-const KIND_SOURCE = { defillama_daily: "thirdparty", token_supply: "onchain", token_balance: "onchain", sol_balance: "onchain", account_u64: "onchain", program_tx: "onchain", defillama_tvl: "thirdparty", defillama_dex: "thirdparty", jup_price: "thirdparty" };
+const KIND_SOURCE = { defillama_daily: "thirdparty", token_supply: "onchain", token_balance: "onchain", sol_balance: "onchain", account_u64: "onchain", program_tx: "onchain", jito_tip_accounts: "onchain", jup_perps_pool: "onchain", defillama_tvl: "thirdparty", defillama_dex: "thirdparty", jup_price: "thirdparty" };
 export const APP_METRICS = fs.existsSync(CFG) ? JSON.parse(fs.readFileSync(CFG, "utf8")).metrics : [];
+/** Collected only, no market yet: a failed read is recorded but pages nobody (snapshot.mjs). */
+export const SOFT_APP_METRICS = APP_METRICS.filter((m) => m.soft).map((m) => m.id);
 /** Hours after the counted UTC day ends at which a defillama_daily number is read (lagDays, in days, is the spelling
  *  the config used until 2026-10-02). It becomes resolve_after when a market opens; a market already open keeps its own. */
 export const readAfterHours = (m) => m.readAfterHours ?? (m.lagDays ?? 2) * 24;
@@ -62,6 +71,8 @@ const FETCH = {
     const series = c.slice(-120).map(([ts, v]) => [new Date(ts * 1000).toISOString().slice(0, 10), Math.round(v)]);
     return { value: series.at(-1)[1], raw: { path: m.path, series }, source: url.split("?")[0] + (m.path.includes("dataType") ? " (" + m.path.split("dataType=")[1] + ")" : "") };
   },
+  jito_tip_accounts: (m) => jitoTipAccounts(m, conn),
+  jup_perps_pool: (m) => jupPerpsPool(m, conn),
   jup_price: (m) => async () => { const j = await getJson(`https://lite-api.jup.ag/price/v3?ids=${m.mint}`); const p = j?.[m.mint]?.usdPrice; if (typeof p !== "number") throw new Error(`jupiter price ${m.mint}: missing`); return { value: Math.round(p * 1e8), raw: { mint: m.mint, usdPrice: p }, source: "https://lite-api.jup.ag/price/v3" }; },
   program_tx: (m) => async () => {
     // Running total of signatures for the program since we started counting; the cursor (newest signature seen) lives in

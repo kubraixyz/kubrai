@@ -74,6 +74,15 @@
    "auto": false
   },
   {
+   "metric": "psol_dmed",
+   "cadence": "day",
+   "question": "SOL staked with Phantom, 24-hour median: at or above today's opening level?",
+   "buckets": 2,
+   "seed": "baseline",
+   "seedSkr": 0,
+   "auto": false
+  },
+  {
    "metric": "sanctum_inf_dmed",
    "cadence": "day",
    "question": "Sanctum Infinity pool, 24-hour median: at or above today's opening level?",
@@ -133,14 +142,6 @@
    "seedSkr": 0
   },
   {
-   "metric": "sanctum_fees_today",
-   "cadence": "day",
-   "question": "",
-   "buckets": 4,
-   "seed": "auto",
-   "seedSkr": 0
-  },
-  {
    "metric": "solana_fees_today",
    "cadence": "day",
    "question": "",
@@ -176,6 +177,7 @@
  ],
  "minWindows": 8,
  "_retired": "2026-09-25: every review-count market (reviews_day/week, rev_week:<app>) retired. One verified Seeker may review each of the 1,300+ listed apps once, so a single device can move the store-wide count by hundreds in a day; the bettors are exactly the people who own Seekers. reviewers_7d (distinct devices) would be the honest version if a review market is ever wanted.",
+ "_retired_sanctum_fees": "2026-10-03: sanctum_fees_today removed, and the sanctum_fees number is no longer collected. DefiLlama's figure for Sanctum's validator LSTs is mostly staking rewards, which arrive once per epoch (1.3 days): every third or fourth day reads next to 0, so the last 28 days never held the 20 usable days a market needs. It was skipped every day from 2026-09-26, and each skip went out in the daily 'Markets opened' message. Sanctum keeps sanctum_inf_dmed (INF supply, on-chain).",
  "_rule": "Only apps listed in the Solana dApp Store (package names in app-metrics.json), plus the Seeker/SKR/Solana numbers themselves.",
  "_doc_today": "<id>_today: the number the source reports for the UTC day the market is open (the same 24 hours as every daily market); 4 ranges cut at the quantiles of the source's last 28 days (gap days of 0 left out); read readAfterHours (app-metrics.json) after that day ends, which is the market's resolve_after. (<id>_next, the day after close, was retired 2026-09-27.)",
  "_paused_week": {

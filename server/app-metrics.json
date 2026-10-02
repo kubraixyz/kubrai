@@ -1,5 +1,5 @@
 {
- "_doc": "Per-app metrics (server/app-metrics.mjs). id = snapshot field and market base (<id>_day for counters, <id>_dmed for levels). kind = how it is read. tier = hourly|daily. scale/unit/digits = display. pushCost = what one player must spend to move a day's value by ~10% (cheap < $100, medium, expensive > $10k): only medium/expensive numbers get markets. how = the sentence shown on the market page. readAfterHours (defillama_daily) = hours after the counted UTC day ends at which the day's number is read; it becomes the market's resolve_after when the market opens, and each market keeps the one it was opened with.",
+ "_doc": "Per-app metrics (server/app-metrics.mjs). id = snapshot field and market base (<id>_day for counters, <id>_dmed for levels). kind = how it is read. tier = hourly|daily. scale/unit/digits = display. pushCost = what one player must spend to move a day's value by ~10% (cheap < $100, medium, expensive > $10k): only medium/expensive numbers get markets. how = the sentence shown on the market page. readAfterHours (defillama_daily) = hours after the counted UTC day ends at which the day's number is read; it becomes the market's resolve_after when the market opens, and each market keeps the one it was opened with. soft = collected only: no market settles on it yet, and a failed read pages nobody.",
  "metrics": [
   {
    "id": "jito_sol",
@@ -31,6 +31,23 @@
    "scale": 1000000000,
    "pushCost": "expensive: moving the 24-hour median by a few percent means parking tens of thousands of SOL in it for half a day",
    "how": "Total JupSOL in circulation (Jupiter's liquid-staking token), read from the mint's supply on-chain.",
+   "category": "Staking",
+   "inStore": true
+  },
+  {
+   "id": "psol",
+   "app": "Phantom",
+   "package": "app.phantom",
+   "kind": "token_supply",
+   "mint": "pSo1f9nQXWgXibFtKf7NWYxb5enAM4qfP6UJSiXRQfL",
+   "tier": "hourly",
+   "noun": "SOL staked with Phantom",
+   "level": "PSOL supply",
+   "unit": "PSOL",
+   "scale": 1000000000,
+   "digits": 0,
+   "pushCost": "expensive: moving the 24-hour median by a few percent means parking tens of thousands of SOL in it for half a day",
+   "how": "Total PSOL in circulation (Phantom's liquid-staking token), read from the mint's supply on-chain.",
    "category": "Staking",
    "inStore": true
   },
@@ -104,6 +121,23 @@
    "inStore": true
   },
   {
+   "id": "jup_perps_fees_chain",
+   "category": "Trading",
+   "app": "Jupiter Perps",
+   "package": "ag.jup.jupiter.android",
+   "kind": "jup_perps_pool",
+   "tier": "hourly",
+   "soft": true,
+   "noun": "Jupiter Perps fees (on-chain)",
+   "level": "Jupiter Perps fees (on-chain)",
+   "unit": "USD",
+   "scale": 1000000,
+   "digits": 0,
+   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
+   "how": "Fees realised into the Jupiter Perps pool, from the pool account's own counter (poolApr.realizedFeeUsd) read on-chain and kept as a running total. Collected to compare with DefiLlama's figure; no market yet.",
+   "inStore": true
+  },
+  {
    "id": "phantom_rev",
    "category": "Wallets",
    "app": "Phantom",
@@ -137,24 +171,6 @@
    "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
    "how": "Revenue pump.fun earns through its mobile app (the one in the Solana dApp Store) per day, as reported by DefiLlama.",
    "package": "com.batonresearch.pump",
-   "inStore": true
-  },
-  {
-   "id": "sanctum_fees",
-   "category": "Staking",
-   "app": "Sanctum",
-   "kind": "defillama_daily",
-   "path": "summary/fees/sanctum-validator-lsts",
-   "readAfterHours": 48,
-   "tier": "hourly",
-   "noun": "Sanctum LST fees",
-   "level": "Sanctum LST fees",
-   "unit": "USD",
-   "scale": 1,
-   "digits": 0,
-   "pushCost": "costs what it measures: every extra dollar of fees has to be paid by someone",
-   "how": "Fees and staking rewards flowing through Sanctum's validator LSTs per day, as reported by DefiLlama.",
-   "package": "so.sanctum.app",
    "inStore": true
   },
   {
@@ -208,6 +224,23 @@
    "digits": 0,
    "pushCost": "costs what it measures: every extra dollar of tips has to be paid by someone",
    "how": "MEV tips searchers and traders pay through Jito's block engine per day (tips only, without staking rewards), as reported by DefiLlama.",
+   "inStore": true
+  },
+  {
+   "id": "jito_tips_chain",
+   "category": "Staking",
+   "app": "Jito",
+   "package": "network.jito.www.twa",
+   "kind": "jito_tip_accounts",
+   "tier": "hourly",
+   "soft": true,
+   "noun": "SOL paid into Jito tip distribution",
+   "level": "SOL paid into Jito tip distribution",
+   "unit": "SOL",
+   "scale": 1000000000,
+   "digits": 0,
+   "pushCost": "costs what it measures: SOL sent into a tip distribution account is paid out to that validator's stakers",
+   "how": "SOL arriving in the per-validator Jito tip distribution accounts (searcher tips, plus whatever validators add for their stakers), read from the accounts on-chain and kept as a running total. Collected to compare with DefiLlama's Jito tips; no market yet.",
    "inStore": true
   },
   {
