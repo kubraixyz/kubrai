@@ -23,6 +23,10 @@ let m: MarketView, cfg: any, bucket = 0;
 // change; drawn from scratch it came back empty, and an amount typed while the wallet was still loading vanished
 // (black-box test 2026-10-05). Cleared once a bet lands, so a second click cannot repeat it by accident.
 let amtDraft = "";
+// Drawn again while someone is typing in the amount field (the page or just the box): the new field gets the keyboard
+// back, or the next keys typed go nowhere and a phone closes its keyboard.
+let refocusAmt = false;
+const noteAmtFocus = () => { if (document.activeElement?.id === "amt") refocusAmt = true; };
 // A bet the chain has not answered for after the first minute of waiting. While set, every render of the bet box shows
 // this note and draws the bet button disabled — wallet events re-render the box, and a fresh enabled button would invite
 // a second real bet. Cleared once the bet confirms or the chain rejects it; a page reload clears it too.
@@ -47,6 +51,7 @@ function refreshProof(rerender = true) {
 async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); render(); void refreshProof(); void loadPosition(); }
 onSession(() => { if (!cfg) return; proof = { ...proof, accounts: [], sgt: false, stake: false }; render(); void refreshProof(); });
 function render() {
+  noteAmtFocus();
   const copy = metricInfo(m.metric, m.closeTs, m.resolveAfterTs);
   const now = Date.now() / 1000, open = m.status === 0 && now >= m.openTs && now < m.closeTs;
   const earlyUntil = earlyBirdUntil(cfg, m), early = now < earlyUntil;
@@ -100,7 +105,8 @@ async function mountDispute() {
 function renderBet(open: boolean, fee: number) {
   const box = document.getElementById("bet")!;
   const s = getSession();
-  if (!open) { box.innerHTML = `<div class="note">${m.status === 0 && Date.now() / 1000 < m.openTs ? t("bet.notOpen") : t("bet.closed")}</div>`; drawPosition(); return; }
+  noteAmtFocus();
+  if (!open) { refocusAmt = false; box.innerHTML = `<div class="note">${m.status === 0 && Date.now() / 1000 < m.openTs ? t("bet.notOpen") : t("bet.closed")}</div>`; drawPosition(); return; }
   box.innerHTML = `<div class="betbox">
     <div class="sides">${m.pools.map((_, i) => `<button class="${bucket === i ? "on" : ""}" style="--c:${bucketColor(m, i)}" data-b="${i}">${bucketLabel(m, i)}</button>`).join("")}</div>
     <div class="amtrow"><input id="amt" type="number" min="${cfg.minBet.toNumber() / 10 ** TOKEN_DECIMALS}" step="1" value="${esc(amtDraft)}" placeholder="${esc(t("bet.amountPh", { tok: TOKEN_SYMBOL }))}">${s ? `<button id="max" type="button" title="${esc(t("bet.maxTitle", { tok: TOKEN_SYMBOL }))}">${t("bet.max")}</button>` : ""}</div>
@@ -120,6 +126,7 @@ function renderBet(open: boolean, fee: number) {
     quote.innerHTML = `<span>${t("bet.ifWins", { b: `<b>${bucketLabel(m, bucket)}</b>` })}</span><span class="big">${fmtAmt(q.total)} ${TOKEN_SYMBOL}</span><span class="note">${t("bet.breakdown", { stake: fmtAmt(a), losers: fmtAmt(q.fromLosers), fee: fmtAmt(q.fee) })}${q.fromSeed ? ` ${t("bet.plusSeed", { seed: fmtAmt(q.fromSeed) })}` : ""}. ${t("bet.otherLoses", { stake: fmtAmt(a) })}</span>`;
   };
   amtEl.oninput = () => { amtDraft = amtEl.value; upd(); }; upd(); drawPosition();
+  if (refocusAmt) { refocusAmt = false; amtEl.focus({ preventScroll: true }); }
   const mx = box.querySelector<HTMLButtonElement>("#max"); if (mx) mx.onclick = () => { amtEl.value = String(Math.floor(balances.token / 10 ** TOKEN_DECIMALS)); amtDraft = amtEl.value; upd(); };
   box.querySelectorAll<HTMLButtonElement>(".sides button").forEach((b) => (b.onclick = () => { bucket = Number(b.dataset.b); renderBet(open, fee); }));
   const go = box.querySelector<HTMLButtonElement>("#go"), msg = box.querySelector("#msg")!;
