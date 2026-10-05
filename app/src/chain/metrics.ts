@@ -1,89 +1,104 @@
-// Human copy for each metric id (the on-chain field is a 32-byte tag).
+// Human copy for each metric id (the on-chain field is a 32-byte tag). A port of web/src/metrics.ts: the same rules and
+// the same dictionary keys, so a market reads the same in the app and on the website; what differs is marked.
 // Tags: <base>_day / <base>_week (cumulative: increase from the opening baseline to the closing snapshot),
 //       <base>_dmed / <base>_wmed (level: median of every hourly snapshot inside the market window),
 //       rev_day:<app> / rev_week:<app> (per-app store reviews, cumulative), plus a few legacy ids.
 // `scale` divides the on-chain integer threshold/observed value for display.
+import { t } from "../i18n";
+import { fmtRange, fmtRangeNb, fmtWait } from "./time";
 export type SourceKind = "onchain" | "store" | "thirdparty";
 export type Cadence = "day" | "week" | "other";
-export const SOURCE_LABEL: Record<SourceKind, string> = { onchain: "on-chain, anyone can recompute", store: "Solana dApp Store API (first-party, off-chain), snapshot hash on-chain", thirdparty: "third-party aggregator (seekertracker.com), snapshot hash on-chain" };
-/** The source line names the third party. The broad kind alone printed "third-party aggregator (seekertracker.com)"
- *  on every DefiLlama and Jupiter-price market until 0.1.39. `kind` is the catalog's reader. Same as the web. */
-const SRC_DEFILLAMA = "DefiLlama (third-party aggregator), snapshot hash on-chain", SRC_JUPPRICE = "Jupiter price API (third-party quote), snapshot hash on-chain";
-const sourceLabelOf = (source: SourceKind, kind?: string) => (kind?.startsWith("defillama") ? SRC_DEFILLAMA : kind === "jup_price" ? SRC_JUPPRICE : SOURCE_LABEL[source]);
-/** A wait written out: "6 hours", "1 day", "2 days": whole days when it is whole days, hours otherwise. */
-export function fmtWait(secs: number) {
-  const h = Math.max(1, Math.round(secs / 3600));
-  if (h % 24 === 0) return h === 24 ? "1 day" : `${h / 24} days`;
-  return h === 1 ? "1 hour" : `${h} hours`;
-}
+export const SOURCE_LABEL: Record<SourceKind, string> = { onchain: t("srcl.onchain"), store: t("srcl.store"), thirdparty: t("srcl.thirdparty") };
+/** The source line of a market page names the third party. The broad kind alone printed "third-party aggregator
+ *  (seekertracker.com)" on every DefiLlama and Jupiter-price market until 2026-10-03. `kind` is the catalog's reader. */
+const sourceLabelOf = (source: SourceKind, kind?: string) => (kind?.startsWith("defillama") ? t("srcl.defillama") : kind === "jup_price" ? t("srcl.jupprice") : SOURCE_LABEL[source]);
 export const APP_NAMES: Record<string, string> = { jupiter: "Jupiter Mobile", tokenrun: "TokenRun", mattle: "MattleFun", cherry: "Cherry Messenger", seedvault: "Seed Vault Wallet", lootgo: "LootGO", jito: "Jito", sleepagotchi: "Sleepagotchi", moonwalk: "Moonwalk", ore: "ORE" };
 export type MetricInfo = { title: string; unit: string; how: string; scale?: number; digits?: number; source: SourceKind; sourceLabel?: string; cumulative?: boolean; cadence: Cadence; key?: string };
-const WINDOW = { day: "today", week: "this week" } as const;
-const MEDIAN_WINDOW = { dmed: "24-hour median", wmed: "7-day median" } as const;
+const WINDOW = { day: t("win.day"), week: t("win.week") };
+const MEDIAN_WINDOW = { dmed: t("win.dmed"), wmed: t("win.wmed") };
 const KEYS: Record<string, string> = { sgt: "sgt_total", skr_staked: "skr_staked", reviews: "store_reviews_total", dapps: "dapp_store_active_apps", reviewers: "reviewers_7d", skr_ids: "skr_ids_onchain", das: "das", skr_price: "skr_price_usd_e8", ore_sol: "ore_deployed_cum", ore_hits: "ore_motherlode_cum", ore_cost: "ore_cost_ema" };
 const BASES: Record<string, { noun: string; unit: string; source: SourceKind; scale?: number; digits?: number; cum: (w: string) => string; med: (w: string) => string; level: string }> = {
-  sgt: { noun: "Seekers activated", unit: "phones", source: "onchain", level: "Seeker Genesis Tokens", cum: (w) => `Increase in the number of Seeker Genesis Tokens between the opening baseline and the closing snapshot (${w}). Read from the token group size on the Genesis Token mint GT22…99Te. One soulbound token is minted per activated Seeker, so each unit is a $500 phone.`, med: (w) => `${w} of the Genesis Token count.` },
-  skr_staked: { noun: "SKR staked", unit: "SKR", source: "onchain", scale: 1_000_000, level: "SKR staked", cum: (w) => `Change in SKR held by the staking vault 8isV…ZbB8 (${w}).`, med: (w) => `${w} of hourly reads of the SKR staking vault 8isV…ZbB8, whose owner is re-verified against the staking program on every read. A median over the whole window cannot be moved by a last-minute deposit or withdrawal.` },
-  reviews: { noun: "Store reviews written", unit: "reviews", source: "store", level: "dApp Store reviews", cum: (w) => `Increase in the total number of reviews across every app in the Solana dApp Store (${w}), read directly from the store API. A review can only be written from a Seeker device, one per device per app, so every review is a phone acting.`, med: (w) => `${w} of the store-wide review total.` },
-  dapps: { noun: "New dApp Store listings", unit: "apps", source: "store", level: "dApp Store listings", cum: (w) => `Increase in the number of apps listed in the Solana dApp Store (${w}), counted from the store catalog and deduplicated by package name.`, med: (w) => `${w} of the number of listed apps.` },
-  reviewers: { noun: "Reviewing wallets (7-day)", unit: "wallets", source: "store", level: "wallets that reviewed in the last 7 days", cum: (w) => `Change in the number of distinct wallets that wrote a store review in the trailing 7 days (${w}).`, med: (w) => `${w} of the number of distinct wallets that wrote a dApp Store review in the trailing 7 days. Reviews are device-gated, so each wallet is a phone.` },
-  skr_ids: { noun: "New .skr IDs", unit: "IDs", source: "onchain", level: ".skr IDs", cum: (w) => `Increase in the number of .skr name records on-chain between the opening baseline and the closing snapshot (${w}), counted directly from the AllDomains name program.`, med: (w) => `${w} of the .skr record count.` },
-  das: { noun: "Daily active Seekers", unit: "IDs", source: "thirdparty", level: "daily active Seekers", cum: (w) => `Change in daily active Seekers (${w}).`, med: (w) => `${w} of seekertracker.com/api/das (IDs with ≥1 tx in 24h). Definition belongs to a third party.` },
-  skr_price: { noun: "SKR price", unit: "USD", source: "thirdparty", scale: 100_000_000, level: "SKR price", cum: (w) => `Change in the SKR/USD price (${w}).`, med: (w) => `${w} of the Jupiter SKR/USD price.` },
+  sgt: { noun: t("m.sgt.noun"), unit: t("m.sgt.unit"), source: "onchain", level: t("m.sgt.level"), cum: (w) => t("m.sgt.cum", { w }), med: (w) => t("m.sgt.med", { w }) },
+  skr_staked: { noun: t("m.skr_staked.noun"), unit: t("m.skr_staked.unit"), source: "onchain", scale: 1_000_000, level: t("m.skr_staked.level"), cum: (w) => t("m.skr_staked.cum", { w }), med: (w) => t("m.skr_staked.med", { w }) },
+  reviews: { noun: t("m.reviews.noun"), unit: t("m.reviews.unit"), source: "store", level: t("m.reviews.level"), cum: (w) => t("m.reviews.cum", { w }), med: (w) => t("m.reviews.med", { w }) },
+  dapps: { noun: t("m.dapps.noun"), unit: t("m.dapps.unit"), source: "store", level: t("m.dapps.level"), cum: (w) => t("m.dapps.cum", { w }), med: (w) => t("m.dapps.med", { w }) },
+  reviewers: { noun: t("m.reviewers.noun"), unit: t("m.reviewers.unit"), source: "store", level: t("m.reviewers.level"), cum: (w) => t("m.reviewers.cum", { w }), med: (w) => t("m.reviewers.med", { w }) },
+  skr_ids: { noun: t("m.skr_ids.noun"), unit: t("m.skr_ids.unit"), source: "onchain", level: t("m.skr_ids.level"), cum: (w) => t("m.skr_ids.cum", { w }), med: (w) => t("m.skr_ids.med", { w }) },
+  das: { noun: t("m.das.noun"), unit: t("m.das.unit"), source: "thirdparty", level: t("m.das.level"), cum: (w) => t("m.das.cum", { w }), med: (w) => t("m.das.med", { w }) },
+  skr_price: { noun: t("m.skr_price.noun"), unit: t("m.skr_price.unit"), source: "thirdparty", scale: 100_000_000, level: t("m.skr_price.level"), cum: (w) => t("m.skr_price.cum", { w }), med: (w) => t("m.skr_price.med", { w }) },
   // ORE: the mining game on Solana mainnet (program oreV3…LvWv). Miners deploy SOL on a 5×5 board every ~60 s round;
   // one square wins 1 ORE, losing squares get 89% of their SOL back. Every number below is read from ORE's own accounts.
-  ore_sol: { noun: "SOL deployed by ORE miners", unit: "SOL", source: "onchain", scale: 1_000_000_000, digits: 0, level: "SOL deployed by ORE miners", cum: (w) => `Total SOL deployed across every ORE mining round that finished ${w}: the 25 squares of each round account of the ORE program (oreV3…LvWv), summed by our hourly snapshots as a running total, so the day's figure is close − open. Pushing this up costs real money: ORE returns only 89% of a losing square and 99% of a winning one, so every extra SOL deployed burns about 0.1 SOL.`, med: (w) => `${w} of the running total of SOL deployed in ORE rounds.` },
-  ore_hits: { noun: "ORE motherlodes hit", unit: "hits", source: "onchain", digits: 0, level: "ORE motherlode hits", cum: (w) => `Number of ORE rounds that finished ${w} in which the motherlode paid out (round account field motherlode > 0). Whether a round hits is drawn from the round's on-chain randomness: nobody, not the ORE team, not us, can steer it. Recent rate: about one hit a day, and the pot (0.2 ORE added every round) grows until it hits.`, med: (w) => `${w} of the running count of motherlode hits.` },
-  ore_cost: { noun: "ORE mining cost", unit: "SOL/ORE", source: "onchain", scale: 1_000_000_000, digits: 4, level: "ORE mining cost", cum: (w) => `Change in the ORE program's production-cost EMA (${w}).`, med: (w) => `${w} of hourly reads of the ORE program's production-cost EMA (board account, lamports per ORE): what miners are currently paying per ORE, smoothed by the protocol itself. A median over the whole window cannot be moved by one heavy round.` },
+  ore_sol: { noun: t("m.ore_sol.noun"), unit: t("m.ore_sol.unit"), source: "onchain", scale: 1_000_000_000, digits: 0, level: t("m.ore_sol.level"), cum: (w) => t("m.ore_sol.cum", { w }), med: (w) => t("m.ore_sol.med", { w }) },
+  ore_hits: { noun: t("m.ore_hits.noun"), unit: t("m.ore_hits.unit"), source: "onchain", digits: 0, level: t("m.ore_hits.level"), cum: (w) => t("m.ore_hits.cum", { w }), med: (w) => t("m.ore_hits.med", { w }) },
+  ore_cost: { noun: t("m.ore_cost.noun"), unit: t("m.ore_cost.unit"), source: "onchain", scale: 1_000_000_000, digits: 4, level: t("m.ore_cost.level"), cum: (w) => t("m.ore_cost.cum", { w }), med: (w) => t("m.ore_cost.med", { w }) },
 };
 const LEGACY: Record<string, MetricInfo> = {
-  skr_staked_med7: { title: "SKR staked (7-day median)", unit: "SKR", scale: 1_000_000, source: "onchain", cadence: "week", how: "Median of the 7 daily reads of the SKR staking vault 8isV…ZbB8, whose owner is re-verified against the staking program every day." },
-  das_med7: { title: "Daily active Seekers (7-day median)", unit: "IDs", source: "thirdparty", cadence: "week", how: "Median of 7 daily reads of seekertracker.com/api/das (IDs with ≥1 tx in 24h). Definition belongs to a third party." },
-  skr_price_close: { title: "SKR price at close", unit: "USD", scale: 100_000_000, source: "thirdparty", cadence: "other", how: "Jupiter price v3 at the closing snapshot." },
+  skr_staked_med7: { title: t("m.skr_staked_med7.title"), unit: t("u.SKR"), scale: 1_000_000, source: "onchain", cadence: "week", how: t("m.skr_staked_med7.how") },
+  das_med7: { title: t("m.das_med7.title"), unit: t("u.IDs"), source: "thirdparty", cadence: "week", how: t("m.das_med7.how") },
+  skr_price_close: { title: t("m.skr_price_close.title"), unit: t("u.USD"), scale: 100_000_000, source: "thirdparty", sourceLabel: t("srcl.jupprice"), cadence: "other", how: t("m.skr_price_close.how") },
 };
-// Per-app metrics are configured on the server; the app loads the catalog once (loadMetricCatalog) and resolves unknown ids through it.
+// Per-app metrics are configured on the server (server/app-metrics.json) and described by /metrics. The app loads that
+// catalog once (loadMetricCatalog; the website has it embedded); unknown ids resolve through it, so a new app market needs
+// no new APK.
 type CatalogEntry = { id: string; category?: string; kind?: string; readAfterHours?: number; lagDays?: number; app: string; noun: string; level: string; unit: string; scale: number; digits: number; source: SourceKind; how: string; pushCost?: string | null };
 let catalog: Record<string, CatalogEntry> = {};
 export async function loadMetricCatalog(apiBase: string) { try { const r = await fetch(apiBase + "/metrics"); if (r.ok) catalog = (await r.json()).metrics ?? {}; } catch {} }
 export const catalogEntry = (id: string): CatalogEntry | undefined => catalog[id];
-/** How long after its day ends a DefiLlama market's number is read, in seconds: the gap between the end of the counted
- *  day and the market's own on-chain resolve_after (2–3 days for markets opened up to 2026-10-02, 6–48 hours since).
- *  Without a market it is what the catalog says a market opened now would get. Same as the web. */
+/** How long after its day ends a DefiLlama market's number is read, in seconds. It is the market's own: the gap
+ *  between the end of the counted day and its on-chain resolve_after (2–3 days for markets opened up to 2026-10-02,
+ *  6–48 hours since). Without a market it is what the catalog says a market opened now would get. */
 const dailyWait = (c: CatalogEntry, dayEnd?: number, resolveAfterTs?: number) => (dayEnd && resolveAfterTs && resolveAfterTs >= dayEnd ? resolveAfterTs - dayEnd : (c.readAfterHours ?? (c.lagDays ?? 2) * 24) * 3600);
-/** With closeTs and resolveAfterTs (the market page) a daily-source market states its own wait. */
+/** closeTs (when known) lets a "tomorrow" market name its day as the viewer's own clock shows it, not as a UTC date;
+ *  with resolveAfterTs as well, a daily-source market states its own wait. */
 export function metricInfo(id: string, closeTs?: number, resolveAfterTs?: number): MetricInfo | undefined {
   if (LEGACY[id]) return LEGACY[id];
   const td = id.match(/^(.+)_today$/);
-  if (td && catalog[td[1]]) { const c = catalog[td[1]]; return { title: `${c.app}: ${c.noun}`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} The day's number is read ${fmtWait(dailyWait(c, closeTs && closeTs % 86400 === 12 * 3600 ? closeTs + 12 * 3600 : undefined, resolveAfterTs))} after the day ends: whatever the source shows at that moment settles the market, and later revisions do not count. If the source moves that day's number into another range before the result is final, the market is voided and every stake is refunded.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` }; }
-  const nx = id.match(/^(.+)_next$/);   // retired 2026-09-27; the markets opened before still use it
-  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: `${c.app}: ${c.noun} (24 h after close)`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} Counts the 24 hours that start when betting closes; it is read ${Math.round(dailyWait(c, closeTs ? closeTs + 86400 : undefined, resolveAfterTs) / 86400)} days after that day ends, later revisions do not count.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` }; }
+  if (td && catalog[td[1]]) { const c = catalog[td[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} ${t("m.todayHow", { wait: fmtWait(dailyWait(c, closeTs && closeTs % 86400 === 12 * 3600 ? closeTs + 12 * 3600 : undefined, resolveAfterTs)) })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
+  const nx = id.match(/^(.+)_next$/);   // retired 2026-09-27 (the day after close); kept for the markets opened before
+  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} ${t("m.nextHow", { lag: Math.round(dailyWait(c, closeTs ? closeTs + 86400 : undefined, resolveAfterTs) / 86400), window: closeTs ? fmtRange(closeTs, closeTs + 86400) : t("m.nextWindowGeneric") })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
   const cm = id.match(/^(.+)_(day|week|dmed|wmed)$/);
   if (cm && catalog[cm[1]]) {
     const c = catalog[cm[1]], k = cm[2];
-    if (k === "day" || k === "week") return { title: `Change in ${c.noun} ${WINDOW[k]}`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cumulative: true, cadence: k, key: c.id, how: `${c.how} Resolves on the change between the opening hour's snapshot and the closing hour's.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` };
+    if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: t("m.appChange", { noun: c.noun }), w: WINDOW[k] }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cumulative: true, cadence: k, key: c.id, how: `${c.how} ${t("m.appCumHow", { w: WINDOW[k] })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
     const w = MEDIAN_WINDOW[k as "dmed" | "wmed"];
-    return { title: `${c.level.includes(c.app) ? c.level : `${c.app} · ${c.level}`} (${w})`, unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: k === "dmed" ? "day" : "week", key: c.id, how: `${c.how} Resolves on the ${w} of every hourly reading inside the window.${c.pushCost ? ` Cost to move it: ${c.pushCost}.` : ""}` };
+    return { title: t("m.medTitle", { level: c.level.includes(c.app) ? c.level : `${c.app} · ${c.level}`, w }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: k === "dmed" ? "day" : "week", key: c.id, how: `${c.how} ${t("m.appMedHow", { w })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
   }
   let m = id.match(/^rev_(week|day):(.+)$/);
-  if (m) { const app = APP_NAMES[m[2]] ?? m[2]; const w = WINDOW[m[1] as "day" | "week"]; return { title: `New ${app} reviews ${w}`, unit: "reviews", cumulative: true, source: "store", cadence: m[1] as Cadence, key: "rev:" + m[2], how: `Increase in ${app}'s total dApp Store reviews between the opening baseline and the closing snapshot (${w}), read directly from the Solana dApp Store API. Reviews can only be written from a Seeker device, one per device per app, so each extra review costs a phone.` }; }
+  if (m) { const app = APP_NAMES[m[2]] ?? m[2]; const w = WINDOW[m[1] as "day" | "week"]; return { title: t("m.rev.title", { app, w }), unit: t("u.reviews"), cumulative: true, source: "store", cadence: m[1] as Cadence, key: "rev:" + m[2], how: t("m.rev.how", { app, w }) }; }
   m = id.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASES[m[1]]) return undefined;
   const b = BASES[m[1]], k = m[2];
-  const sourceLabel = m[1] === "skr_price" ? SRC_JUPPRICE : undefined;   // the one built-in number that is a Jupiter quote
-  if (k === "day" || k === "week") return { title: `${b.noun} ${WINDOW[k]}`, unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, sourceLabel, cumulative: true, cadence: k, key: KEYS[m[1]], how: b.cum(WINDOW[k]) };
+  const sourceLabel = m[1] === "skr_price" ? t("srcl.jupprice") : undefined;   // the one built-in number that is a Jupiter quote
+  if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: b.noun, w: WINDOW[k] }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, sourceLabel, cumulative: true, cadence: k, key: KEYS[m[1]], how: b.cum(WINDOW[k]) };
   const w = MEDIAN_WINDOW[k as "dmed" | "wmed"]; const cadence: Cadence = k === "dmed" ? "day" : "week";
-  return { title: `${b.level[0].toUpperCase()}${b.level.slice(1)} (${w})`, unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, sourceLabel, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
+  return { title: t("m.medTitle", { level: b.level[0].toUpperCase() + b.level.slice(1), w }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, sourceLabel, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
 }
-export const metricLabel = (id: string) => metricInfo(id)?.title ?? id;
-/** A metric's title without its "today" / "this week" (or the older "24 h after close"): for wherever the period is
- *  written out beside it (format.ts question). */
-export const bareTitle = (id: string) => metricLabel(id).split(WINDOW.day).join("").split(WINDOW.week).join("").replace("(24 h after close)", "").replace(/\(\s*\)/g, "").replace(/\s+/g, " ").trim();
-/** The period a market counts (mirrors server/history.mjs countedWindow): betting closes at 12:00 UTC (the schedule
- *  since 2026-09-26) → the whole UTC day it closes in; an older "_next" market → the 24 h after close; else open → close. */
-export function countedWindow(m: { metric: string; openTs: number; closeTs: number }): [number, number] {
+/** The period whose number decides the market (mirrors server/history.mjs countedWindow):
+ *  betting closes at 12:00 UTC (the schedule since 2026-09-26) → the whole UTC day it closes in; an older "_next" market →
+ *  the 24 hours after close; any other older market → the betting window itself. */
+export const countedWindow = (m: { metric: string; openTs: number; closeTs: number }): [number, number] => {
   if (m.closeTs % 86400 === 12 * 3600) { const d = m.closeTs - 12 * 3600; return [d, d + 86400]; }
   return /_next$/.test(m.metric) ? [m.closeTs, m.closeTs + 86400] : [m.openTs, m.closeTs];
+};
+/** A metric's title without its "today" / "this week": for wherever the period is written out beside it. */
+export const bareTitle = (m: { metric: string; closeTs: number }) => (metricInfo(m.metric, m.closeTs)?.title ?? t("m.unknown")).split(WINDOW.day).join("").split(WINDOW.week).join("").replace(/[（(]\s*[）)]/g, "").replace(/\s+/g, " ").trim();
+/** The question as SharePot asks it: the period on the viewer's clock, never "today"/"tomorrow".
+ *  "Jupiter swap volume, 27 Sept, 08:00 – 28 Sept, 08:00 GMT+8: which range?" Text, where the website's is HTML: a line
+ *  breaks only after the dash, and "≥ 4,259,675 JupSOL" stays whole. */
+export function question(m: { metric: string; openTs: number; closeTs: number; nBuckets: number; thresholds: number[] }) {
+  const range = fmtRangeNb(...countedWindow(m));
+  return m.nBuckets === 2 ? t("q.yesnoAt", { q: bareTitle(m), range, v: fmtExact(m.metric, m.thresholds[0]).replace(/ /g, "\u00a0") }) : t("q.rangeAt", { q: bareTitle(m), range });
 }
+export const metricLabel = (id: string) => metricInfo(id)?.title ?? t("m.unknown");
 export const metricCadence = (id: string): Cadence => metricInfo(id)?.cadence ?? "other";
+/** Store-style category of a market: per-app metrics carry one in the catalog; the built-in ones are Seeker / Store / ORE. */
+export function metricCategory(id: string): string {
+  const base = id.replace(/_(next|today|day|week|dmed|wmed|med7)$/, "");
+  if (catalog[base]?.category) return catalog[base].category!;
+  if (/^ore_/.test(base)) return "ORE";
+  if (/^(dapps|reviews|reviewers|rev)/.test(base)) return "Store";
+  return "Seeker";
+}
+export const CATEGORY_ORDER = ["Seeker", "DeFi", "Trading", "DEX", "Lending", "Staking", "Wallets", "Launchpads", "Tools", "ORE", "Chain", "DePIN", "Memes", "Store", "Other"];
 /** Decimals the pages print for a metric: `digits` when set, else 4 for prices and lamport-scaled numbers (scale > 1e6), else none. */
 export const displayDigits = (id: string) => { const c = metricInfo(id); return c?.digits ?? (c?.scale && c.scale > 1_000_000 ? 4 : 0); };
 /** A range edge exactly as the program compares it: the on-chain integer over `scale` with every decimal kept (trailing
@@ -116,13 +131,3 @@ export async function openingValue(apiBase: string, id: string, openTs: number, 
     return typeof v === "number" ? v : null;
   } catch { return null; }
 }
-
-/** Store-style category of a market (same rules as the web). */
-export function metricCategory(id: string): string {
-  const base = id.replace(/_(next|today|day|week|dmed|wmed|med7)$/, "");
-  if (catalog[base]?.category) return catalog[base].category!;
-  if (/^ore_/.test(base)) return "ORE";
-  if (/^(dapps|reviews|reviewers|rev)/.test(base)) return "Store";
-  return "Seeker";
-}
-export const CATEGORY_ORDER = ["Seeker", "DeFi", "Trading", "DEX", "Lending", "Staking", "Wallets", "Launchpads", "Tools", "ORE", "Chain", "DePIN", "Memes", "Store", "Other"];

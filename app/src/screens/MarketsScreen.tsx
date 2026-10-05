@@ -1,117 +1,145 @@
 import React, { useMemo, useRef, useState } from "react";
-import { FlatList, Pressable, ScrollView, StyleSheet, TextInput, View, RefreshControl } from "react-native";
-import { ActivityIndicator, Chip, Text, useTheme } from "react-native-paper";
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator } from "react-native-paper";
 import MaterialCommunityIcon from "@expo/vector-icons/MaterialCommunityIcons";
 import { useNavigation } from "@react-navigation/native";
 import { useMarkets } from "../hooks/useKubrai";
 import { metricCategory, CATEGORY_ORDER, catalogEntry, metricLabel } from "../chain/metrics";
-import { PoolBar } from "../components/PoolBar";
 import { fmtAmt, fmtTsShort, question, timeLeft } from "../chain/format";
 import { totalPool, type MarketView } from "../chain/kubrai";
-import { IS_TEST, TOKEN_SYMBOL } from "../config";
+import { APP, IS_TEST, TOKEN_SYMBOL } from "../config";
 import { recordError } from "../utils/errorLog";
+import { t } from "../i18n";
+import { OptionRows } from "../components/MarketParts";
+import { usePalette } from "../components/palette";
 
-// Search, as on the web home: every word typed has to begin a word ("ore" finds ORE, not "Store") in what a card says
-// (its question with the day it counts, the app, the category), the market's number ("#139") or its metric id.
-const catName = (c: string) => (c === "Chain" ? "Solana" : c);
-function searchText(m: MarketView) {
+// The website's home page (web/src/main.ts) on a phone: heading, lead, search, the four stages as two rows of two, the
+// categories, then one card per market: when it closes, the question, a row per range with its share of the pool, the
+// pot and the bettors. Same words, same order, same rules.
+type Stage = "open" | "awaiting" | "proposed" | "settled";
+const STAGES: Stage[] = ["open", "awaiting", "proposed", "settled"];
+const stageOf = (m: MarketView, now: number): Stage => (m.status === 0 ? (now < m.closeTs ? "open" : "awaiting") : m.status === 1 ? "proposed" : "settled");
+const catLabel = (c: string) => (t("cat." + c) === "cat." + c ? c : t("cat." + c));
+// Search: every word typed has to begin a word ("ore" finds ORE, not "Store") in what a card says (its question, the app,
+// the category), the market's number ("#139") or its metric id; case, accents and full-width forms aside. A word in a
+// script written without spaces is found anywhere.
+const fold = (s: string) => { try { return s.normalize("NFKD").replace(/[̀-ͯ]/g, "").normalize("NFKC").toLowerCase(); } catch { return s.toLowerCase(); } };
+function hay(m: MarketView) {
   const base = m.metric.replace(/_(next|today|day|week|dmed|wmed|med7)$/, ""), c = metricCategory(m.metric);
-  return [`#${m.id}`, question(m), metricLabel(m.metric), catalogEntry(base)?.app ?? "", c, catName(c), base].join(" ").toLowerCase();
+  return fold([`#${m.id}`, question(m).replace(/ /g, " "), metricLabel(m.metric), catalogEntry(base)?.app ?? "", c, catLabel(c), base].join(" "));
 }
-
 const finder = (w: string) => { if (!/^[a-z0-9]/.test(w)) return (h: string) => h.includes(w); const re = new RegExp("(?:^|[^a-z0-9])" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); return (h: string) => re.test(h); };
 
 export function MarketsScreen() {
-  const nav = useNavigation<any>(); const theme = useTheme();
+  const nav = useNavigation<any>(); const p = usePalette();
   const { data, isLoading, refetch, isRefetching, error } = useMarkets();
   React.useEffect(() => { if (error) recordError(error, "markets"); }, [error]);
-  // Same split as the web home: open for bets / closed and waiting / result proposed / settled.
-  type Stage = "open" | "awaiting" | "proposed" | "settled";
   const [stage, setStage] = useState<Stage>("open");
-  const now = Date.now() / 1000;
-  const stageOf = (m: MarketView): Stage => (m.status === 0 ? (now < m.closeTs ? "open" : "awaiting") : m.status === 1 ? "proposed" : "settled");
-  const all = data ?? [];
-  // A query looks across every category of the selected stage: the stage counts become match counts and the category
-  // row makes way for a result line. The blurb steps aside too, so the matches have room above the keyboard.
-  const [q, setQ] = useState(""); const [focused, setFocused] = useState(false); const input = useRef<TextInput>(null);
-  const words = q.toLowerCase().split(/\s+/).filter(Boolean), searching = words.length > 0;
-  const texts = useMemo(() => new Map((data ?? []).map((m) => [m.id, searchText(m)])), [data]);
-  const finders = words.map(finder);
-  const found = (list: MarketView[]) => (searching ? list.filter((m) => { const h = texts.get(m.id) ?? ""; return finders.every((f) => f(h)); }) : list);
-  const hits = found(all); const count = (k: Stage) => hits.filter((m) => stageOf(m) === k).length;
   const [cat, setCat] = useState("");
-  const inStage = all.filter((m) => stageOf(m) === stage);
+  const [q, setQ] = useState(""); const [focused, setFocused] = useState(false);
+  const list = useRef<FlatList<MarketView>>(null), searchY = useRef(0);
+  const now = Date.now() / 1000;
+  const all = data ?? [];
+  const hays = useMemo(() => new Map(all.map((m) => [m.id, hay(m)])), [data]);
+  const words = fold(q).split(/\s+/).filter(Boolean), searching = words.length > 0, finders = words.map(finder);
+  const found = (l: MarketView[]) => (searching ? l.filter((m) => { const h = hays.get(m.id) ?? ""; return finders.every((f) => f(h)); }) : l);
+  const hits = found(all); const count = (k: Stage) => hits.filter((m) => stageOf(m, now) === k).length;   // with a search running the tabs count its matches
+  // open / awaiting / proposed: soonest close first; settled: most recent first
+  const inStage = all.filter((m) => stageOf(m, now) === stage).sort((a, b) => (stage === "settled" ? b.closeTs - a.closeTs || b.id - a.id : a.closeTs - b.closeTs || a.id - b.id));
   const cats = CATEGORY_ORDER.filter((c) => inStage.some((m) => metricCategory(m.metric) === c)).concat([...new Set(inStage.map((m) => metricCategory(m.metric)))].filter((c) => !CATEGORY_ORDER.includes(c)));
   const curCat = cats.includes(cat) ? cat : cats[0] ?? "";
-  const live = (searching ? found(inStage) : inStage.filter((m) => metricCategory(m.metric) === curCat)).sort((a, b) => (stage === "settled" ? b.closeTs - a.closeTs || b.id - a.id : a.closeTs - b.closeTs || a.id - b.id));
-  const STAGES: [Stage, string][] = [["open", "Open"], ["awaiting", "Awaiting result"], ["proposed", "Proposed"], ["settled", "Settled"]];
-  const elsewhere = searching && live.length === 0 ? STAGES.filter(([k]) => k !== stage && count(k) > 0) : [];
-  const EMPTY: Record<Stage, string> = { open: "No market is open for bets right now; new ones open daily at 11:00 UTC (" + fmtTsShort(Math.floor(now / 86400) * 86400 + (now % 86400 < 39600 ? 39600 : 126000)).replace(/^\S+ \S+, /, "") + " your time).", awaiting: "No market is waiting for its result.", proposed: "No result is under dispute review right now.", settled: "Nothing has settled yet." };
-  const when = (m: MarketView) => (stage === "open" ? timeLeft(m.closeTs) : stage === "awaiting" ? `closed ${fmtTsShort(m.closeTs)} · result soon` : stage === "proposed" ? `proposed ${fmtTsShort(m.proposedAt)}` : `closed ${fmtTsShort(m.closeTs)}`);
-  const highlight = (m: MarketView) => (m.status === 2 || m.status === 4 ? m.outcome : m.status === 1 ? m.proposedOutcome : -1);
-  const card = ({ item: m }: { item: MarketView }) => {
+  const items = searching ? found(inStage) : inStage.filter((m) => metricCategory(m.metric) === curCat);
+  const elsewhere = searching && items.length === 0 ? STAGES.filter((k) => k !== stage && count(k) > 0) : [];
+
+  const when = (m: MarketView) => (m.status === 0 && now < m.closeTs ? timeLeft(m.closeTs) : m.status === 0 ? t("card.closedSoon", { ts: fmtTsShort(m.closeTs) }) : m.status === 1 ? t("card.proposed", { ts: fmtTsShort(m.proposedAt) }) : t("card.closed", { ts: fmtTsShort(m.closeTs) }));
+  const card = ({ item: m }: { item: MarketView }) => (
+    <Pressable onPress={() => nav.navigate("Market", { id: m.id })} style={({ pressed }) => [s.card, { backgroundColor: p.surface, borderColor: pressed ? p.accent : p.line }]}>
+      <Text style={[s.meta, { color: p.dim }]}>{when(m)}</Text>
+      <Text style={[s.title, { color: p.fg }]}>{question(m)}</Text>
+      <OptionRows m={m} highlight={m.status === 2 || m.status === 4 ? m.outcome : m.status === 1 ? m.proposedOutcome : -1} />
+      <View style={s.metaRow}><Text style={[s.meta, { color: p.dim }]}>{t("card.inPot", { amt: fmtAmt(totalPool(m), 0), tok: TOKEN_SYMBOL })}</Text><Text style={[s.meta, { color: p.dim }]}>{t("card.bettors", { n: m.positions })}</Text></View>
+    </Pressable>
+  );
+
+  const tab = (k: Stage) => {
+    const on = k === stage;
     return (
-      <Pressable onPress={() => nav.navigate("Market", { id: m.id })} style={({ pressed }) => [styles.card, { backgroundColor: theme.colors.elevation.level1, borderColor: pressed ? theme.colors.primary : theme.colors.outlineVariant }]}>
-        <Text variant="labelSmall" style={styles.dim}>{when(m)}</Text>
-        <Text variant="titleMedium" style={{ marginVertical: 6 }}>{question(m)}</Text>
-        <View style={{ marginTop: 8 }}><PoolBar m={m} compact highlight={highlight(m)} /></View>
-        <Text variant="labelSmall" style={[styles.dim, { marginTop: 6 }]}>{m.positions} bettors · {fmtAmt(totalPool(m) + m.seed, 0)} {TOKEN_SYMBOL} in pot</Text>
+      <Pressable key={k} onPress={() => setStage(k)} accessibilityRole="tab" accessibilityState={{ selected: on }} style={[s.tab, { borderBottomColor: on ? p.accent : p.line }]}>
+        <Text style={[s.tabText, { color: on ? p.fg : p.dim }]}>{t("stage." + k)}<Text style={[s.tabCount, { color: p.dim }]}>{"  " + count(k)}</Text></Text>
       </Pressable>
     );
   };
-  return (
-    <View style={styles.screen}>
-      {IS_TEST && <View style={styles.testnet}><Text variant="labelSmall" style={{ color: "#6b5200" }}>TEST NETWORK · devnet · tokens have no value</Text></View>}
-      <View style={styles.head}>
-        <Text variant="headlineSmall">Markets</Text>
-        <Pressable accessible={false} onPress={() => input.current?.focus()} style={[styles.search, { backgroundColor: theme.colors.elevation.level1, borderColor: focused ? theme.colors.primary : theme.colors.outlineVariant }]}>
-          <MaterialCommunityIcon name="magnify" size={18} color={theme.colors.onSurfaceVariant} />
-          <TextInput ref={input} value={q} onChangeText={setQ} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} placeholder="Search Jupiter, ORE…" placeholderTextColor={theme.colors.onSurfaceVariant} selectionColor={theme.colors.primary} style={[styles.searchInput, { color: theme.colors.onSurface }]} autoCapitalize="none" autoCorrect={false} returnKeyType="search" maxLength={60} accessibilityLabel="Search markets" />
-          {q.length > 0 && <Pressable onPress={() => setQ("")} hitSlop={10} accessibilityLabel="Clear search"><MaterialCommunityIcon name="close-circle" size={18} color={theme.colors.onSurfaceVariant} /></Pressable>}
-        </Pressable>
+  // An element, not a component: the list keeps the same search box (and its keyboard) across every redraw.
+  const header = (
+    <View>
+      {IS_TEST && <View style={[s.testnet, { backgroundColor: p.warnBg }]}><Text style={[s.testnetText, { color: p.warnFg }]}>{t("net.test", { net: APP.cluster })}</Text></View>}
+      <Text style={[s.h1, { color: p.fg }]}>{t("home.h1")}</Text>
+      <Text style={[s.lead, { color: p.dim }]}>{t("home.lead")}</Text>
+      {/* on a phone the keyboard takes half the screen: the box goes to the top so the matches show under it while typing */}
+      <View onLayout={(e) => { searchY.current = e.nativeEvent.layout.y; }} style={[s.search, { backgroundColor: p.surface, borderColor: focused ? p.accent : p.line }]}>
+        <MaterialCommunityIcon name="magnify" size={18} color={p.dim} />
+        <TextInput value={q} onChangeText={(v) => setQ(v.slice(0, 60))} onFocus={() => { setFocused(true); setTimeout(() => list.current?.scrollToOffset({ offset: Math.max(0, searchY.current - 8), animated: true }), 250); }} onBlur={() => setFocused(false)}
+          placeholder={t("search.ph")} placeholderTextColor={p.dim} selectionColor={p.accent} style={[s.searchInput, { color: p.fg }]} autoCapitalize="none" autoCorrect={false} returnKeyType="search" accessibilityLabel={t("search.aria")} />
+        {q.length > 0 && <Pressable onPress={() => setQ("")} hitSlop={10} accessibilityLabel={t("search.clear")}><MaterialCommunityIcon name="close-circle" size={18} color={p.dim} /></Pressable>}
       </View>
-      {!searching && <Text variant="bodySmall" style={[styles.dim, { marginBottom: 10 }]}>Prediction pools on the apps in the Solana dApp Store. Pick a range and stake SKR; winners split the losing pools. The fee is 3% of winnings only.</Text>}
-      <View style={{ height: 44, marginBottom: 12 }}><ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8, alignItems: "center", paddingRight: 8 }}>
-        {STAGES.map(([k, label]) => {
-          const on = k === stage;
-          return (
-            <Pressable key={k} onPress={() => setStage(k)} style={[styles.stageBtn, { backgroundColor: on ? theme.colors.primary : theme.colors.elevation.level2, borderColor: on ? theme.colors.primary : theme.colors.outlineVariant }]}>
-              <Text variant="labelLarge" style={{ color: on ? theme.colors.onPrimary : theme.colors.onSurface }}>{label}</Text>
-              <View style={[styles.stageCount, { backgroundColor: on ? "rgba(255,255,255,.25)" : theme.colors.elevation.level4 }]}><Text variant="labelSmall" style={{ color: on ? theme.colors.onPrimary : theme.colors.onSurface, includeFontPadding: false }}>{count(k)}</Text></View>
-            </Pressable>
-          );
-        })}
-      </ScrollView></View>
+      <View style={s.tabs}><View style={s.tabRow}>{tab("open")}{tab("awaiting")}</View><View style={s.tabRow}>{tab("proposed")}{tab("settled")}</View></View>
       {/* a search with nothing to show says where the matches are (or that every market was checked), never a bare empty list */}
-      {searching && !isLoading && !error && <View style={styles.found}>
-        <Text variant="bodyMedium" style={[styles.dim, { flexShrink: 1 }]}>{live.length > 0 ? `${live.length} of ${inStage.length} match “${q.trim()}”` : elsewhere.length > 0 ? `Nothing under “${STAGES.find(([k]) => k === stage)![1]}” matches “${q.trim()}”. Found under:` : `No market matches “${q.trim()}”; all ${all.length} were checked.`}</Text>
-        {elsewhere.map(([k, label]) => (
-          <Pressable key={k} onPress={() => setStage(k)} style={[styles.catBtn, { borderColor: theme.colors.outlineVariant }]}>
-            <Text variant="labelLarge" style={{ color: theme.colors.onSurface }}>{label}</Text><Text variant="labelSmall" style={styles.dim}>{count(k)}</Text>
-          </Pressable>))}
-      </View>}
-      {!searching && cats.length > 0 && <View style={{ height: 40, marginBottom: 10 }}><ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8, alignItems: "center", paddingRight: 8 }}>
-        {cats.map((c) => { const on = c === curCat; return (
-          <Pressable key={c} onPress={() => setCat(c)} style={[styles.catBtn, { backgroundColor: on ? theme.colors.secondaryContainer : "transparent", borderColor: on ? theme.colors.secondary : theme.colors.outlineVariant }]}>
-            <Text variant="labelLarge" style={{ color: theme.colors.onSurface }}>{catName(c)}</Text><Text variant="labelSmall" style={styles.dim}>{inStage.filter((m) => metricCategory(m.metric) === c).length}</Text>
-          </Pressable>); })}
-      </ScrollView></View>}
-      {isLoading ? <ActivityIndicator /> : error ? <View><Text>Could not load markets: {String((error as any)?.message ?? error)}</Text><Text variant="labelSmall" style={[styles.dim, { fontFamily: "monospace", marginTop: 6 }]} selectable>{String((error as any)?.stack ?? "").split("\n").slice(0, 6).join("\n")}</Text></View> :
-        <FlatList data={live} keyExtractor={(m) => String(m.id)} renderItem={card} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />} ListEmptyComponent={searching ? null : <Text style={styles.dim}>{EMPTY[stage]}</Text>} contentContainerStyle={{ gap: 12, paddingBottom: 24 }} />}
+      {searching ? (!isLoading && !error && (
+        <View style={s.found}>
+          <Text style={[s.foundText, { color: p.dim }]}>{items.length ? t("search.count", { n: items.length, total: inStage.length, q: q.trim() }) : elsewhere.length ? `${t("search.noneHere", { stage: t("stage." + stage), q: q.trim() })} ${t("search.elsewhere")}` : t("search.none", { q: q.trim(), total: all.length })}</Text>
+          {elsewhere.map((k) => (
+            <Pressable key={k} onPress={() => setStage(k)} style={[s.chip, s.foundBtn, { backgroundColor: p.surface, borderColor: p.line }]}>
+              <Text style={[s.chipText, { color: p.fg, fontSize: 13 }]}>{t("stage." + k)}<Text style={[s.chipCount, { color: p.dim }]}>{"  " + count(k)}</Text></Text>
+            </Pressable>))}
+        </View>))
+      : cats.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={s.chipsRow} contentContainerStyle={s.chips}>
+          {cats.map((c) => { const on = c === curCat; return (
+            <Pressable key={c} onPress={() => setCat(c)} accessibilityRole="tab" accessibilityState={{ selected: on }} style={[s.chip, { backgroundColor: on ? p.accent : p.surface, borderColor: on ? p.accent : p.line }]}>
+              <Text style={[s.chipText, { color: on ? "#fff" : p.fg }]}>{catLabel(c)}<Text style={[s.chipCount, { color: on ? "rgba(255,255,255,.8)" : p.dim }]}>{"  " + inStage.filter((m) => metricCategory(m.metric) === c).length}</Text></Text>
+            </Pressable>); })}
+        </ScrollView>)}
+      {!searching && stage === "open" && items.length > 0 && <Text style={[s.note, { color: p.dim, marginBottom: 12 }]}>{t("group.dayBlurb")}</Text>}
+      {isLoading && <ActivityIndicator style={{ marginVertical: 24 }} />}
+      {!!error && !data && <View style={[s.msg, { backgroundColor: p.noBg }]}><Text style={{ color: p.fg }}>{t("err.markets", { err: String((error as any)?.message ?? error) })}</Text></View>}
     </View>
   );
+  const footer = (
+    <Text style={[s.note, { color: p.dim, marginTop: 20 }]}>{t("home.footer")} {t("footer.times")} · <Text style={{ color: p.accent }} onPress={() => nav.navigate("Feedback")}>{t("fb.button")}</Text></Text>
+  );
+  return (
+    <FlatList ref={list} data={isLoading ? [] : items} keyExtractor={(m) => String(m.id)} renderItem={card} ListHeaderComponent={header} ListFooterComponent={footer}
+      ListEmptyComponent={isLoading || searching || (!!error && !data) ? null : <Text style={[s.note, { color: p.dim, fontSize: 14 }]}>{t("empty." + stage)}</Text>}
+      keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+      style={{ backgroundColor: p.bg }} contentContainerStyle={s.screen} ItemSeparatorComponent={Gap} />
+  );
 }
-const styles = StyleSheet.create({
-  screen: { flex: 1, padding: 16 },
-  card: { borderWidth: 1, borderRadius: 12, padding: 14 },
-  row: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  dim: { opacity: 0.7 },
-  head: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 6 },
-  search: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 6, height: 40, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12 },
-  searchInput: { flex: 1, minWidth: 0, alignSelf: "stretch", fontSize: 15, paddingVertical: 0, textAlignVertical: "center" },
-  found: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, minHeight: 40, marginBottom: 10 },
-  testnet: { backgroundColor: "#fff3c4", padding: 6, borderRadius: 6, alignItems: "center", marginBottom: 10 },
-  stageBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 999, height: 38, paddingHorizontal: 14 },
-  catBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 999, height: 34, paddingHorizontal: 12 },
-  stageCount: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, minWidth: 22, alignItems: "center" },
+const Gap = () => <View style={{ height: 12 }} />;
+const s = StyleSheet.create({
+  screen: { padding: 16, paddingBottom: 32 },
+  testnet: { alignSelf: "flex-start", borderRadius: 4, paddingVertical: 5, paddingHorizontal: 10, marginBottom: 14 },
+  testnetText: { fontSize: 12, lineHeight: 16, letterSpacing: 0.36 },
+  h1: { fontSize: 22, lineHeight: 28, fontWeight: "700", marginBottom: 6 },
+  lead: { fontSize: 15, lineHeight: 22, marginBottom: 20 },
+  search: { flexDirection: "row", alignItems: "center", gap: 8, height: 42, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, marginBottom: 6 },
+  searchInput: { flex: 1, minWidth: 0, alignSelf: "stretch", fontSize: 16, paddingVertical: 0, textAlignVertical: "center" },
+  tabs: { marginBottom: 14 },
+  tabRow: { flexDirection: "row", gap: 12 },
+  tab: { flex: 1, paddingVertical: 9, paddingHorizontal: 2, borderBottomWidth: 2 },
+  tabText: { fontSize: 15, lineHeight: 21, fontWeight: "500" },
+  tabCount: { fontSize: 12.5, fontWeight: "400" },
+  chipsRow: { flexGrow: 0, marginBottom: 16 },
+  chips: { gap: 8, paddingRight: 8 },
+  chip: { borderRadius: 999, borderWidth: 1, paddingVertical: 7, paddingHorizontal: 14 },
+  chipText: { fontSize: 14, lineHeight: 20 },
+  chipCount: { fontSize: 12 },
+  found: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, minHeight: 39, marginBottom: 16 },
+  foundText: { fontSize: 14, lineHeight: 20, flexShrink: 1 },
+  foundBtn: { paddingVertical: 5, paddingHorizontal: 12 },
+  note: { fontSize: 12.5, lineHeight: 18 },
+  msg: { borderRadius: 6, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12 },
+  card: { borderWidth: 1, borderRadius: 10, paddingVertical: 14, paddingHorizontal: 16, gap: 8 },
+  title: { fontSize: 15.5, lineHeight: 20, fontWeight: "600" },
+  meta: { fontSize: 12.5, lineHeight: 17 },
+  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
 });

@@ -1,58 +1,32 @@
 import { TOKEN_DECIMALS } from "../config";
-import { bareTitle, countedWindow, fmtExact, metricInfo } from "./metrics";
-import type { MarketView } from "./kubrai";
+import { t } from "../i18n";
+import { fmtExact, metricInfo, question } from "./metrics";
+import { STATUS, type MarketView } from "./kubrai";
+export { fmtTs, fmtTsShort, fmtRange, fmtStamp, fmtHm, fmtDay, inWords, timeLeft, zoneLabel, zoneShort } from "./time";
+export { question };
 export const fmtAmt = (base: number, digits = 2) => (base / 10 ** TOKEN_DECIMALS).toLocaleString("en-US", { maximumFractionDigits: digits });
-// Every time the app shows is the phone's own clock with its zone named ("25 Sept 2026, 14:10 GMT+8"). Hermes' Intl
-// does not name zones reliably, so the offset is spelled out by hand.
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
-const pad = (n: number) => (n < 10 ? "0" : "") + n;
-export function zoneLabel(d = new Date()) {
-  const off = -d.getTimezoneOffset(), sign = off >= 0 ? "+" : "-", h = Math.floor(Math.abs(off) / 60), m = Math.abs(off) % 60;
-  return `GMT${off === 0 ? "" : sign + h + (m ? ":" + pad(m) : "")}`;
-}
-/** "25 Sept 2026, 14:10 GMT+8" */
-export const fmtTs = (ts: number) => { const d = new Date(ts * 1000); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())} ${zoneLabel(d)}`; };
-/** "25 Sept, 14:10 GMT+8" */
-export const fmtTsShort = (ts: number) => { const d = new Date(ts * 1000); return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${pad(d.getHours())}:${pad(d.getMinutes())} ${zoneLabel(d)}`; };
-const NBSP = " ";
-/** "27 Sept, 08:00 – 28 Sept, 08:00 GMT+8": a window, zone named once. The only space a line may break at is the one
- *  after the dash, so a wrapped title never splits "27 Sept" apart or starts a line with the dash. */
-export const fmtRange = (from: number, to: number) => { const d = new Date(from * 1000); return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${pad(d.getHours())}:${pad(d.getMinutes())} –`.replace(/ /g, NBSP) + " " + fmtTsShort(to).replace(/ /g, NBSP); };
-/** The question as the web asks it: the counted period on the phone's clock, never "today" / "tomorrow", so the days of
- *  one question tell apart wherever they are listed.
- *  "Jupiter: Jupiter swap volume, 27 Sept, 08:00 – 28 Sept, 08:00 GMT+8: which range?" */
-export function question(m: MarketView) {
-  const asked = `${bareTitle(m.metric)}, ${fmtRange(...countedWindow(m))}`;
-  return m.nBuckets === 2 ? `${asked}: ≥${NBSP}${fmtExact(m.metric, m.thresholds[0]).replace(/ /g, NBSP)}?` : `${asked}: which range?`;   // "≥ 4,259,675 JupSOL?" stays on one line
-}
 export const short = (s: string) => s.slice(0, 4) + "…" + s.slice(-4);
-export function timeLeft(ts: number) {
-  const s = ts - Date.now() / 1000; if (s <= 0) return "closed";
-  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-  return d > 0 ? `${d}d ${h}h left` : h > 0 ? `${h}h ${m}m left` : `${m}m left`;
+/** Where a market stands, as the website's status pill names it and colours it (open / awaiting / proposed / voided). */
+export type StatusKind = "upcoming" | "open" | "awaiting" | "proposed" | "resolved" | "voided" | "swept";
+export function statusKind(m: MarketView, now = Date.now() / 1000): StatusKind {
+  if (m.status === 0) return now < m.openTs ? "upcoming" : now < m.closeTs ? "open" : "awaiting";
+  return STATUS[m.status].toLowerCase() as StatusKind;
 }
-/** "in 2h 10m" / "in 3d 4h" / "" once passed */
-export function inWords(ts: number) {
-  const s = ts - Date.now() / 1000; if (s <= 0) return "";
-  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-  return d > 0 ? `in ${d}d ${h}h` : h > 0 ? `in ${h}h ${m}m` : `in ${Math.max(1, m)}m`;
-}
-/** Edges are printed exactly (fmtExact, never rounded): the program compares the on-chain integer, so must the label.
- *  A middle range of a whole-number metric ends at the last whole number inside it ("11 – 12", or "= 10" when only one number
- *  fits); a scaled one is written "A – <B". */
+export const statusLabel = (m: MarketView) => t("status." + statusKind(m));
+/** Human label of bucket i: "< t0", "t0 – t1", "≥ tlast". Yes/no markets read "No · < t" / "Yes · ≥ t". Edges are printed
+ *  exactly (fmtExact, never rounded): the program compares the on-chain integer, so must the label. A middle range of a
+ *  whole-number metric ends at the last whole number inside it ("11 – 12", or "= 10" when only one number fits); a scaled
+ *  one is written "A – <B". Same as the website (web/src/ui.ts). */
 export function bucketLabel(m: MarketView, i: number) {
   const f = (v: number) => fmtExact(m.metric, v).replace(/ [^ ]+$/, "");
-  const t = m.thresholds, n = m.nBuckets, scaled = !!metricInfo(m.metric)?.scale;
-  if (n === 2) return i === 1 ? `Yes · ≥ ${f(t[0])}` : `No · < ${f(t[0])}`;
-  if (i === 0) return `< ${f(t[0])}`;
-  if (i === n - 1) return `≥ ${f(t[n - 2])}`;
-  if (scaled) return `${f(t[i - 1])} – <${f(t[i])}`;
-  return t[i] - t[i - 1] === 1 ? `= ${f(t[i - 1])}` : `${f(t[i - 1])} – ${f(t[i] - 1)}`;
+  const th = m.thresholds, n = m.nBuckets, scaled = !!metricInfo(m.metric)?.scale;
+  if (n === 2) return i === 1 ? `${t("bucket.yes")} · ≥ ${f(th[0])}` : `${t("bucket.no")} · < ${f(th[0])}`;
+  if (i === 0) return `< ${f(th[0])}`;
+  if (i === n - 1) return `≥ ${f(th[n - 2])}`;
+  if (scaled) return `${f(th[i - 1])} – <${f(th[i])}`;
+  return th[i] - th[i - 1] === 1 ? `= ${f(th[i - 1])}` : `${f(th[i - 1])} – ${f(th[i] - 1)}`;
 }
 const COLORS = ["#c4553f", "#c98a3a", "#a3a03a", "#5f9f4a", "#0f8f7c", "#2f7fb8", "#6a5fb8", "#9a4f9a"];
-export const bucketColor = (m: MarketView, i: number) => (m.nBuckets === 2 ? (i === 1 ? "#0f8f7c" : "#c4553f") : COLORS[Math.round((i * (COLORS.length - 1)) / Math.max(1, m.nBuckets - 1))]);
-export function statusLabel(m: MarketView) {
-  const now = Date.now() / 1000;
-  if (m.status === 0) return now < m.openTs ? "Upcoming" : now < m.closeTs ? "Open" : "Awaiting result";
-  return ["Open", "Result proposed", "Resolved", "Voided", "Settled"][m.status];
-}
+/** A range's colour. Yes / No take the theme's own green and red (lighter in the dark theme), like the website's
+ *  var(--yes) / var(--no); ranges run red → violet. */
+export const bucketColor = (m: MarketView, i: number, dark = false) => (m.nBuckets === 2 ? (i === 1 ? (dark ? "#4fc3b2" : "#0f8f7c") : (dark ? "#d9826b" : "#c4553f")) : COLORS[Math.round((i * (COLORS.length - 1)) / Math.max(1, m.nBuckets - 1))]);

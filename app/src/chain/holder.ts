@@ -1,6 +1,7 @@
 // Holder-discount proofs: the extra accounts appended to place_bet so the program can verify, from account data
 // alone, that the bettor holds a Seeker Genesis Token (Token-2022 group member) or an SKR stake. Shared logic with
 // app/src/chain/holder.ts — keep the two in step.
+import { t as tr } from "../i18n";
 import { Connection, PublicKey, type AccountMeta } from "@solana/web3.js";
 
 export const TOKEN_2022_PROGRAM_ID = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
@@ -16,9 +17,9 @@ export const ORE_MINER_OFFSETS = { owner: 8, amount: 704 };
 export const ORE_BASE = 100_000_000_000;
 export const isOreMinerRule = (t: FeeTiersView) => !!t && t.stakeOwnerOffset === ORE_MINER_OFFSETS.owner && t.stakeAmountOffset === ORE_MINER_OFFSETS.amount;
 /** Human name of the configured stake rule ("" when none). */
-export const stakeRuleLabel = (t: FeeTiersView) => !t || !t.stakeDiscountBps || t.stakeProgram === PublicKey.default.toBase58() ? "" : isOreMinerRule(t) ? "ORE miner" : "SKR staking";
+export const stakeRuleLabel = (t: FeeTiersView) => !t || !t.stakeDiscountBps || t.stakeProgram === PublicKey.default.toBase58() ? "" : isOreMinerRule(t) ? tr("hold.ore") : tr("hold.skr");
 /** One line for the fee schedule: who gets the stake discount and how it is proven. */
-export const stakeRuleText = (t: FeeTiersView) => !stakeRuleLabel(t) ? "" : isOreMinerRule(t) ? `ORE miner (≥ ${(t!.stakeMinAmount / ORE_BASE).toLocaleString("en-US", { maximumFractionDigits: 2 })} ORE of unclaimed mining rewards in the wallet's ORE Miner account, about $500 at the ORE price, repriced daily) −${t!.stakeDiscountBps / 100}%` : `SKR staking (≥ ${(t!.stakeMinAmount / 1e6).toLocaleString("en-US")} SKR) −${t!.stakeDiscountBps / 100}%`;
+export const stakeRuleText = (t: FeeTiersView) => !stakeRuleLabel(t) ? "" : isOreMinerRule(t) ? tr("hold.oreRule", { n: (t!.stakeMinAmount / ORE_BASE).toLocaleString("en-US", { maximumFractionDigits: 2 }), pct: t!.stakeDiscountBps / 100 }) : tr("hold.skrRule", { n: (t!.stakeMinAmount / 1e6).toLocaleString("en-US"), pct: t!.stakeDiscountBps / 100 });
 const ro = (pubkey: PublicKey): AccountMeta => ({ pubkey, isSigner: false, isWritable: false });
 
 /** Find the wallet's Genesis Token (a Token-2022 token with balance ≥ 1 whose mint is a member of the configured group). */
@@ -73,6 +74,6 @@ export function feeWithDiscounts(baseFeeBps: number, earlyBird: boolean, earlyBi
   return Math.max(fee, proof.accounts.length ? proof.minFeeBps : 0);
 }
 export function discountLabel(earlyBird: boolean, proof: HolderProof) {
-  const parts = []; if (earlyBird) parts.push("early bird"); if (proof.sgt) parts.push("Seeker Genesis Token"); if (proof.stake) parts.push(proof.stakeLabel || "stake");
+  const parts = []; if (earlyBird) parts.push(tr("hold.early")); if (proof.sgt) parts.push(tr("hold.sgt")); if (proof.stake) parts.push(proof.stakeLabel || tr("hold.stake"));
   return parts.length ? parts.join(" + ") : "";
 }

@@ -1,0 +1,12 @@
+{
+  "app.bet.signOnly": "The wallet did not send it. Asking for a signature only…",
+  "app.bet.cancelled": "The wallet cancelled the request before signing. If you saw no wallet screen at all, the wallet may not accept devnet — try Phantom or Solflare with Testnet mode on.",
+  "app.bet.declined": "You declined the request in the wallet.",
+  "app.bet.explorer": "View transaction on explorer",
+  "app.bet.invitePending": "Invite code {code} is applied right after this bet if it is this wallet's first — one extra signature, nothing charged.",
+  "app.dispute.reasonShort": "Say what you observed (at least a sentence).",
+  "app.dispute.signing": "Sign the dispute in your wallet…",
+  "app.dispute.file": "Sign & file dispute",
+  "app.dispute.cancel": "Cancel",
+  "app.ev.hide": "Hide"
+}
