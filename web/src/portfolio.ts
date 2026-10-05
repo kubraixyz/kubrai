@@ -57,11 +57,11 @@ async function render(owner: PublicKey | null) {
     settledEl.innerHTML = `<div class="scroll"><table class="tbl stack"><thead><tr><th>${t("pf.colMarket")}</th><th>${t("pf.colBets")}</th><th>${t("pf.colOutcome")}</th><th class="r">${t("pf.colPaid")}</th><th>Tx</th></tr></thead><tbody>${j.settled.map((s: any) => {
       const m = byKey.get(s.market);
       const bets = s.amounts.map((a: string, i: number) => (Number(a) ? `${m ? bucketLabel(m, i) : "bucket " + i}: <span class="mono">${fmtAmt(Number(a))}</span>` : "")).filter(Boolean).join("<br>");
-      const outcome = (s.status === 3 ? t("status.voided") : m ? t("pf.outcomeV", { b: bucketLabel(m, Number(s.outcome)), v: Number(s.observed).toLocaleString("en-US") }) : `bucket ${esc(s.outcome)}`)
-        + (s.kind === "refund" && s.status !== 3 ? `<div class="note">${t("pf.noWinner")}</div>` : "");   // resolved, nobody on the winning range
+      const outcome = s.status === 3 ? t("status.voided") : m ? t("pf.outcomeV", { b: bucketLabel(m, Number(s.outcome)), v: Number(s.observed).toLocaleString("en-US") }) : `bucket ${esc(s.outcome)}`;
+      const why = s.kind === "refund" && s.status !== 3 ? `<div class="note">${esc(t("pf.noWinner"))}</div>` : "";   // resolved, nobody on the winning range
       const cls = s.kind === "won" ? "ok" : s.kind === "lost" ? "err" : "";
       const sig = isBase58(s.signature) ? s.signature : null;
-      return `<tr><td>${m ? `<a href="/market.html?id=${m.id}">${esc(betTitle(m))}</a>` : esc(metricLabel(String(s.metric)))}<div class="note">#${esc(s.id)} · ${fmtTs(Date.parse(s.at) / 1000)}</div></td><td data-label="${L.bets}"><div>${bets}</div></td><td data-label="${L.outcome}"><div>${esc(outcome)}</div></td><td class="r mono" data-label="${L.paid}"><span class="msg ${cls}" style="padding:2px 8px">${s.kind === "lost" ? "0" : fmtAmt(Number(s.payout))} ${TOKEN_SYMBOL}${s.kind === "refund" ? ` · ${t("kind.refund")}` : ""}</span></td><td class="hash" data-label="Tx">${sig ? `<a href="${explorerTx(sig)}" target="_blank" rel="noopener">${sig.slice(0, 8)}…</a>` : "—"}</td></tr>`;
+      return `<tr><td>${m ? `<a href="/market.html?id=${m.id}">${esc(betTitle(m))}</a>` : esc(metricLabel(String(s.metric)))}<div class="note">#${esc(s.id)} · ${fmtTs(Date.parse(s.at) / 1000)}</div></td><td data-label="${L.bets}"><div>${bets}</div></td><td data-label="${L.outcome}"><div>${esc(outcome)}</div>${why}</td><td class="r mono" data-label="${L.paid}"><span class="msg ${cls}" style="padding:2px 8px">${s.kind === "lost" ? "0" : fmtAmt(Number(s.payout))} ${TOKEN_SYMBOL}${s.kind === "refund" ? ` · ${t("kind.refund")}` : ""}</span></td><td class="hash" data-label="Tx">${sig ? `<a href="${explorerTx(sig)}" target="_blank" rel="noopener">${sig.slice(0, 8)}…</a>` : "—"}</td></tr>`;
     }).join("")}</tbody></table></div>`;
   } catch { settledEl.innerHTML = `<div class="note">${t("pf.histErr")}</div>`; }
 }

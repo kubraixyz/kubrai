@@ -126,7 +126,9 @@ function renderBet(open: boolean, fee: number) {
     quote.innerHTML = `<span>${t("bet.ifWins", { b: `<b>${bucketLabel(m, bucket)}</b>` })}</span><span class="big">${fmtAmt(q.total)} ${TOKEN_SYMBOL}</span><span class="note">${t("bet.breakdown", { stake: fmtAmt(a), losers: fmtAmt(q.fromLosers), fee: fmtAmt(q.fee) })}${q.fromSeed ? ` ${t("bet.plusSeed", { seed: fmtAmt(q.fromSeed) })}` : ""}. ${t("bet.otherLoses", { stake: fmtAmt(a) })}</span>`;
   };
   amtEl.oninput = () => { amtDraft = amtEl.value; upd(); }; upd(); drawPosition();
-  if (refocusAmt) { refocusAmt = false; amtEl.focus({ preventScroll: true }); }
+  // with the caret at the end: focus alone leaves it at the start of a number field (1, then 2-3-4-5-6, came out as
+  // 234561), and a number field takes no setSelectionRange; setting its value again moves the caret after it
+  if (refocusAmt) { refocusAmt = false; amtEl.focus({ preventScroll: true }); const v = amtEl.value; amtEl.value = ""; amtEl.value = v; }
   const mx = box.querySelector<HTMLButtonElement>("#max"); if (mx) mx.onclick = () => { amtEl.value = String(Math.floor(balances.token / 10 ** TOKEN_DECIMALS)); amtDraft = amtEl.value; upd(); };
   box.querySelectorAll<HTMLButtonElement>(".sides button").forEach((b) => (b.onclick = () => { bucket = Number(b.dataset.b); renderBet(open, fee); }));
   const go = box.querySelector<HTMLButtonElement>("#go"), msg = box.querySelector("#msg")!;
