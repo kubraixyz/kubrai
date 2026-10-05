@@ -4,20 +4,23 @@
 //       <base>_dmed / <base>_wmed (level: median of every hourly snapshot inside the market window),
 //       rev_day:<app> / rev_week:<app> (per-app store reviews, cumulative), plus a few legacy ids.
 // `scale` divides the on-chain integer threshold/observed value for display.
-import { t } from "../i18n";
+import { getLang, t } from "../i18n";
 import { fmtRange, fmtRangeNb, fmtWait } from "./time";
 export type SourceKind = "onchain" | "store" | "thirdparty";
 export type Cadence = "day" | "week" | "other";
-export const SOURCE_LABEL: Record<SourceKind, string> = { onchain: t("srcl.onchain"), store: t("srcl.store"), thirdparty: t("srcl.thirdparty") };
+/** The source line of a market by its kind (the website's SOURCE_LABEL; a function here, because the language can change while the app runs). */
+export const sourceLabel = (k: SourceKind) => t(k === "onchain" ? "srcl.onchain" : k === "store" ? "srcl.store" : "srcl.thirdparty");
 /** The source line of a market page names the third party. The broad kind alone printed "third-party aggregator
  *  (seekertracker.com)" on every DefiLlama and Jupiter-price market until 2026-10-03. `kind` is the catalog's reader. */
-const sourceLabelOf = (source: SourceKind, kind?: string) => (kind?.startsWith("defillama") ? t("srcl.defillama") : kind === "jup_price" ? t("srcl.jupprice") : SOURCE_LABEL[source]);
+const sourceLabelOf = (source: SourceKind, kind?: string) => (kind?.startsWith("defillama") ? t("srcl.defillama") : kind === "jup_price" ? t("srcl.jupprice") : sourceLabel(source));
 export const APP_NAMES: Record<string, string> = { jupiter: "Jupiter Mobile", tokenrun: "TokenRun", mattle: "MattleFun", cherry: "Cherry Messenger", seedvault: "Seed Vault Wallet", lootgo: "LootGO", jito: "Jito", sleepagotchi: "Sleepagotchi", moonwalk: "Moonwalk", ore: "ORE" };
 export type MetricInfo = { title: string; unit: string; how: string; scale?: number; digits?: number; source: SourceKind; sourceLabel?: string; cumulative?: boolean; cadence: Cadence; key?: string };
-const WINDOW = { day: t("win.day"), week: t("win.week") };
-const MEDIAN_WINDOW = { dmed: t("win.dmed"), wmed: t("win.wmed") };
+// The tables below hold words, so they are built for the language in use when asked, and built again after a switch.
+const perLang = <T,>(make: () => T) => { let at = "", v: T; return () => { if (at !== getLang()) { v = make(); at = getLang(); } return v!; }; };
+const WINDOW = perLang(() => ({ day: t("win.day"), week: t("win.week") }));
+const MEDIAN_WINDOW = perLang(() => ({ dmed: t("win.dmed"), wmed: t("win.wmed") }));
 const KEYS: Record<string, string> = { sgt: "sgt_total", skr_staked: "skr_staked", reviews: "store_reviews_total", dapps: "dapp_store_active_apps", reviewers: "reviewers_7d", skr_ids: "skr_ids_onchain", das: "das", skr_price: "skr_price_usd_e8", ore_sol: "ore_deployed_cum", ore_hits: "ore_motherlode_cum", ore_cost: "ore_cost_ema" };
-const BASES: Record<string, { noun: string; unit: string; source: SourceKind; scale?: number; digits?: number; cum: (w: string) => string; med: (w: string) => string; level: string }> = {
+const BASES = perLang((): Record<string, { noun: string; unit: string; source: SourceKind; scale?: number; digits?: number; cum: (w: string) => string; med: (w: string) => string; level: string }> => ({
   sgt: { noun: t("m.sgt.noun"), unit: t("m.sgt.unit"), source: "onchain", level: t("m.sgt.level"), cum: (w) => t("m.sgt.cum", { w }), med: (w) => t("m.sgt.med", { w }) },
   skr_staked: { noun: t("m.skr_staked.noun"), unit: t("m.skr_staked.unit"), source: "onchain", scale: 1_000_000, level: t("m.skr_staked.level"), cum: (w) => t("m.skr_staked.cum", { w }), med: (w) => t("m.skr_staked.med", { w }) },
   reviews: { noun: t("m.reviews.noun"), unit: t("m.reviews.unit"), source: "store", level: t("m.reviews.level"), cum: (w) => t("m.reviews.cum", { w }), med: (w) => t("m.reviews.med", { w }) },
@@ -31,12 +34,12 @@ const BASES: Record<string, { noun: string; unit: string; source: SourceKind; sc
   ore_sol: { noun: t("m.ore_sol.noun"), unit: t("m.ore_sol.unit"), source: "onchain", scale: 1_000_000_000, digits: 0, level: t("m.ore_sol.level"), cum: (w) => t("m.ore_sol.cum", { w }), med: (w) => t("m.ore_sol.med", { w }) },
   ore_hits: { noun: t("m.ore_hits.noun"), unit: t("m.ore_hits.unit"), source: "onchain", digits: 0, level: t("m.ore_hits.level"), cum: (w) => t("m.ore_hits.cum", { w }), med: (w) => t("m.ore_hits.med", { w }) },
   ore_cost: { noun: t("m.ore_cost.noun"), unit: t("m.ore_cost.unit"), source: "onchain", scale: 1_000_000_000, digits: 4, level: t("m.ore_cost.level"), cum: (w) => t("m.ore_cost.cum", { w }), med: (w) => t("m.ore_cost.med", { w }) },
-};
-const LEGACY: Record<string, MetricInfo> = {
+}));
+const LEGACY = perLang((): Record<string, MetricInfo> => ({
   skr_staked_med7: { title: t("m.skr_staked_med7.title"), unit: t("u.SKR"), scale: 1_000_000, source: "onchain", cadence: "week", how: t("m.skr_staked_med7.how") },
   das_med7: { title: t("m.das_med7.title"), unit: t("u.IDs"), source: "thirdparty", cadence: "week", how: t("m.das_med7.how") },
   skr_price_close: { title: t("m.skr_price_close.title"), unit: t("u.USD"), scale: 100_000_000, source: "thirdparty", sourceLabel: t("srcl.jupprice"), cadence: "other", how: t("m.skr_price_close.how") },
-};
+}));
 // Per-app metrics are configured on the server (server/app-metrics.json) and described by /metrics. The app loads that
 // catalog once (loadMetricCatalog; the website has it embedded); unknown ids resolve through it, so a new app market needs
 // no new APK.
@@ -51,7 +54,7 @@ const dailyWait = (c: CatalogEntry, dayEnd?: number, resolveAfterTs?: number) =>
 /** closeTs (when known) lets a "tomorrow" market name its day as the viewer's own clock shows it, not as a UTC date;
  *  with resolveAfterTs as well, a daily-source market states its own wait. */
 export function metricInfo(id: string, closeTs?: number, resolveAfterTs?: number): MetricInfo | undefined {
-  if (LEGACY[id]) return LEGACY[id];
+  if (LEGACY()[id]) return LEGACY()[id];
   const td = id.match(/^(.+)_today$/);
   if (td && catalog[td[1]]) { const c = catalog[td[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} ${t("m.todayHow", { wait: fmtWait(dailyWait(c, closeTs && closeTs % 86400 === 12 * 3600 ? closeTs + 12 * 3600 : undefined, resolveAfterTs)) })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
   const nx = id.match(/^(.+)_next$/);   // retired 2026-09-27 (the day after close); kept for the markets opened before
@@ -59,17 +62,17 @@ export function metricInfo(id: string, closeTs?: number, resolveAfterTs?: number
   const cm = id.match(/^(.+)_(day|week|dmed|wmed)$/);
   if (cm && catalog[cm[1]]) {
     const c = catalog[cm[1]], k = cm[2];
-    if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: t("m.appChange", { noun: c.noun }), w: WINDOW[k] }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cumulative: true, cadence: k, key: c.id, how: `${c.how} ${t("m.appCumHow", { w: WINDOW[k] })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
-    const w = MEDIAN_WINDOW[k as "dmed" | "wmed"];
+    if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: t("m.appChange", { noun: c.noun }), w: WINDOW()[k] }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cumulative: true, cadence: k, key: c.id, how: `${c.how} ${t("m.appCumHow", { w: WINDOW()[k] })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
+    const w = MEDIAN_WINDOW()[k as "dmed" | "wmed"];
     return { title: t("m.medTitle", { level: c.level.includes(c.app) ? c.level : `${c.app} · ${c.level}`, w }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: k === "dmed" ? "day" : "week", key: c.id, how: `${c.how} ${t("m.appMedHow", { w })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` };
   }
   let m = id.match(/^rev_(week|day):(.+)$/);
-  if (m) { const app = APP_NAMES[m[2]] ?? m[2]; const w = WINDOW[m[1] as "day" | "week"]; return { title: t("m.rev.title", { app, w }), unit: t("u.reviews"), cumulative: true, source: "store", cadence: m[1] as Cadence, key: "rev:" + m[2], how: t("m.rev.how", { app, w }) }; }
-  m = id.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASES[m[1]]) return undefined;
-  const b = BASES[m[1]], k = m[2];
+  if (m) { const app = APP_NAMES[m[2]] ?? m[2]; const w = WINDOW()[m[1] as "day" | "week"]; return { title: t("m.rev.title", { app, w }), unit: t("u.reviews"), cumulative: true, source: "store", cadence: m[1] as Cadence, key: "rev:" + m[2], how: t("m.rev.how", { app, w }) }; }
+  m = id.match(/^(.+)_(day|week|dmed|wmed)$/); if (!m || !BASES()[m[1]]) return undefined;
+  const b = BASES()[m[1]], k = m[2];
   const sourceLabel = m[1] === "skr_price" ? t("srcl.jupprice") : undefined;   // the one built-in number that is a Jupiter quote
-  if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: b.noun, w: WINDOW[k] }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, sourceLabel, cumulative: true, cadence: k, key: KEYS[m[1]], how: b.cum(WINDOW[k]) };
-  const w = MEDIAN_WINDOW[k as "dmed" | "wmed"]; const cadence: Cadence = k === "dmed" ? "day" : "week";
+  if (k === "day" || k === "week") return { title: t("m.cumTitle", { noun: b.noun, w: WINDOW()[k] }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, sourceLabel, cumulative: true, cadence: k, key: KEYS[m[1]], how: b.cum(WINDOW()[k]) };
+  const w = MEDIAN_WINDOW()[k as "dmed" | "wmed"]; const cadence: Cadence = k === "dmed" ? "day" : "week";
   return { title: t("m.medTitle", { level: b.level[0].toUpperCase() + b.level.slice(1), w }), unit: b.unit, scale: b.scale, digits: b.digits, source: b.source, sourceLabel, cadence, how: b.med(w[0].toUpperCase() + w.slice(1)) };
 }
 /** The period whose number decides the market (mirrors server/history.mjs countedWindow):
@@ -80,7 +83,7 @@ export const countedWindow = (m: { metric: string; openTs: number; closeTs: numb
   return /_next$/.test(m.metric) ? [m.closeTs, m.closeTs + 86400] : [m.openTs, m.closeTs];
 };
 /** A metric's title without its "today" / "this week": for wherever the period is written out beside it. */
-export const bareTitle = (m: { metric: string; closeTs: number }) => (metricInfo(m.metric, m.closeTs)?.title ?? t("m.unknown")).split(WINDOW.day).join("").split(WINDOW.week).join("").replace(/[（(]\s*[）)]/g, "").replace(/\s+/g, " ").trim();
+export const bareTitle = (m: { metric: string; closeTs: number }) => (metricInfo(m.metric, m.closeTs)?.title ?? t("m.unknown")).split(WINDOW().day).join("").split(WINDOW().week).join("").replace(/[（(]\s*[）)]/g, "").replace(/\s+/g, " ").trim();
 /** The question as SharePot asks it: the period on the viewer's clock, never "today"/"tomorrow".
  *  "Jupiter swap volume, 27 Sept, 08:00 – 28 Sept, 08:00 GMT+8: which range?" Text, where the website's is HTML: a line
  *  breaks only after the dash, and "≥ 4,259,675 JupSOL" stays whole. */

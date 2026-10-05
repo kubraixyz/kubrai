@@ -7,6 +7,7 @@ import { useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { Linking } from "react-native";
 import { useCluster } from "../cluster/cluster-data-access";
+import { t } from "../../i18n";
 
 export function TopBarWalletButton({
   selectedAccount,
@@ -25,7 +26,7 @@ export function TopBarWalletButton({
     >
       {selectedAccount
         ? ellipsify(selectedAccount.publicKey.toBase58())
-        : "Connect"}
+        : t("app.wallet.connectShort")}
     </Button>
   );
 }
@@ -81,12 +82,12 @@ export function TopBarWalletMenu() {
     >
       <Menu.Item
         onPress={copyAddressToClipboard}
-        title="Copy address"
+        title={t("wallet.copyTitle")}
         leadingIcon="content-copy"
       />
       <Menu.Item
         onPress={viewExplorer}
-        title="View Explorer"
+        title={t("app.wallet.explorer")}
         leadingIcon="open-in-new"
       />
       <Menu.Item
@@ -94,7 +95,7 @@ export function TopBarWalletMenu() {
           await disconnect();
           closeMenu();
         }}
-        title="Disconnect"
+        title={t("wallet.disconnect")}
         leadingIcon="link-off"
       />
     </Menu>

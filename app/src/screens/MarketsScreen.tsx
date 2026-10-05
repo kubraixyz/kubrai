@@ -23,10 +23,10 @@ const catLabel = (c: string) => (t("cat." + c) === "cat." + c ? c : t("cat." + c
 // Search: every word typed has to begin a word ("ore" finds ORE, not "Store") in what a card says (its question, the app,
 // the category), the market's number ("#139") or its metric id; case, accents and full-width forms aside. A word in a
 // script written without spaces is found anywhere.
-const fold = (s: string) => { try { return s.normalize("NFKD").replace(/[̀-ͯ]/g, "").normalize("NFKC").toLowerCase(); } catch { return s.toLowerCase(); } };
+const fold = (s: string) => { try { return s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").normalize("NFKC").toLowerCase(); } catch { return s.toLowerCase(); } };
 function hay(m: MarketView) {
   const base = m.metric.replace(/_(next|today|day|week|dmed|wmed|med7)$/, ""), c = metricCategory(m.metric);
-  return fold([`#${m.id}`, question(m).replace(/ /g, " "), metricLabel(m.metric), catalogEntry(base)?.app ?? "", c, catLabel(c), base].join(" "));
+  return fold([`#${m.id}`, question(m).replace(/\u00a0/g, " ").replace(/\u2060/g, ""), metricLabel(m.metric), catalogEntry(base)?.app ?? "", c, catLabel(c), base].join(" "));
 }
 const finder = (w: string) => { if (!/^[a-z0-9]/.test(w)) return (h: string) => h.includes(w); const re = new RegExp("(?:^|[^a-z0-9])" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); return (h: string) => re.test(h); };
 

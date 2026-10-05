@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const LANGS = ["en"];   // the languages the app ships (app/src/i18n.ts)
+const LANGS = ["en", "zh-TW", "zh-CN", "ja", "ko", "es"];   // the languages the app ships (app/src/i18n.ts)
 const check = process.argv.includes("--check");
 let stale = 0;
 for (const lang of LANGS) {

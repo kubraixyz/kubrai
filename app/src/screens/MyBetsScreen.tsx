@@ -15,6 +15,7 @@ import { nextStepText } from "../chain/timeline";
 import { explorerTxUrl } from "../chain/explorer";
 import { useConfig } from "../hooks/useKubrai";
 import { TOKEN_SYMBOL } from "../config";
+import { t } from "../i18n";
 
 const GREEN = "#0f8f7c", RED = "#c4553f";
 function Big({ label, value, color, right }: { label: string; value: string; color?: string; right?: boolean }) {
@@ -35,7 +36,7 @@ export function MyBetsScreen() {
   const markets = useMarkets(); const positions = usePositions(); const cfg = useConfig();
   const settled = useQuery({ queryKey: ["settled", selectedAccount?.publicKey.toBase58()], queryFn: () => fetchSettled(selectedAccount!.publicKey.toBase58()), enabled: !!selectedAccount, refetchInterval: 60_000 });
 
-  if (!selectedAccount) return <View style={styles.center}><Text style={{ marginBottom: 12 }}>Connect a wallet to see your bets.</Text><Button mode="contained" onPress={() => connect()}>Connect wallet</Button></View>;
+  if (!selectedAccount) return <View style={styles.center}><Text style={{ marginBottom: 12 }}>{t("pf.connect")}</Text><Button mode="contained" onPress={() => connect()}>{t("wallet.connect")}</Button></View>;
 
   const byKey = new Map((markets.data ?? []).map((m) => [m.pubkey.toBase58(), m]));
   const rows = (positions.data ?? []).map((p: any) => ({ p, m: byKey.get(p.market.toBase58()) })).filter((x: any) => x.m) as { p: any; m: MarketView }[];
@@ -45,26 +46,26 @@ export function MyBetsScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
-      <Text variant="headlineSmall">My bets</Text>
-      <Text variant="bodySmall" style={[styles.dim, { marginBottom: 12 }]}>Open positions update live. Payouts arrive in your wallet automatically after the dispute window; nothing to claim.</Text>
+      <Text variant="headlineSmall">{t("nav.mybets")}</Text>
+      <Text variant="bodySmall" style={[styles.dim, { marginBottom: 12 }]}>{t("app.mb.lead")}</Text>
 
-      {positions.isLoading ? <ActivityIndicator /> : rows.length === 0 ? card(<Text style={styles.dim}>No open bets yet. Pick a market and place one.</Text>, () => nav.navigate("Markets"), "empty") : rows.map(({ p, m }) => {
+      {positions.isLoading ? <ActivityIndicator /> : rows.length === 0 ? card(<Text style={styles.dim}>{t("pf.noOpen")}</Text>, () => nav.navigate("Markets"), "empty") : rows.map(({ p, m }) => {
         const feeBps = p.amounts.map((a: number, i: number) => (a ? Number(BigInt(p.feeW[i]) / BigInt(a)) : 0));
         const staked = p.amounts.reduce((x: number, y: number) => x + y, 0);
         const myBuckets = p.amounts.map((a: number, i: number) => ({ a, i })).filter((x: any) => x.a > 0);
         const w = m.status === 2 ? m.outcome : m.status === 1 ? m.proposedOutcome : NO_OUTCOME;
         // headline value: settled/proposed → the real payout; open → best case across the user's buckets
-        let value = 0, valueLabel = "Now worth", tone = theme.colors.onSurface, sub = "";
-        if (m.status === 3) { value = staked; valueLabel = "Refund"; sub = "Market voided"; }
-        else if (w !== NO_OUTCOME) { const r = payoutIfBucket(m, p.amounts, feeBps, w); value = r.payout; valueLabel = m.status === 2 ? "Paying out" : "If confirmed"; tone = r.kind === "lost" ? RED : GREEN; sub = `${m.status === 2 ? "Result" : "Proposed"}: ${bucketLabel(m, w)}`; }
-        else { const best = Math.max(...myBuckets.map((b: any) => payoutIfBucket(m, p.amounts, feeBps, b.i).payout)); value = best; valueLabel = myBuckets.length > 1 ? "Best case" : "If it wins"; sub = `${timeLeft(m.closeTs)} · ${fmtAmt(totalPool(m) + m.seed, 0)} ${TOKEN_SYMBOL} in pot`; }
+        let value = 0, valueLabel = t("pf.colWorth"), tone = theme.colors.onSurface, sub = "";
+        if (m.status === 3) { value = staked; valueLabel = t("app.mb.refund"); sub = t("app.mb.voided"); }
+        else if (w !== NO_OUTCOME) { const r = payoutIfBucket(m, p.amounts, feeBps, w); value = r.payout; valueLabel = m.status === 2 ? t("app.mb.payingOut") : t("app.mb.ifConfirmed"); tone = r.kind === "lost" ? RED : GREEN; sub = t(m.status === 2 ? "app.mb.result" : "app.mb.proposed", { b: bucketLabel(m, w) }); }
+        else { const best = Math.max(...myBuckets.map((b: any) => payoutIfBucket(m, p.amounts, feeBps, b.i).payout)); value = best; valueLabel = myBuckets.length > 1 ? t("app.mb.bestCase") : t("app.mb.ifWins"); sub = `${timeLeft(m.closeTs)} · ${t("card.inPot", { amt: fmtAmt(totalPool(m) + m.seed, 0), tok: TOKEN_SYMBOL })}`; }
         return card(<>
           <View style={styles.row}><Chip compact mode="outlined">{statusLabel(m)}</Chip><Text variant="labelSmall" style={styles.dim}>#{m.id}</Text></View>
           <Text variant="titleMedium" style={{ marginTop: 6 }}>{question(m)}</Text>
           <View style={{ marginTop: 10 }}><PoolBar m={m} compact highlight={w !== NO_OUTCOME ? w : myBuckets.length === 1 ? myBuckets[0].i : -1} /></View>
           <View style={styles.chips}>{myBuckets.map((b: any) => <View key={b.i} style={[styles.chip, { borderColor: bucketColor(m, b.i) }]}><View style={[styles.dot, { backgroundColor: bucketColor(m, b.i) }]} /><Text variant="labelMedium">{bucketLabel(m, b.i)} · {fmtAmt(b.a)}</Text></View>)}</View>
           <View style={styles.nums}>
-            <Big label="You staked" value={fmtAmt(staked)} />
+            <Big label={t("app.mb.staked")} value={fmtAmt(staked)} />
             <Big label={valueLabel} value={fmtAmt(value)} color={tone} right />
           </View>
           <Text variant="labelSmall" style={styles.dim}>{sub}</Text>
@@ -72,22 +73,22 @@ export function MyBetsScreen() {
         </>, () => nav.navigate("Market", { id: m.id }), p.pubkey.toBase58());
       })}
 
-      <Text variant="titleMedium" style={{ marginTop: 20, marginBottom: 8 }}>Settled</Text>
-      {settled.isLoading ? <ActivityIndicator /> : !settled.data?.length ? <Text style={styles.dim}>Nothing settled yet.</Text> : settled.data.map((s: any) => {
+      <Text variant="titleMedium" style={{ marginTop: 20, marginBottom: 8 }}>{t("pf.settled")}</Text>
+      {settled.isLoading ? <ActivityIndicator /> : !settled.data?.length ? <Text style={styles.dim}>{t("pf.noSettled")}</Text> : settled.data.map((s: any) => {
         const m = byKey.get(s.market); const won = s.kind === "won", lost = s.kind === "lost";
         const staked = s.amounts.reduce((x: number, y: string) => x + Number(y), 0);
         return card(<>
           <View style={styles.row}>
-            <View style={[styles.badge, { backgroundColor: won ? GREEN : lost ? RED : theme.colors.elevation.level3 }]}><Text variant="labelMedium" style={{ color: won || lost ? "#fff" : theme.colors.onSurface }}>{won ? "WON" : lost ? "LOST" : "REFUNDED"}</Text></View>
+            <View style={[styles.badge, { backgroundColor: won ? GREEN : lost ? RED : theme.colors.elevation.level3 }]}><Text variant="labelMedium" style={{ color: won || lost ? "#fff" : theme.colors.onSurface }}>{won ? t("app.mb.won") : lost ? t("app.mb.lost") : t("app.mb.refunded")}</Text></View>
             <Text variant="labelSmall" style={styles.dim}>#{s.id} · {fmtTs(Date.parse(s.at) / 1000)}</Text>
           </View>
           <Text variant="titleMedium" style={{ marginTop: 6 }}>{m ? question(m) : s.metric}</Text>
-          <Text variant="bodySmall" style={[styles.dim, { marginTop: 2 }]}>{s.status === 3 ? "Market voided" : `Result: ${m ? bucketLabel(m, s.outcome) : "bucket " + s.outcome} · observed ${m ? fmtValue(m.metric, Number(s.observed)) : s.observed}`}</Text>
+          <Text variant="bodySmall" style={[styles.dim, { marginTop: 2 }]}>{s.status === 3 ? t("app.mb.voided") : t("app.mb.resultObserved", { b: m ? bucketLabel(m, s.outcome) : t("app.mb.bucket", { n: s.outcome }), v: m ? fmtValue(m.metric, Number(s.observed)) : s.observed })}</Text>
           <View style={styles.nums}>
-            <Big label="You staked" value={fmtAmt(staked)} />
-            <Big label="Paid to you" value={lost ? "0" : fmtAmt(Number(s.payout))} color={won ? GREEN : lost ? RED : undefined} right />
+            <Big label={t("app.mb.staked")} value={fmtAmt(staked)} />
+            <Big label={t("app.mb.paid")} value={lost ? "0" : fmtAmt(Number(s.payout))} color={won ? GREEN : lost ? RED : undefined} right />
           </View>
-          <Button compact style={{ alignSelf: "flex-start", marginTop: 4 }} onPress={() => Linking.openURL(explorerTxUrl(s.signature))}>View transaction</Button>
+          <Button compact style={{ alignSelf: "flex-start", marginTop: 4 }} onPress={() => Linking.openURL(explorerTxUrl(s.signature))}>{t("app.mb.viewTx")}</Button>
         </>, undefined, s.signature);
       })}
     </ScrollView>

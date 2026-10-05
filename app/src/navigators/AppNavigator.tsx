@@ -25,6 +25,7 @@ import {
 } from "react-native-paper";
 import { useReferralLinkCapture } from "../hooks/useReferral";
 import { NavigationContainerRef } from "@react-navigation/native";
+import { t } from "../i18n";
 
 /**
  * This type allows TypeScript to know what routes are defined in this navigator
@@ -63,9 +64,9 @@ const AppStack = () => {
         component={HomeNavigator}
         options={{ headerShown: false }}
       />
-      <Stack.Screen name="Settings" component={Screens.SettingsScreen} />
-      <Stack.Screen name="Market" component={Screens.MarketScreen} options={{ title: "Market" }} />
-      <Stack.Screen name="Feedback" component={Screens.FeedbackScreen} options={{ title: "Send feedback" }} />
+      <Stack.Screen name="Settings" component={Screens.SettingsScreen} options={{ title: t("app.settings") }} />
+      <Stack.Screen name="Market" component={Screens.MarketScreen} options={{ title: t("app.market") }} />
+      <Stack.Screen name="Feedback" component={Screens.FeedbackScreen} options={{ title: t("app.fb.title") }} />
     </Stack.Navigator>
   );
 };
@@ -73,6 +74,9 @@ const AppStack = () => {
 export interface NavigationProps
   extends Partial<React.ComponentProps<typeof NavigationContainer>> {}
 
+// Where the user is, kept outside the navigator: a language switch redraws the whole tree (App.tsx), and the navigator
+// comes back on the screen it was on (Settings, where the language is picked) instead of the market list.
+let lastNavState: any = undefined;
 export const AppNavigator = (props: NavigationProps) => {
   const colorScheme = useColorScheme();
   const navRef = useRef<NavigationContainerRef<any>>(null);
@@ -90,19 +94,19 @@ export const AppNavigator = (props: NavigationProps) => {
   const [invite, setInvite] = useState<string | null>(null);
   useReferralLinkCapture(setInvite);
   return (
-    <NavigationContainer ref={navRef} {...props}>
+    <NavigationContainer ref={navRef} initialState={lastNavState} onStateChange={(st) => { lastNavState = st; }} {...props}>
       <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
       <AppStack />
       <Portal>
         <Dialog visible={askExit} onDismiss={() => setAskExit(false)}>
-          <Dialog.Title>Leave Kubrai?</Dialog.Title>
-          <Dialog.Content><Text variant="bodyMedium">Your bets stay where they are; payouts arrive in your wallet whether the app is open or not.</Text></Dialog.Content>
+          <Dialog.Title>{t("app.exit.title")}</Dialog.Title>
+          <Dialog.Content><Text variant="bodyMedium">{t("app.exit.body")}</Text></Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setAskExit(false)}>Stay</Button>
-            <Button onPress={() => { setAskExit(false); BackHandler.exitApp(); }}>Exit</Button>
+            <Button onPress={() => setAskExit(false)}>{t("app.exit.stay")}</Button>
+            <Button onPress={() => { setAskExit(false); BackHandler.exitApp(); }}>{t("app.exit.leave")}</Button>
           </Dialog.Actions>
         </Dialog>
-        <Snackbar visible={!!invite} onDismiss={() => setInvite(null)} duration={7000} wrapperStyle={{ bottom: 76 }} action={{ label: "Settings", onPress: () => navRef.current?.navigate("Settings") }}>{`Invite code ${invite} saved — it applies with your first bet.`}</Snackbar>
+        <Snackbar visible={!!invite} onDismiss={() => setInvite(null)} duration={7000} wrapperStyle={{ bottom: 76 }} action={{ label: t("app.settings"), onPress: () => navRef.current?.navigate("Settings") }}>{t("app.invite.saved", { code: invite ?? "" })}</Snackbar>
       </Portal>
     </NavigationContainer>
   );

@@ -2,6 +2,7 @@ import { StyleSheet } from "react-native";
 import { Appbar, Button, useTheme } from "react-native-paper";
 import { TopBarWalletButton, TopBarWalletMenu } from "./top-bar-ui";
 import { useNavigation } from "@react-navigation/core";
+import { t } from "../../i18n";
 
 export function TopBar() {
   const navigation = useNavigation();
@@ -13,7 +14,7 @@ export function TopBar() {
       <TopBarWalletMenu />
 
       <Button mode="outlined" compact icon="cog" textColor={theme.colors.onSurface} onPress={() => navigation.navigate("Settings")} style={{ marginRight: 8 }}>
-        Settings
+        {t("app.settings")}
       </Button>
     </Appbar.Header>
   );

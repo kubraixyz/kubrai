@@ -5,7 +5,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { PublicKey } from "@solana/web3.js";
 import { useBalances, useConfig, useInvalidateAll, useMarket, useMarkets, usePositions } from "../hooks/useKubrai";
 import { useApplyInvite, usePendingReferral, type InviteNote } from "../hooks/useReferral";
-import { metricInfo, fmtValue, SOURCE_LABEL } from "../chain/metrics";
+import { metricInfo, fmtValue, sourceLabel } from "../chain/metrics";
 import { fmtRange, fmtTs, fmtTsShort, fmtWait, inWords, zoneShort } from "../chain/time";
 import { bucketColor, bucketLabel, fmtAmt, question, short } from "../chain/format";
 import { buildPlaceBetTx, waitForSignature, impliedPayout, earlyBirdUntil, programId, totalPool, NO_OUTCOME, type MarketView } from "../chain/kubrai";
@@ -147,7 +147,7 @@ function Market({ id, onBetting }: { id: number; onBetting: (on: boolean) => voi
       </View>
       <TimelineGrid m={m} disputeWindowSecs={win} />
       <Text style={[s.lead, { color: p.dim }]}>{copy?.how ?? ""}</Text>
-      <View style={{ marginBottom: 16 }}><KV p={p} w={92} k={t("mkt.source")} v={copy?.sourceLabel ?? SOURCE_LABEL[copy?.source ?? "thirdparty"]} /></View>
+      <View style={{ marginBottom: 16 }}><KV p={p} w={92} k={t("mkt.source")} v={copy?.sourceLabel ?? sourceLabel(copy?.source ?? "thirdparty")} /></View>
       <Pools m={m} highlight={m.status >= 1 && m.proposedOutcome !== NO_OUTCOME ? m.proposedOutcome : -1} />
 
       <Text style={[s.h2, { color: p.dim }]}>{t("mkt.bet")}</Text>

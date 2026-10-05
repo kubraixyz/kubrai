@@ -1,5 +1,6 @@
 // Invite-code state shared by the screens (chain/referral.ts does the storage and API calls). The pending code lives in
 // AsyncStorage and is mirrored through react-query, so Settings, the market screen and the link listener agree.
+import { t } from "../i18n";
 import { useCallback, useEffect, useRef } from "react";
 import { Linking } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -49,18 +50,18 @@ export function useApplyInvite() {
   const { signMessage } = useMobileWallet(); const qc = useQueryClient();
   return useCallback(async (wallet: string, note: (n: InviteNote) => void): Promise<"applied" | "dropped" | "kept" | "none"> => {
     const code = await loadPendingReferral(); if (!code) return "none";
-    note({ kind: "info", text: "One more signature applies your invite — it costs nothing and moves no funds." });
+    note({ kind: "info", text: t("ref.signNote") });
     const lk = qc.getQueryData<Lookup>(lookupKey(code)); const pct = lk && lk.valid ? (lk.refereeBps / 100).toFixed(0) : "10";
     const drop = async () => { await clearPendingReferral(); await qc.invalidateQueries({ queryKey: PENDING_KEY }); };
     try {
       const r = await bindReferral(wallet, code, signMessage);
-      if (r.ok) { await drop(); note({ kind: "ok", text: r.already ? "Invite already applied to this wallet." : `Invite applied — ${pct}% of the fee on every win comes back to you.` }); return "applied"; }
-      if (r.permanent) { await drop(); note({ kind: "err", text: `Invite not applied: ${r.error}.` }); return "dropped"; }
-      note({ kind: "err", text: `Invite not applied yet: ${r.error}. The code stays saved — apply it from Settings, or it is retried after your next bet.` }); return "kept";
+      if (r.ok) { await drop(); note({ kind: "ok", text: r.already ? t("app.ref.already") : t("ref.applied", { pct }) }); return "applied"; }
+      if (r.permanent) { await drop(); note({ kind: "err", text: t("app.ref.failed", { err: r.error }) }); return "dropped"; }
+      note({ kind: "err", text: t("app.ref.notYet", { err: r.error }) }); return "kept";
     } catch (e: any) {
       recordError(e, "referral:bind");
-      const raw = String(e?.message ?? e), why = /Cancellation|declined|rejected/i.test(raw) ? "you did not sign" : raw;
-      note({ kind: "err", text: `Invite not applied (${why}). The code stays saved — apply it from Settings, or it is retried after your next bet.` }); return "kept";
+      const raw = String(e?.message ?? e), why = /Cancellation|declined|rejected/i.test(raw) ? t("app.ref.notSigned") : raw;
+      note({ kind: "err", text: t("app.ref.notYet", { err: why }) }); return "kept";
     }
   }, [signMessage, qc]);
 }
