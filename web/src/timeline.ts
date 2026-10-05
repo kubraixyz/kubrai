@@ -11,6 +11,9 @@ export type Step = { key: string; label: string; ts: number; note?: string; esti
 const SNAPSHOT_LAG = 60, RESOLVER_MINUTE = 20 * 60;
 /** A market on a number its source publishes once a day (DefiLlama): <id>_today, or the retired <id>_next. */
 const isDailySource = (metric: string) => { const x = metric.match(/^(.+)_(today|next)$/); return !!x && !!catalogEntry(x[1]); };
+/** Resolved, and nobody bet on the winning range: the program then refunds every stake in full, no fee (compute_payout).
+ *  Said in so many words, or a page that reads "winners are paid" shows a loser "paid 3" (black-box test 2026-10-05). */
+export const noWinner = (m: MarketView) => (m.status === 2 || m.status === 4) && m.outcome < m.nBuckets && !(m.pools[m.outcome] > 0);
 /** First resolver run at or after `ts` (cron :20 every hour). */
 const nextResolverRun = (ts: number) => { const h = Math.floor(ts / 3600) * 3600; return ts <= h + RESOLVER_MINUTE ? h + RESOLVER_MINUTE : h + 3600 + RESOLVER_MINUTE; };
 
@@ -37,7 +40,8 @@ export function timelineSteps(m: MarketView, cfg: { disputeWindowSecs: { toNumbe
     : { key: "propose", label: t("tl.propose"), ts: estProposal, note: t(isDailySource(m.metric) ? "tl.proposeEstDaily" : "tl.proposeEst"), estimate: true });
   const finalAt = (proposedAt ?? estProposal) + win;
   steps.push({ key: "final", label: t("tl.final"), ts: finalAt, note: t("tl.finalNote", { h: win / 3600 }), estimate: !proposedAt });
-  steps.push({ key: "payout", label: m.status === 4 ? t("tl.paid") : t("tl.payout"), ts: nextResolverRun(finalAt + 1), note: t("tl.payoutNote"), estimate: m.status < 4 });
+  const refund = noWinner(m);
+  steps.push({ key: "payout", label: refund ? t("tl.refunds") : m.status === 4 ? t("tl.paid") : t("tl.payout"), ts: nextResolverRun(finalAt + 1), note: t(refund ? "tl.noWinnerNote" : "tl.payoutNote"), estimate: m.status < 4 });
   return steps;
 }
 
@@ -72,7 +76,7 @@ export function timelineGrid(m: MarketView, cfg: Parameters<typeof timelineSteps
 
 /** The market page headline once betting is over: "Dispute window ends in 1h 31m"; "Settled" once paid. */
 export function nextStepHead(m: MarketView, cfg: Parameters<typeof timelineSteps>[1]) {
-  const s = nextStep(m, cfg); if (!s) return t("tl.settled");
+  const s = nextStep(m, cfg); if (!s) return t(noWinner(m) ? "tl.settledRefund" : "tl.settled");
   return t("mkt.headNext", { step: s.label, in: `${s.estimate ? "~ " : ""}${inWords(s.ts)}` });
 }
 

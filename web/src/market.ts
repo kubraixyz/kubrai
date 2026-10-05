@@ -19,6 +19,10 @@ const root = document.getElementById("market")!;
 const idParam = new URLSearchParams(location.search).get("id");
 const id = idParam != null && /^\d{1,9}$/.test(idParam) ? Number(idParam) : NaN;
 let m: MarketView, cfg: any, bucket = 0;
+// The amount being typed. The bet box is drawn again whenever the wallet's discounts, the session or the chosen range
+// change; drawn from scratch it came back empty, and an amount typed while the wallet was still loading vanished
+// (black-box test 2026-10-05). Cleared once a bet lands, so a second click cannot repeat it by accident.
+let amtDraft = "";
 // A bet the chain has not answered for after the first minute of waiting. While set, every render of the bet box shows
 // this note and draws the bet button disabled — wallet events re-render the box, and a fresh enabled button would invite
 // a second real bet. Cleared once the bet confirms or the chain rejects it; a page reload clears it too.
@@ -99,7 +103,7 @@ function renderBet(open: boolean, fee: number) {
   if (!open) { box.innerHTML = `<div class="note">${m.status === 0 && Date.now() / 1000 < m.openTs ? t("bet.notOpen") : t("bet.closed")}</div>`; drawPosition(); return; }
   box.innerHTML = `<div class="betbox">
     <div class="sides">${m.pools.map((_, i) => `<button class="${bucket === i ? "on" : ""}" style="--c:${bucketColor(m, i)}" data-b="${i}">${bucketLabel(m, i)}</button>`).join("")}</div>
-    <div class="amtrow"><input id="amt" type="number" min="${cfg.minBet.toNumber() / 10 ** TOKEN_DECIMALS}" step="1" placeholder="${esc(t("bet.amountPh", { tok: TOKEN_SYMBOL }))}">${s ? `<button id="max" type="button" title="${esc(t("bet.maxTitle", { tok: TOKEN_SYMBOL }))}">${t("bet.max")}</button>` : ""}</div>
+    <div class="amtrow"><input id="amt" type="number" min="${cfg.minBet.toNumber() / 10 ** TOKEN_DECIMALS}" step="1" value="${esc(amtDraft)}" placeholder="${esc(t("bet.amountPh", { tok: TOKEN_SYMBOL }))}">${s ? `<button id="max" type="button" title="${esc(t("bet.maxTitle", { tok: TOKEN_SYMBOL }))}">${t("bet.max")}</button>` : ""}</div>
     ${s && balances.loaded ? `<div class="note">${t("bet.available")} <span class="mono">${fmtAmt(balances.token)} ${TOKEN_SYMBOL}</span>${balances.sol < 0.002 ? ` · <span class="warn">${t("bet.needSol")}</span>` : ""}</div>` : ""}
     <div class="quote" id="quote"></div>
     ${s ? `<button class="primary" id="go"${hold ? " disabled" : ""} style="background:${bucketColor(m, bucket)};border-color:${bucketColor(m, bucket)}">${t("bet.place", { b: bucketLabel(m, bucket) })}</button>` : `<button class="primary" id="goconnect">${t("wallet.connect")}</button>`}
@@ -110,16 +114,21 @@ function renderBet(open: boolean, fee: number) {
   const upd = () => {
     const a = Math.round((Number(amtEl.value) || 0) * 10 ** TOKEN_DECIMALS);
     if (!(a > 0)) { quote.innerHTML = `<span class="note">${t("bet.enterAmount", { b: bucketLabel(m, bucket) })}</span>`; return; }   // a typed "-1" used to be quoted: "you receive -1"
+    if (a < cfg.minBet.toNumber()) { quote.innerHTML = `<span class="note">${t("bet.min", { amt: fmtAmt(cfg.minBet.toNumber()), tok: TOKEN_SYMBOL })}</span>`; return; }
+    if (balances.loaded && a > balances.token) { quote.innerHTML = `<span class="note">${t("bet.overBalance", { amt: fmtAmt(balances.token), tok: TOKEN_SYMBOL })}</span>`; return; }
     const q = impliedPayout(m, bucket, a, fee);
     quote.innerHTML = `<span>${t("bet.ifWins", { b: `<b>${bucketLabel(m, bucket)}</b>` })}</span><span class="big">${fmtAmt(q.total)} ${TOKEN_SYMBOL}</span><span class="note">${t("bet.breakdown", { stake: fmtAmt(a), losers: fmtAmt(q.fromLosers), fee: fmtAmt(q.fee) })}${q.fromSeed ? ` ${t("bet.plusSeed", { seed: fmtAmt(q.fromSeed) })}` : ""}. ${t("bet.otherLoses", { stake: fmtAmt(a) })}</span>`;
   };
-  amtEl.oninput = upd; upd(); drawPosition();
-  const mx = box.querySelector<HTMLButtonElement>("#max"); if (mx) mx.onclick = () => { amtEl.value = String(Math.floor(balances.token / 10 ** TOKEN_DECIMALS)); upd(); };
+  amtEl.oninput = () => { amtDraft = amtEl.value; upd(); }; upd(); drawPosition();
+  const mx = box.querySelector<HTMLButtonElement>("#max"); if (mx) mx.onclick = () => { amtEl.value = String(Math.floor(balances.token / 10 ** TOKEN_DECIMALS)); amtDraft = amtEl.value; upd(); };
   box.querySelectorAll<HTMLButtonElement>(".sides button").forEach((b) => (b.onclick = () => { bucket = Number(b.dataset.b); renderBet(open, fee); }));
   const go = box.querySelector<HTMLButtonElement>("#go"), msg = box.querySelector("#msg")!;
   if (go) go.onclick = async () => {
     const sess = getSession()!; const a = Math.round((Number(amtEl.value) || 0) * 10 ** TOKEN_DECIMALS), side = bucket;
     if (a < cfg.minBet.toNumber()) { msg.innerHTML = `<div class="msg err">${t("bet.min", { amt: fmtAmt(cfg.minBet.toNumber()), tok: TOKEN_SYMBOL })}</div>`; return; }
+    // More than the wallet holds stops here, before the wallet asks for a signature; it used to fail after it, with the
+    // program's raw error. The balance is read again first, so tokens that arrived a moment ago are not refused.
+    if (balances.loaded && a > balances.token) { await refreshBalances(); if (balances.loaded && a > balances.token) { (document.getElementById("msg") ?? msg).innerHTML = `<div class="msg err">${t("bet.overBalance", { amt: fmtAmt(balances.token), tok: TOKEN_SYMBOL })}</div>`; return; } }
     go.disabled = true; msg.innerHTML = `<div class="msg">${t("bet.confirm")}</div>`;
     // While the bet is on its way the row of days does not respond: a day switched and switched back is a fresh page, with the button unlocked.
     const days = document.getElementById("days"); days?.toggleAttribute("inert", true);
@@ -128,7 +137,7 @@ function renderBet(open: boolean, fee: number) {
     const sigLink = (sig: string) => `<a class="mono" style="word-break:break-all" href="${explorerTx(sig)}" target="_blank" rel="noopener">${esc(sig)}</a>`;
     // Everything that follows a confirmed bet, whether it confirmed in seconds or minutes later.
     const landed = async () => {
-      hold = null;
+      hold = null; amtDraft = "";
       const okHtml = `<div class="msg ok">${t("bet.placed", { amt: fmtAmt(a), tok: TOKEN_SYMBOL, b: bucketLabel(m, side) })}</div>`;
       const cur = msgNow(); cur.innerHTML = okHtml;
       try {

@@ -1,10 +1,14 @@
 import { PublicKey } from "@solana/web3.js";
 import { NO_OUTCOME, fetchConfig, fetchMarkets, fetchMarketsFresh, fetchPositionsByOwner, payoutIfBucket, type MarketView } from "./kubrai";
-import { metricLabel } from "./metrics";
+import { bareTitle, metricLabel } from "./metrics";
+import { dayName } from "./series";
 import { bucketLabel, esc, fmtAmt, fmtTs, isBase58, mountNetBadge, mountWallet, onSession, statusPill } from "./ui";
 import { API_BASE, TOKEN_SYMBOL } from "./config";
 import { nextStepText } from "./timeline";
 import { t } from "./i18n";
+// A market named by the day it counts, as the market page and the home cards name it — never "today": in this list it
+// stays for days, and a past market read as one of today's (black-box test 2026-10-05).
+const betTitle = (m: MarketView) => `${bareTitle(m)} · ${dayName(m)}`;
 import { explorerTx } from "./explorer";
 
 mountNetBadge(); mountWallet();
@@ -42,7 +46,7 @@ async function render(owner: PublicKey | null) {
       value = p.amounts.map((a: number, i: number) => (a ? t("pf.ifRange", { amt: fmtAmt(payoutIfBucket(m, p.amounts, feeBps, i).payout), b: bucketLabel(m, i) }) : "")).filter(Boolean).join("<br>");
     }
     const st = m.status === 2 ? t("pf.stResolved") : m.status === 1 ? t("pf.stProposed", { b: bucketLabel(m, m.proposedOutcome) }) : m.status === 3 ? t("pf.stVoided") : Date.now() / 1000 < m.closeTs ? t("status.open") : t("status.awaiting");
-    return `<tr><td><a href="/market.html?id=${m.id}">${metricLabel(m.metric)}</a><div class="note">#${m.id} · ${t("card.closes", { ts: fmtTs(m.closeTs) })}</div></td><td data-label="${L.bets}"><div>${bets}</div></td><td data-label="${L.status}"><div>${statusPill(m)}<div class="note">${st}</div><div class="note">${esc(nextStepText(m, cfg))}</div></div></td><td class="r mono" data-label="${L.worth}"><div>${value} ${TOKEN_SYMBOL}</div></td></tr>`;
+    return `<tr><td><a href="/market.html?id=${m.id}">${esc(betTitle(m))}</a><div class="note">#${m.id} · ${t("card.closes", { ts: fmtTs(m.closeTs) })}</div></td><td data-label="${L.bets}"><div>${bets}</div></td><td data-label="${L.status}"><div>${statusPill(m)}<div class="note">${st}</div><div class="note">${esc(nextStepText(m, cfg))}</div></div></td><td class="r mono" data-label="${L.worth}"><div>${value} ${TOKEN_SYMBOL}</div></td></tr>`;
   }).join("")}</tbody></table></div><div class="note" style="margin-top:8px">${t("pf.autoNote")}</div>`;
 
   // settled history from the API
@@ -53,10 +57,11 @@ async function render(owner: PublicKey | null) {
     settledEl.innerHTML = `<div class="scroll"><table class="tbl stack"><thead><tr><th>${t("pf.colMarket")}</th><th>${t("pf.colBets")}</th><th>${t("pf.colOutcome")}</th><th class="r">${t("pf.colPaid")}</th><th>Tx</th></tr></thead><tbody>${j.settled.map((s: any) => {
       const m = byKey.get(s.market);
       const bets = s.amounts.map((a: string, i: number) => (Number(a) ? `${m ? bucketLabel(m, i) : "bucket " + i}: <span class="mono">${fmtAmt(Number(a))}</span>` : "")).filter(Boolean).join("<br>");
-      const outcome = s.status === 3 ? t("status.voided") : m ? t("pf.outcomeV", { b: bucketLabel(m, Number(s.outcome)), v: Number(s.observed).toLocaleString("en-US") }) : `bucket ${esc(s.outcome)}`;
+      const outcome = (s.status === 3 ? t("status.voided") : m ? t("pf.outcomeV", { b: bucketLabel(m, Number(s.outcome)), v: Number(s.observed).toLocaleString("en-US") }) : `bucket ${esc(s.outcome)}`)
+        + (s.kind === "refund" && s.status !== 3 ? `<div class="note">${t("pf.noWinner")}</div>` : "");   // resolved, nobody on the winning range
       const cls = s.kind === "won" ? "ok" : s.kind === "lost" ? "err" : "";
       const sig = isBase58(s.signature) ? s.signature : null;
-      return `<tr><td>${m ? `<a href="/market.html?id=${m.id}">${metricLabel(m.metric)}</a>` : esc(metricLabel(String(s.metric)))}<div class="note">#${esc(s.id)} · ${fmtTs(Date.parse(s.at) / 1000)}</div></td><td data-label="${L.bets}"><div>${bets}</div></td><td data-label="${L.outcome}"><div>${esc(outcome)}</div></td><td class="r mono" data-label="${L.paid}"><span class="msg ${cls}" style="padding:2px 8px">${s.kind === "lost" ? "0" : fmtAmt(Number(s.payout))} ${TOKEN_SYMBOL}</span></td><td class="hash" data-label="Tx">${sig ? `<a href="${explorerTx(sig)}" target="_blank" rel="noopener">${sig.slice(0, 8)}…</a>` : "—"}</td></tr>`;
+      return `<tr><td>${m ? `<a href="/market.html?id=${m.id}">${esc(betTitle(m))}</a>` : esc(metricLabel(String(s.metric)))}<div class="note">#${esc(s.id)} · ${fmtTs(Date.parse(s.at) / 1000)}</div></td><td data-label="${L.bets}"><div>${bets}</div></td><td data-label="${L.outcome}"><div>${esc(outcome)}</div></td><td class="r mono" data-label="${L.paid}"><span class="msg ${cls}" style="padding:2px 8px">${s.kind === "lost" ? "0" : fmtAmt(Number(s.payout))} ${TOKEN_SYMBOL}${s.kind === "refund" ? ` · ${t("kind.refund")}` : ""}</span></td><td class="hash" data-label="Tx">${sig ? `<a href="${explorerTx(sig)}" target="_blank" rel="noopener">${sig.slice(0, 8)}…</a>` : "—"}</td></tr>`;
     }).join("")}</tbody></table></div>`;
   } catch { settledEl.innerHTML = `<div class="note">${t("pf.histErr")}</div>`; }
 }

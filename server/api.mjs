@@ -257,7 +257,11 @@ const server = http.createServer(async (req, res) => {
       const since = days ? Math.floor(Date.now() / 1000) - days * 86400 : 0;
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 100) || 100));
       const board = leaderboardCached(win, since), own = ownWallets();
-      return json(res, 200, { window: win, at: board.at, totals: board.totals, entries: board.entries.slice(0, limit).map((e) => ({ ...e, test: own.has(e.wallet) })) }, { "cache-control": "public, max-age=30" });
+      // Our own test wallets stay in the table (marked) but are not players, as the page says under it: "Players" counts
+      // people, and testWallets says how many were left out (black-box test 2026-10-05: 22 players, 20 of them our bots).
+      const bots = board.entries.filter((e) => own.has(e.wallet)).length;
+      const totals = { ...board.totals, players: board.totals.players - bots, testWallets: bots };
+      return json(res, 200, { window: win, at: board.at, totals, entries: board.entries.slice(0, limit).map((e) => ({ ...e, test: own.has(e.wallet) })) }, { "cache-control": "public, max-age=30" });
     }
     // ---------- referrals ----------
     // GET /referral/lookup/:code → who a code belongs to (for the "invited by" banner)

@@ -28,6 +28,8 @@ async function load() {
   const me = getSession()?.publicKey.toBase58() ?? null;
   const tot = j.totals ?? {};
   totalsEl.innerHTML = [[t("lb.players"), String(tot.players ?? 0)], [t("lb.settled"), String(tot.markets ?? 0)], [t("lb.awarded"), fmtPoints(tot.points ?? 0)]].map(([k, v]) => `<div><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join("");
+  // players are people; our test bots are listed in the table but counted apart (the API leaves them out of "players")
+  if (Number(tot.testWallets) > 0) totalsEl.firstElementChild?.insertAdjacentHTML("beforeend", `<span class="note">${esc(t("lb.plusBots", { n: Number(tot.testWallets) }))}</span>`);
   const rows: any[] = j.entries ?? [];
   const mine = me ? rows.find((e) => e.wallet === me) : null;
   meEl.innerHTML = me ? (mine ? t("lb.me", { rank: `<b>#${Number(mine.rank)}</b>`, pts: `<b class="mono">${esc(fmtPoints(mine.points))}</b>`, won: Number(mine.won), n: Number(mine.markets) }) : t("lb.meNone")) : t("lb.connect");
