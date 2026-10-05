@@ -7,7 +7,8 @@
 //
 // Money is never sent twice: every payment is written to the ledger as "sent" before it leaves this process, with the
 // signature it will carry, and settled as "landed" or "void" afterwards (referrals.mjs describes the rows). A run that
-// died between the two is finished first thing on the next run, by asking the chain what became of the signature.
+// died between the two is finished first thing on the next run, by asking the chain what became of the signature. And
+// only one run pays at a time, whoever starts it (run-lock.mjs).
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -18,6 +19,7 @@ import * as referrals from "./referrals.mjs";
 import { notify } from "./notify.mjs";
 import { sendSigned, signatureStatus } from "./tx.mjs";
 import { provenRows } from "./settlement-proof.mjs";
+import { runLocked } from "./run-lock.mjs";
 
 const CLUSTER = process.env.CLUSTER ?? "devnet";
 const RPC = process.env.CLUSTER_RPC ?? process.env.DEVNET_RPC ?? "https://api.devnet.solana.com";
@@ -26,6 +28,9 @@ const SECRETS = process.env.KUBRAI_SECRETS ?? path.join(os.homedir(), "secrets",
 const REFERRALS_FILE = process.env.REFERRALS_FILE ?? path.join(DATA, "referrals.json");
 const LEDGER = path.join(DATA, "referral-payouts.jsonl");
 const DRY = process.env.DRY_RUN === "1";
+// One paying run at a time per ledger, also when a person starts one by hand while cron's is still paying: both would
+// work out the same "due" from the same ledger and send it twice (run-lock.mjs). A dry run pays nothing and needs none.
+if (!DRY) runLocked(LEDGER + ".lock");
 const DECIMALS = 6;
 const MIN_RAW = BigInt(process.env.REFERRAL_MIN_RAW ?? 10_000);            // 0.01 SKR: below this the transfer is not worth a signature
 // A wallet that holds no SKR account yet gets one opened (the payer covers the rent) only once its rebate reaches this

@@ -34,3 +34,25 @@ test("no header at all (a local caller, tests) is the socket address", () => {
   assert.equal(clientIp(req({}, "127.0.0.1")), "127.0.0.1");
   assert.equal(clientIp({ headers: {} }), "?");
 });
+
+test("an IPv6 caller is one caller across its whole /64", () => {
+  const cf = (v) => clientIp(req({ "x-forwarded-for": `${v}, 2400:cb00::1`, "cf-connecting-ip": v }));
+  // the audit's pattern: a new address on every request, all inside one subscriber's /64
+  const seen = new Set(["2001:db8:1234:5678::1", "2001:db8:1234:5678:a:b:c:d", "2001:0db8:1234:5678:ffff:ffff:ffff:fffe", "2001:DB8:1234:5678::dead:beef"].map(cf));
+  assert.deepEqual([...seen], ["2001:db8:1234:5678::/64"]);
+  // a neighbouring /64 is someone else
+  assert.equal(cf("2001:db8:1234:5679::1"), "2001:db8:1234:5679::/64");
+  // short forms expand before the cut
+  assert.equal(cf("2001:db8::1"), "2001:db8:0:0::/64");
+  assert.equal(cf("::1"), "0:0:0:0::/64");
+  assert.equal(clientIp(req({ "x-forwarded-for": "2400:d320:2298:6904:1::7" })), "2400:d320:2298:6904::/64");
+});
+
+test("IPv4 stays one address, also when the socket writes it IPv4-mapped", () => {
+  assert.equal(clientIp(req({}, "::ffff:198.51.100.7")), "198.51.100.7");
+  assert.equal(clientIp(req({ "x-forwarded-for": "203.0.113.9, 172.70.1.1", "cf-connecting-ip": "203.0.113.9" })), "203.0.113.9");
+});
+
+test("what is not a plain address passes through untouched", () => {
+  for (const s of ["?", "64:ff9b::192.0.2.33", "fe80::1%eth0", "1::2::3", "not-an-ip"]) assert.equal(clientIp(req({ "x-forwarded-for": s })), s);
+});

@@ -6,7 +6,36 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { parseMetric, dailyDayStart, dailyReadTs, countedWindow } from "./history.mjs";
 
-export function makeEvaluator({ snapDir, conn }) {
+const MEMO_PROGRAM = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+const MEMO_MAX_LAG_SECS = 6 * 3600;   // snapshot.mjs anchors each hour 3–7 minutes after it (measured 2026-09-18…10-05)
+
+/** tx: getParsedTransaction's answer for the signature in a snapshot's .memo sidecar. True when the transaction
+ *  succeeded and carries a Memo-program instruction with "sha256=<sha>", signed by `signer` (the snapshot key: the
+ *  proposer, snapshot.mjs); a v2 memo must also name `slot` and have landed within MEMO_MAX_LAG_SECS of that hour, or
+ *  the file could have been rewritten and anchored again later. Otherwise the reason, as a string. Until 2026-10-05
+ *  any transaction whose logs held "sha256=<sha>" passed, whoever sent it and whenever (audit 2026-10-05). */
+export function memoMatches(tx, { slot, sha, signer }) {
+  if (!signer) return "no snapshot key to check the memo's signer against";
+  if (!tx) return "memo transaction not found";
+  if (tx.meta?.err) return "memo transaction failed on-chain";
+  const b58 = (k) => String(k?.toBase58?.() ?? k ?? "");
+  const msg = tx.transaction?.message ?? {};
+  if (!(msg.accountKeys ?? []).some((k) => k.signer && b58(k.pubkey) === signer)) return `memo not signed by the snapshot key ${signer.slice(0, 6)}…`;
+  const memo = (msg.instructions ?? []).filter((ix) => b58(ix.programId) === MEMO_PROGRAM && typeof ix.parsed === "string").map((ix) => ix.parsed)
+    .find((t) => t.split(/\s+/).includes(`sha256=${sha}`));
+  if (!memo) return "no memo with this file's sha256";
+  const v2 = memo.match(/^kubrai-snapshot v2 (\S+) /);
+  if (v2) {
+    if (v2[1] !== slot) return `memo is for ${v2[1]}, not ${slot}`;
+    const lag = (tx.blockTime ?? Infinity) - Date.parse(slot + ":00:00Z") / 1000;
+    if (!(lag <= MEMO_MAX_LAG_SECS)) return `memo landed ${Number.isFinite(lag) ? Math.round(lag / 3600) + " h" : "at an unknown time"} after its hour`;
+  }
+  return true;
+}
+
+/** memoSigner: base58 of the key that signs snapshot memos (snapshot.mjs uses proposer.json). verifySlot refuses
+ *  every slot without it; evaluate does not need it. */
+export function makeEvaluator({ snapDir, conn, memoSigner = null }) {
   const SNAP = snapDir;
   // ---------- metric evaluation from snapshot bundles ----------
   // metric base → snapshot field. One source per metric — never fall back between counting bases inside a market.
@@ -16,7 +45,8 @@ export function makeEvaluator({ snapDir, conn }) {
   // would have come back "unknown metric" at resolution. It now uses the shared parser.)
   const slotOf = (ts) => new Date(ts * 1000).toISOString().slice(0, 13);          // hour containing ts (UTC)
   const slotFile = (slot) => { const h = path.join(SNAP, slot + ".json"); if (fs.existsSync(h)) return h; if (slot.endsWith("T00")) { const d = path.join(SNAP, slot.slice(0, 10) + ".json"); if (fs.existsSync(d)) return d; } return null; };
-  // A slot's bundle is only trusted if its bytes hash to the sidecar AND to the hash published on-chain.
+  // A slot's bundle is only trusted if its bytes hash to the sidecar AND to the hash the snapshot key published on-chain
+  // for that hour (memoMatches).
   const memoOk = new Map();
   async function verifySlot(slot) {
     const f = slotFile(slot); if (!f) return { ok: false, reason: `no snapshot ${slot}` };
@@ -26,11 +56,10 @@ export function makeEvaluator({ snapDir, conn }) {
     if (!fs.existsSync(f + ".memo")) return { ok: false, reason: `snapshot ${slot} has no on-chain memo` };
     if (!memoOk.has(slot)) {
       const memo = JSON.parse(fs.readFileSync(f + ".memo", "utf8"));
-      const tx = await conn.getTransaction(memo.signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
-      const logs = (tx?.meta?.logMessages ?? []).join("\n");
-      memoOk.set(slot, !!tx && logs.includes(`sha256=${sha}`));
+      const tx = await conn.getParsedTransaction(memo.signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+      memoOk.set(slot, memoMatches(tx, { slot, sha, signer: memoSigner }));
     }
-    if (!memoOk.get(slot)) return { ok: false, reason: `on-chain memo for ${slot} does not match the file` };
+    if (memoOk.get(slot) !== true) return { ok: false, reason: `on-chain memo for ${slot} does not vouch for the file: ${memoOk.get(slot)}` };
     return { ok: true, sha };
   }
   const bundleCache = new Map();

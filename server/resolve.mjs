@@ -3,7 +3,8 @@
 //                daily snapshot bundles, hash the evidence, and submit propose_resolution.
 //   2. finalize: for each Proposed market whose dispute window elapsed, finalize.
 //   3. settle  : for each Resolved/Voided market, settle every outstanding position
-//                (winners paid, losers' rent refunded), then sweep the vault.
+//                (winners paid, losers' rent refunded), then sweep the vault. An owner who closed its SKR account gets it
+//                opened again from a daily budget (settle-plan.mjs); past it, the position waits.
 // Snapshots are hourly slots "YYYY-MM-DDTHH" (taken right after the hour); the older daily files "YYYY-MM-DD" count as that
 // day's T00 slot. Metric tags:
 //   <base>_day | <base>_week | rev_week:<app> | rev_day:<app>  -> value(close slot) - value(open slot)   (cumulative counters;
@@ -17,7 +18,7 @@ import os from "node:os";
 import { createHash } from "node:crypto";
 import anchor from "@coral-xyz/anchor";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction } from "@solana/spl-token";
 import idlJson from "../idl/kubrai.json" with { type: "json" };
 import { notify } from "./notify.mjs";
 
@@ -44,12 +45,17 @@ const tag = (b) => Buffer.from(b).toString("utf8").replace(/\0+$/, "");
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 import { makeEvaluator } from "./evaluate.mjs";
-const { evaluate, verifySlot, evidenceHash } = makeEvaluator({ snapDir: SNAP, conn });
+const { evaluate, verifySlot, evidenceHash } = makeEvaluator({ snapDir: SNAP, conn, memoSigner: proposer.publicKey.toBase58() }); // snapshot.mjs signs its memos with the same proposer.json
 
 // Off-chain replica of compute_payout (payout.mjs: the program's integer math, step for step) so the settlement row
 // records exactly what the PositionSettled event says — settlement-proof.mjs compares the two before any rebate is paid.
 import { payoutFor } from "./payout.mjs";
 const SETTLEMENTS = path.join(SNAP, "settlements.jsonl");
+// SKR accounts the crank opens for owners who closed theirs (settle-plan.mjs): at most this many a day, and none while
+// the proposer holds less than the floor, which stays for proposing and finalizing.
+import { planSettle, rentToday } from "./settle-plan.mjs";
+const RENT_DAILY = Number(process.env.ATA_RENT_DAILY ?? 20), SOL_FLOOR = Number(process.env.PROPOSER_SOL_FLOOR ?? 0.2) * 1e9;
+const RENT_FILE = path.join(SNAP, "ata-rent.json");
 // A payout that fails once is usually the RPC (429, simulation on a lagging node) and lands next round. Only a position
 // that fails three rounds in a row is worth a page; the counter file is cleared when it pays.
 const FAILS = path.join(SNAP, "settle-failures.json");
@@ -99,21 +105,31 @@ async function finalize(markets, now, cfg) {
 }
 async function settle(markets, cfg) {
   const mint = cfg.mint;
+  const rent = rentToday(RENT_FILE);
+  let waiting = 0, lowSol = false;
   for (const { publicKey, account: m } of markets) {
     if (m.status !== 2 && m.status !== 3) continue;
     if (m.positionsOpen > 0) {
       // positions of this market: memcmp on the market pubkey (offset 8 = after discriminator)
       const positions = await program.account.position.all([{ memcmp: { offset: 8, bytes: publicKey.toBase58() } }]);
-      log(`market #${m.id}: settling ${positions.length} positions`);
-      for (const { publicKey: ppk, account: p } of positions) {
+      const fresh = await program.account.market.fetch(publicKey); // resolved or voided: outcome and pools no longer change
+      // allowOwnerOffCurve: a program-owned wallet (a multisig vault, a PDA) can bet through CPI and must be payable too, or its market never sweeps
+      const rows = positions.map(({ publicKey: ppk, account: p }) => ({ ppk, p, ata: getAssociatedTokenAddressSync(mint, p.owner, true), ...payoutFor(fresh, p) }));
+      for (let i = 0; i < rows.length; i += 100) (await conn.getMultipleAccountsInfo(rows.slice(i, i + 100).map((r) => r.ata))).forEach((a, j) => { rows[i + j].hasAccount = !!a; });
+      if (!lowSol && rows.some((r) => !r.hasAccount)) lowSol = (await conn.getBalance(proposer.publicKey)) < SOL_FLOOR;
+      const plan = planSettle(rows, lowSol ? 0 : RENT_DAILY - rent.opened);
+      const nOpen = plan.filter((r) => r.action === "open").length, nWait = plan.filter((r) => r.action === "wait").length;
+      log(`market #${m.id}: settling ${plan.length} positions${nOpen + nWait ? ` (${nOpen} get their SKR account opened, ${nWait} wait for the budget)` : ""}`);
+      for (const { ppk, p, ata, payout, fee, kind, action } of plan) {
         if (DRY) continue;
+        if (action === "wait") { waiting++; log(`  waits ${p.owner.toBase58()} ${kind} payout=${payout}: no SKR account, and ${lowSol ? `the proposer holds under ${SOL_FLOOR / 1e9} SOL` : `today's ${RENT_DAILY} account openings are used`}`); continue; }
         try {
-          const ownerToken = (await getOrCreateAssociatedTokenAccount(conn, proposer, mint, p.owner, true)).address; // creates ATA if the owner closed it (rent paid by cranker); allowOwnerOffCurve: a program-owned wallet (a multisig vault, a PDA) can bet through CPI and must be payable too, or its market never sweeps
-          const fresh = await program.account.market.fetch(publicKey);
-          const { payout, fee, kind } = payoutFor(fresh, p);
-          const sig = await program.methods.settlePosition().accounts({ market: publicKey, position: ppk, payer: p.payer, vault: vaultPda(publicKey), ownerToken, cranker: proposer.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).rpc();
+          // opened in the same transaction as the payout: if the payout fails, no rent is spent
+          const pre = action === "open" ? [createAssociatedTokenAccountIdempotentInstruction(proposer.publicKey, ata, p.owner, mint)] : [];
+          const sig = await program.methods.settlePosition().accounts({ market: publicKey, position: ppk, payer: p.payer, vault: vaultPda(publicKey), ownerToken: ata, cranker: proposer.publicKey, tokenProgram: TOKEN_PROGRAM_ID }).preInstructions(pre).rpc();
+          if (pre.length) { rent.opened++; fs.writeFileSync(RENT_FILE, JSON.stringify(rent)); }
           fs.appendFileSync(SETTLEMENTS, JSON.stringify({ at: new Date().toISOString(), market: publicKey.toBase58(), id: m.id.toNumber(), metric: tag(m.metric), owner: p.owner.toBase58(), amounts: p.amounts.slice(0, fresh.nBuckets).map((x) => x.toString()), status: fresh.status, outcome: fresh.outcome, observed: fresh.proposedValue.toString(), kind, payout: payout.toString(), fee: fee.toString(), signature: sig }) + "\n");
-          log(`  settled ${p.owner.toBase58()} ${kind} payout=${payout} ${sig}`); settleOk(ppk.toBase58());
+          log(`  settled ${p.owner.toBase58()} ${kind} payout=${payout}${pre.length ? " (opened its SKR account)" : ""} ${sig}`); settleOk(ppk.toBase58());
         } catch (e) { log(`  FAILED ${p.owner.toBase58()}: ${e.message?.split("\n")[0]}`); await settleFailed(ppk.toBase58(), m.id.toNumber(), p.owner.toBase58(), e.message?.split("\n")[0]); }
       }
     }
@@ -124,6 +140,11 @@ async function settle(markets, cfg) {
         log(`market #${m.id}: swept ${sig}`);
       } catch (e) { log(`market #${m.id}: sweep failed: ${e.message?.split("\n")[0]}`); }
     }
+  }
+  // once a day at most: the cron runs hourly and every run would find the same positions waiting
+  if (waiting && !rent.alerted) {
+    rent.alerted = true; fs.writeFileSync(RENT_FILE, JSON.stringify(rent));
+    await notify("⚠️ 結算:有倉位在等開戶額度", `${CLUSTER}:${waiting} 個倉位的主人沒有 SKR 帳戶,${lowSol ? `proposer 的 SOL 低於 ${SOL_FLOOR / 1e9},暫停代開(每日補油後恢復)` : `今天代開的 ${RENT_DAILY} 個額度已用完`}。這些倉位每小時重試、隔天額度重來,錢留在金庫不會少。\n平常一天用不到幾個;用完多半是有人在刷開戶租金,上限已擋住,不必處理。`, `ata-rent:${rent.day}`, 24 * 60);
   }
 }
 

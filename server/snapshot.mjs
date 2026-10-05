@@ -22,17 +22,20 @@ const day = slot.slice(0, 10), hour = Number(slot.slice(11, 13));
 const full = process.env.FULL === "1" || hour === 0;
 const METRICS = full ? { ...HOURLY_METRICS, ...DAILY_METRICS } : HOURLY_METRICS;
 
+// Error texts go into the bundle (public at /snapshots) and into snapshot.log (shown on the Tokyo dashboard); an RPC URL
+// quoted in one would carry its API key along, so the key is cut out first.
+const redact = (e) => String(e?.message ?? e).replace(/(api[-_]?key=)[^&\s"']+/gi, "$1…");
 fs.mkdirSync(OUT, { recursive: true });
 const bundle = { v: 2, slot, day, tier: full ? "daily" : "hourly", takenAt: new Date().toISOString(), metrics: {}, errors: {} };
 for (const [name, fn] of Object.entries(METRICS)) {
   try { bundle.metrics[name] = await fn(); console.log(`${name}: ${bundle.metrics[name].value}`); }
-  catch (e) { bundle.errors[name] = String(e?.message ?? e); console.error(`${name}: FAILED ${bundle.errors[name]}`); }
+  catch (e) { bundle.errors[name] = redact(e); console.error(`${name}: FAILED ${bundle.errors[name]}`); }
 }
 // Third-party design-aid metrics (no market settles on them) fail quietly; anything a market can depend on pages the operator.
 const SOFT_METRICS = new Set(["das", "skr_ids_total", ...SOFT_APP_METRICS]);
 const hardErrors = Object.entries(bundle.errors).filter(([k]) => !SOFT_METRICS.has(k));
 if (hardErrors.length && process.env.MEMO_DISABLED !== "1") {
-  try { const { notify } = await import("./notify.mjs"); await notify(`Snapshot ${slot}: ${hardErrors.length} metric(s) failed`, hardErrors.map(([k, v]) => `${k}: ${v}`).join("\n").slice(0, 1500), "snapshot-fail", 0); } catch (e) { console.error("notify failed:", e?.message ?? e); }
+  try { const { notify } = await import("./notify.mjs"); await notify(`Snapshot ${slot}: ${hardErrors.length} metric(s) failed`, hardErrors.map(([k, v]) => `${k}: ${v}`).join("\n").slice(0, 1500), "snapshot-fail", 0); } catch (e) { console.error("notify failed:", redact(e)); }
 }
 const canonical = JSON.stringify(bundle);
 const hash = createHash("sha256").update(canonical).digest("hex");
@@ -54,5 +57,5 @@ if (process.env.MEMO_DISABLED !== "1") {
     const sig = await sendAndConfirmTransaction(conn, new Transaction().add(ix), [kp], { commitment: "confirmed" });
     fs.writeFileSync(file + ".memo", JSON.stringify({ cluster: /devnet/.test(MEMO_RPC) ? "devnet" : "mainnet", signature: sig, memo }) + "\n"); // never persist the RPC URL (it can carry an API key)
     console.log("memo tx", sig);
-  } catch (e) { console.error("memo FAILED:", e?.message ?? e); process.exit(3); }
+  } catch (e) { console.error("memo FAILED:", redact(e)); process.exit(3); }
 }

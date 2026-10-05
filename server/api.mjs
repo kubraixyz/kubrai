@@ -136,13 +136,17 @@ const settledRowsOf = (wallet) => readSettlements(SNAP).filter((r) => r.owner ==
 const openPositionsOf = async (wallet) => (await roProgram.account.position.all([{ dataSize: roProgram.account.position.size }, { memcmp: { offset: 40, bytes: wallet } }])).length;
 const betCache = new Map();   // wallet → { at, open, settled }
 // A cache miss costs one getProgramAccounts call. A stranger can trigger misses at will (any address is a valid
-// question), so they are budgeted per network per day and globally per minute; over budget the answer is 429.
-// Reads (GET /referral/:wallet) and writes (bind / create a code) have separate per-minute budgets, so a stranger
-// cycling through random addresses cannot stop real bindings.
+// question), so they are budgeted per network per day (an IPv6 network = its /64, client-ip.mjs) and globally per
+// minute; over budget the answer is 429. Reads (GET /referral/:wallet), code requests (POST /referral/code, which
+// nobody signs) and bindings (POST /referral/bind, signed) each have their own per-minute budget: a stranger cycling
+// random addresses through one cannot use up the others. (Until 2026-10-05 code requests and bindings shared one, so
+// unsigned code requests could hold real bindings at 429 — audit 2026-10-05.)
 const LOOKUP_IP_DAILY = Number(process.env.LOOKUP_IP_DAILY ?? 60), LOOKUP_PER_MINUTE = Number(process.env.LOOKUP_PER_MINUTE ?? 30);
-const seenLookup = new Map(); let lookupMinute = { at: 0, get: 0, post: 0 };
-function chargeLookup(ip, pool = "get") {
-  rollDay(); const minute = Math.floor(Date.now() / 60_000); if (lookupMinute.at !== minute) lookupMinute = { at: minute, get: 0, post: 0 };
+const LOOKUP_POOLS = ["get", "code", "bind"];
+const seenLookup = new Map(); let lookupMinute = { at: 0, get: 0, code: 0, bind: 0 };
+function chargeLookup(ip, pool) {
+  if (!LOOKUP_POOLS.includes(pool)) throw new Error(`unknown lookup pool ${pool}`);
+  rollDay(); const minute = Math.floor(Date.now() / 60_000); if (lookupMinute.at !== minute) lookupMinute = { at: minute, get: 0, code: 0, bind: 0 };
   if (lookupMinute[pool] >= LOOKUP_PER_MINUTE || (seenLookup.get(ip) ?? 0) >= LOOKUP_IP_DAILY) throw Object.assign(new Error("too many wallet lookups; try again later"), { status: 429 });
   lookupMinute[pool]++; seenLookup.set(ip, (seenLookup.get(ip) ?? 0) + 1);
   if (betCache.size > 5000) betCache.clear();
@@ -150,9 +154,10 @@ function chargeLookup(ip, pool = "get") {
 // "No bets yet" goes stale the moment the first bet lands, so it is only trusted for 10 s, and `fresh` skips it. A
 // positive answer is trusted for 60 s even when `fresh`: a position cannot vanish in that time, while the RPC's
 // account index can lag a few seconds behind the confirmation the browser just saw (one node says 1, the next says 0).
-async function betHistory(wallet, fresh = false, ip = "?") {
+async function betHistory(wallet, pool, ip = "?") {
+  const fresh = pool !== "get";
   const hit = betCache.get(wallet); if (hit && Date.now() - hit.at < (hit.open + hit.settled ? 60_000 : fresh ? 0 : 10_000)) return hit;
-  chargeLookup(ip, fresh ? "post" : "get");
+  chargeLookup(ip, pool);
   const v = { at: Date.now(), open: await openPositionsOf(wallet), settled: settledRowsOf(wallet).length };
   betCache.set(wallet, v); return v;
 }
@@ -226,6 +231,10 @@ const json = (res, code, body, extra = {}) => { res.writeHead(code, { "content-t
 const readBody = (req, max = 4096) => new Promise((ok, err) => { let b = ""; req.on("data", (c) => { b += c; if (b.length > max) { err(Object.assign(new Error("body too large"), { status: 413 })); req.destroy(); } }); req.on("end", () => ok(b)); req.on("error", err); });
 const FEEDBACK_DIR = process.env.FEEDBACK_DIR ?? path.join(os.homedir(), "apps", "kubrai", "feedback");
 fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
+// Reports are never deleted, so the folder has a ceiling: past FEEDBACK_DIR_MAX a report keeps its note but not its
+// image. The daily cap alone let a stranger add 300 MB a day, every day, toward the disk the snapshots need.
+const FEEDBACK_DIR_MAX = Number(process.env.FEEDBACK_DIR_MAX ?? 2 * 1024 ** 3);
+let feedbackDirBytes = 0; try { for (const f of fs.readdirSync(FEEDBACK_DIR)) feedbackDirBytes += fs.statSync(path.join(FEEDBACK_DIR, f)).size; } catch {}
 const seenFb = new Map();
 
 const server = http.createServer(async (req, res) => {
@@ -260,7 +269,7 @@ const server = http.createServer(async (req, res) => {
     // GET /referral/:wallet → the wallet's code, link, binding and earnings
     const rw = url.pathname.match(/^\/referral\/([1-9A-HJ-NP-Za-km-z]{32,44})$/);
     if (rw && req.method === "GET") {
-      let h; try { h = await betHistory(rw[1], false, clientIp(req)); } catch (e) { return json(res, e?.status ?? 500, { error: e?.message ?? "lookup failed" }); }
+      let h; try { h = await betHistory(rw[1], "get", clientIp(req)); } catch (e) { return json(res, e?.status ?? 500, { error: e?.message ?? "lookup failed" }); }
       return json(res, 200, { ...referralView(rw[1]), eligible: h.open + h.settled > 0, bets: h.open + h.settled, firstBet: h.settled === 0 && h.open > 0 }, { "cache-control": "no-store" });
     }
     // POST /referral/code {wallet} → create the wallet's code once it has placed a bet (nothing to sign: a code only
@@ -270,7 +279,7 @@ const server = http.createServer(async (req, res) => {
       const wallet = String(b.wallet ?? ""); if (!isPubkey(wallet)) return json(res, 400, { error: "wallet required" });
       const db = referrals.load(REFERRALS_FILE);
       if (!db.wallets[wallet]) {
-        let h; try { h = await betHistory(wallet, true, clientIp(req)); } catch (e) { return json(res, e?.status ?? 500, { error: e?.message ?? "lookup failed" }); }
+        let h; try { h = await betHistory(wallet, "code", clientIp(req)); } catch (e) { return json(res, e?.status ?? 500, { error: e?.message ?? "lookup failed" }); }
         if (h.open + h.settled === 0) return json(res, 403, { error: "place a bet first — the link unlocks with your first stake" });
         // re-read after the await: another request may have saved meanwhile, and load → save must not span an await
         const cur = referrals.load(REFERRALS_FILE);
@@ -296,7 +305,7 @@ const server = http.createServer(async (req, res) => {
       const db = referrals.load(REFERRALS_FILE);
       if (db.bindings[wallet]) return json(res, db.bindings[wallet].code === code ? 200 : 409, db.bindings[wallet].code === code ? { ok: true, already: true } : { error: "this wallet is already bound to another code", permanent: true });
       if (!referrals.referrerOf(db, code)) return json(res, 404, { error: "unknown referral code", permanent: true });
-      let h; try { h = await betHistory(wallet, true, clientIp(req)); } catch (e) { return json(res, e?.status ?? 500, { error: e?.message ?? "lookup failed" }); }
+      let h; try { h = await betHistory(wallet, "bind", clientIp(req)); } catch (e) { return json(res, e?.status ?? 500, { error: e?.message ?? "lookup failed" }); }
       if (h.open === 0 && h.settled === 0) return json(res, 409, { error: "place your first bet, then the link binds" });
       if (h.settled > 0) return json(res, 409, { error: "a referral link only counts on a wallet's first bet", permanent: true });
       // re-read after the await (see /referral/code): load → bind → save runs without yielding
@@ -325,9 +334,10 @@ const server = http.createServer(async (req, res) => {
       if (body.image) {
         const b64 = String(body.image).replace(/^data:[^;]+;base64,/, ""); const buf = Buffer.from(b64, "base64");
         if (buf.length > 6 * 1024 * 1024) return json(res, 413, { error: "image too large (6 MB max)" });
-        const ext = /png/i.test(body.imageType ?? "") ? "png" : "jpg"; fs.writeFileSync(path.join(FEEDBACK_DIR, `${id}.${ext}`), buf); rec.image = `${id}.${ext}`; rec.imageBytes = buf.length;
+        if (feedbackDirBytes + buf.length > FEEDBACK_DIR_MAX) rec.imageDropped = `feedback storage full (${FEEDBACK_DIR_MAX} bytes)`;
+        else { const ext = /png/i.test(body.imageType ?? "") ? "png" : "jpg"; fs.writeFileSync(path.join(FEEDBACK_DIR, `${id}.${ext}`), buf); rec.image = `${id}.${ext}`; rec.imageBytes = buf.length; feedbackDirBytes += buf.length; }
       }
-      fs.writeFileSync(path.join(FEEDBACK_DIR, `${id}.json`), JSON.stringify(rec, null, 2));
+      const recJson = JSON.stringify(rec, null, 2); fs.writeFileSync(path.join(FEEDBACK_DIR, `${id}.json`), recJson); feedbackDirBytes += recJson.length;
       console.log("feedback", id, rec.note.slice(0, 80), rec.image ?? "(no image)");
       notify("📱 新回饋", `${rec.note.slice(0, 200) || "(no note)"}${rec.image ? " 📎" : ""} · app ${rec.diagnostics?.app ?? "?"}`, "feedback", 10);
       return json(res, 200, { ok: true, id });

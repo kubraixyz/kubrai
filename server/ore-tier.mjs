@@ -19,12 +19,20 @@ const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 const j = await (await fetch(`https://lite-api.jup.ag/price/v3?ids=${ORE_MINT}`)).json();
 const price = Number(j?.[ORE_MINT]?.usdPrice); if (!(price > 0)) { log("no ORE price from Jupiter; leaving the tier as is"); process.exit(1); }
+// A second, independent price must agree within AGREE, or nothing is written. Until 2026-10-05 Jupiter's quote alone set
+// the on-chain minimum, so one wild answer (a thin pool, a fault at the API) would have moved it as far as it said — at
+// an absurd high, every ORE miner would get the discount (audit 2026-10-05). Days without agreement keep yesterday's
+// minimum, which only matters once the price has drifted past DRIFT.
+const AGREE = 0.20;
+const cg = await fetch(`https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses=${ORE_MINT}&vs_currencies=usd`, { signal: AbortSignal.timeout(20_000) })
+  .then((r) => r.json()).then((x) => Number(Object.values(x ?? {})[0]?.usd)).catch(() => NaN);
+if (!(cg > 0) || Math.abs(price - cg) / cg > AGREE) { log(`ORE price not confirmed (Jupiter $${price.toFixed(2)}, CoinGecko ${cg > 0 ? "$" + cg.toFixed(2) : "no answer"}; need both within ${AGREE * 100} %); leaving the tier as is`); process.exit(1); }
 const minBase = BigInt(Math.round((USD_MIN / price) * Number(ORE_BASE)));
 const cur = await program.account.feeTiers.fetchNullable(feeTiers);
 const curMin = cur ? BigInt(cur.stakeMinAmount.toString()) : 0n;
 const sameRule = cur && cur.stakeProgram.equals(stakeProgram) && cur.stakeOwnerOffset === 8 && cur.stakeAmountOffset === 704 && cur.stakeDiscountBps > 0;
 const drift = curMin > 0n ? Math.abs(Number(minBase - curMin)) / Number(curMin) : Infinity;
-log(`ORE $${price.toFixed(2)} → $${USD_MIN} = ${(Number(minBase) / Number(ORE_BASE)).toFixed(3)} ORE (${minBase} base); on-chain ${sameRule ? `${(Number(curMin) / Number(ORE_BASE)).toFixed(3)} ORE, drift ${(drift * 100).toFixed(1)} %` : "rule not set"}`);
+log(`ORE $${price.toFixed(2)} (CoinGecko $${cg.toFixed(2)}) → $${USD_MIN} = ${(Number(minBase) / Number(ORE_BASE)).toFixed(3)} ORE (${minBase} base); on-chain ${sameRule ? `${(Number(curMin) / Number(ORE_BASE)).toFixed(3)} ORE, drift ${(drift * 100).toFixed(1)} %` : "rule not set"}`);
 if (sameRule && drift < DRIFT) { log("within tolerance, nothing to do"); process.exit(0); }
 const args = { sgtGroupMint: cur?.sgtGroupMint ?? PublicKey.default, sgtDiscountBps: cur?.sgtDiscountBps ?? 0, stakeProgram, stakeOwnerOffset: 8, stakeAmountOffset: 704, stakeMinAmount: new anchor.BN(minBase.toString()), stakeDiscountBps: cur?.stakeDiscountBps || 100, minFeeBps: cur?.minFeeBps ?? 100 };
 if (process.env.DRY_RUN === "1") { log("DRY_RUN, would set", { ...args, stakeProgram: stakeProgram.toBase58(), stakeMinAmount: minBase.toString() }); process.exit(0); }
