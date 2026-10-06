@@ -14,7 +14,7 @@ export const sourceLabel = (k: SourceKind) => t(k === "onchain" ? "srcl.onchain"
  *  (seekertracker.com)" on every DefiLlama and Jupiter-price market until 2026-10-03. `kind` is the catalog's reader. */
 const sourceLabelOf = (source: SourceKind, kind?: string) => (kind?.startsWith("defillama") ? t("srcl.defillama") : kind === "jup_price" ? t("srcl.jupprice") : sourceLabel(source));
 export const APP_NAMES: Record<string, string> = { jupiter: "Jupiter Mobile", tokenrun: "TokenRun", mattle: "MattleFun", cherry: "Cherry Messenger", seedvault: "Seed Vault Wallet", lootgo: "LootGO", jito: "Jito", sleepagotchi: "Sleepagotchi", moonwalk: "Moonwalk", ore: "ORE" };
-export type MetricInfo = { title: string; unit: string; how: string; scale?: number; digits?: number; source: SourceKind; sourceLabel?: string; cumulative?: boolean; cadence: Cadence; key?: string };
+export type MetricInfo = { title: string; unit: string; rangeUnit?: string; how: string; scale?: number; digits?: number; source: SourceKind; sourceLabel?: string; cumulative?: boolean; cadence: Cadence; key?: string };
 // The tables below hold words, so they are built for the language in use when asked, and built again after a switch.
 const perLang = <T,>(make: () => T) => { let at = "", v: T; return () => { if (at !== getLang()) { v = make(); at = getLang(); } return v!; }; };
 const WINDOW = perLang(() => ({ day: t("win.day"), week: t("win.week") }));
@@ -53,12 +53,16 @@ export const catalogEntry = (id: string): CatalogEntry | undefined => catalog[id
 const dailyWait = (c: CatalogEntry, dayEnd?: number, resolveAfterTs?: number) => (dayEnd && resolveAfterTs && resolveAfterTs >= dayEnd ? resolveAfterTs - dayEnd : (c.readAfterHours ?? (c.lagDays ?? 2) * 24) * 3600);
 /** closeTs (when known) lets a "tomorrow" market name its day as the viewer's own clock shows it, not as a UTC date;
  *  with resolveAfterTs as well, a daily-source market states its own wait. */
+// "Jupiter: Jupiter swap volume" named the app twice: a noun that already begins with the app's name stands alone.
+const appTitle = (app: string, noun: string) => (noun.toLowerCase().startsWith(app.toLowerCase()) ? noun : t("m.nextTitle", { app, noun }));
+// A range market's question is the only place its unit can go: the ranges themselves are bare numbers ("< 443,845,076" of what?).
+const rangeUnitTag = (m: { metric: string; closeTs: number }) => { const u = metricInfo(m.metric, m.closeTs)?.rangeUnit; return u ? ` (${u})` : ""; };
 export function metricInfo(id: string, closeTs?: number, resolveAfterTs?: number): MetricInfo | undefined {
   if (LEGACY()[id]) return LEGACY()[id];
   const td = id.match(/^(.+)_today$/);
-  if (td && catalog[td[1]]) { const c = catalog[td[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} ${t("m.todayHow", { wait: fmtWait(dailyWait(c, closeTs && closeTs % 86400 === 12 * 3600 ? closeTs + 12 * 3600 : undefined, resolveAfterTs)) })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
+  if (td && catalog[td[1]]) { const c = catalog[td[1]]; return { title: appTitle(c.app, c.noun), unit: c.unit, rangeUnit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} ${t("m.todayHow", { wait: fmtWait(dailyWait(c, closeTs && closeTs % 86400 === 12 * 3600 ? closeTs + 12 * 3600 : undefined, resolveAfterTs)) })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
   const nx = id.match(/^(.+)_next$/);   // retired 2026-09-27 (the day after close); kept for the markets opened before
-  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: t("m.nextTitle", { app: c.app, noun: c.noun }), unit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} ${t("m.nextHow", { lag: Math.round(dailyWait(c, closeTs ? closeTs + 86400 : undefined, resolveAfterTs) / 86400), window: closeTs ? fmtRange(closeTs, closeTs + 86400) : t("m.nextWindowGeneric") })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
+  if (nx && catalog[nx[1]]) { const c = catalog[nx[1]]; return { title: appTitle(c.app, c.noun), unit: c.unit, rangeUnit: c.unit, scale: c.scale, digits: c.digits, source: c.source, sourceLabel: sourceLabelOf(c.source, c.kind), cadence: "day", key: c.id, how: `${c.how} ${t("m.nextHow", { lag: Math.round(dailyWait(c, closeTs ? closeTs + 86400 : undefined, resolveAfterTs) / 86400), window: closeTs ? fmtRange(closeTs, closeTs + 86400) : t("m.nextWindowGeneric") })}${c.pushCost ? ` ${t("m.pushCost", { cost: c.pushCost })}` : ""}` }; }
   const cm = id.match(/^(.+)_(day|week|dmed|wmed)$/);
   if (cm && catalog[cm[1]]) {
     const c = catalog[cm[1]], k = cm[2];
@@ -89,7 +93,7 @@ export const bareTitle = (m: { metric: string; closeTs: number }) => (metricInfo
  *  breaks only after the dash, and "≥ 4,259,675 JupSOL" stays whole. */
 export function question(m: { metric: string; openTs: number; closeTs: number; nBuckets: number; thresholds: number[] }) {
   const range = fmtRangeNb(...countedWindow(m));
-  return m.nBuckets === 2 ? t("q.yesnoAt", { q: bareTitle(m), range, v: fmtExact(m.metric, m.thresholds[0]).replace(/ /g, "\u00a0") }) : t("q.rangeAt", { q: bareTitle(m), range });
+  return m.nBuckets === 2 ? t("q.yesnoAt", { q: bareTitle(m), range, v: fmtExact(m.metric, m.thresholds[0]).replace(/ /g, "\u00a0") }) : t("q.rangeAt", { q: bareTitle(m) + rangeUnitTag(m), range });
 }
 export const metricLabel = (id: string) => metricInfo(id)?.title ?? t("m.unknown");
 export const metricCadence = (id: string): Cadence => metricInfo(id)?.cadence ?? "other";

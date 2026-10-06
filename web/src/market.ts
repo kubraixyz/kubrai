@@ -1,6 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
 import { bs58 } from "./wallet";
-import { NO_OUTCOME, bootMarkets, buildPlaceBetTx, confirmBySig, earlyBirdUntil, fetchConfig, fetchMarket, fetchMarkets, fetchPosition, impliedPayout, totalPool, type MarketView } from "./kubrai";
+import { NO_OUTCOME, bootMarkets, buildPlaceBetTx, confirmBySig, earlyBirdUntil, fetchConfig, fetchMarket, fetchMarkets, fetchPosition, impliedPayout, payoutIfBucket, totalPool, type MarketView } from "./kubrai";
 import { SOURCE_LABEL, bareTitle, fmtExact, fmtValue, metricInfo, question, rangesFixed } from "./metrics";
 import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, openWalletMenu, poolsHtml, refreshBalances, statusPill } from "./ui";
 import { API_BASE, CLUSTER, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
@@ -57,7 +57,7 @@ function refreshProof(rerender = true) {
   return job;
 }
 
-async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); proofPending = !!getSession()?.publicKey; render(); void refreshProof(); void loadPosition(); }
+async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); keepJustBet(); proofPending = !!getSession()?.publicKey; render(); void refreshProof(); void loadPosition(); }
 onSession(() => { if (!cfg) return; proof = { ...proof, accounts: [], sgt: false, stake: false }; proofPending = !!getSession()?.publicKey; render(); void refreshProof(); });
 function render() {
   noteAmtFocus();
@@ -70,11 +70,12 @@ function render() {
   root.innerHTML = `
     <div class="mtop">${statusPill(m)}<span>${t("mkt.n", { id: m.id })}</span></div>
     <h1>${question(m, `<span class="mono">${fmtExact(m.metric, m.thresholds[0])}</span>`)}</h1>
-    <div class="mnow"><b>${esc(open ? t("mkt.headOpen", { in: inWords(m.closeTs) }) : nextStepHead(m, cfg))}</b><span>${t("card.inPot", { amt: fmtAmt(totalPool(m), 0), tok: TOKEN_SYMBOL })}</span><span>${t("card.bettors", { n: m.positions })}</span><span class="zone" title="${esc(zoneName())}">${t("mkt.zoneShort", { z: esc(zoneShort()) })}</span></div>
+    <div class="mnow"><b>${esc(open ? t("mkt.headOpen", { in: inWords(m.closeTs) }) : nextStepHead(m, cfg))}</b><span>${t("card.inPot", { amt: fmtAmt(totalPool(m), 0), tok: TOKEN_SYMBOL })}</span><span>${t(m.positions === 1 ? "card.bettor1" : "card.bettors", { n: m.positions })}</span><a class="minepill" id="mypill" href="#mypos" hidden></a><span class="zone" title="${esc(zoneName())}">${t("mkt.zoneShort", { z: esc(zoneShort()) })}</span></div>
     ${timelineGrid(m, cfg)}
     <p class="lead">${copy?.how ?? ""}</p>
     <div class="kv" style="margin-bottom:16px"><b>${t("mkt.source")}</b><span>${copy?.sourceLabel ?? SOURCE_LABEL[copy?.source ?? "thirdparty"]}</span></div>
     ${poolsHtml(m, m.status >= 1 && m.proposedOutcome !== NO_OUTCOME ? m.proposedOutcome : -1)}
+    <div id="mypos"></div>
     <h2>${t("mkt.bet")}</h2>
     <div id="bet"></div>
     <h2>${t("mkt.rules")}</h2>
@@ -158,9 +159,14 @@ function renderBet(open: boolean, fee: number) {
       hold = null; amtDraft = "";
       const okHtml = `<div class="msg ok">${t("bet.placed", { amt: fmtAmt(a), tok: TOKEN_SYMBOL, b: bucketLabel(m, side) })}</div>`;
       const cur = msgNow(); cur.innerHTML = okHtml;
+      // The stake shows at once, from what was just signed; the chain read that follows takes over when it has caught up.
+      const add = (xs: number[]) => m.pools.map((_, i) => (xs[i] ?? 0) + (i === side ? a : 0));
+      justBet = { amounts: add(posOwner === sess.publicKey.toBase58() ? myPos ?? [] : []), feeW: m.pools.map((_, i) => (posOwner === sess.publicKey.toBase58() ? myFeeW[i] ?? 0n : 0n) + (i === side ? BigInt(a) * BigInt(fee) : 0n)), pools: add(m.pools), until: Date.now() + 90_000 };
+      myPos = justBet.amounts; myFeeW = justBet.feeW; posOwner = sess.publicKey.toBase58(); keepJustBet(); drawPosition();
       try {
         const refNote = await bindReferralAfterBet(sess, cur);
         await refreshBalances(); await load(true); await loadPosition();
+        if (justBet) setTimeout(() => void loadPosition(), 8000);   // still ahead of the chain read: look once more
         // load() re-rendered the page: keep the confirmation visible in the fresh bet box
         const fresh = document.getElementById("msg"); if (fresh) fresh.innerHTML = okHtml;
         if (refNote) { const b = document.getElementById("bet"); if (b) b.insertAdjacentHTML("beforeend", `<div class="msg ok" style="margin-top:8px">${esc(refNote)}</div>`); }
@@ -185,27 +191,47 @@ function renderBet(open: boolean, fee: number) {
     finally { days?.toggleAttribute("inert", false); }
   };
 }
-// The connected wallet's own stake on this market, one number per range (null: no wallet, or nothing staked here).
-// It is held apart from the bet box because the box is redrawn many times over (a wallet event, the discount lookup
-// answering, another range picked) and each redraw puts the line back. It used to be added once, right after a bet:
-// whoever came back to a market they had already bet on saw no sign of it, and a redraw wiped it even then.
-let myPos: number[] | null = null, posOwner = "";
+// The connected wallet's own stake on this market, one number per range (null: no wallet, or nothing staked here):
+// a card between the pools and the bet box, and a pill beside the pot at the top of the page. It used to be one grey
+// line under the bet box, below the fold on a phone right after betting and easy to miss anywhere. It is drawn apart
+// from the bet box because the box is redrawn many times over (a wallet event, the discount lookup answering, another
+// range picked) and each redraw puts it back.
+let myPos: number[] | null = null, myFeeW: bigint[] = [], posOwner = "";
+// A bet that just confirmed, held until the chain read shows it: the first read after a bet often comes from a node
+// that has not seen it yet, and the stake must not fall back to what it was before (or vanish, on a first bet).
+let justBet: { amounts: number[]; feeW: bigint[]; pools: number[]; until: number } | null = null;
+function keepJustBet() {
+  if (justBet && Date.now() > justBet.until) justBet = null;
+  if (justBet && m) m.pools = m.pools.map((x, i) => Math.max(x, justBet!.pools[i] ?? 0));   // pools only grow while a market is open
+}
 function drawPosition() {
-  const box = document.getElementById("bet"); if (!box) return;
-  box.querySelector("#mypos")?.remove();
-  if (!myPos) return;
-  const parts = myPos.slice(0, m.nBuckets).map((x, i) => [x, i]).filter(([x]) => x > 0).map(([x, i]) => `${bucketLabel(m, i)}: ${fmtAmt(x)}`);
-  const el = document.createElement("div"); el.id = "mypos"; el.className = "kv"; el.style.marginTop = "12px";
-  el.innerHTML = `<b>${t("bet.position")}</b><span>${parts.length ? parts.join(" · ") + " " + TOKEN_SYMBOL : t("bet.none")}</span>`;
-  box.appendChild(el);
+  const card = document.getElementById("mypos"), pill = document.getElementById("mypill"); if (!card || !pill) return;
+  const amounts = (myPos ?? []).slice(0, m.nBuckets), staked = amounts.reduce((x, y) => x + y, 0);
+  if (!staked) { card.innerHTML = ""; pill.hidden = true; return; }
+  const feeBps = amounts.map((x, i) => (x ? Number((myFeeW[i] ?? 0n) / BigInt(x)) : 0));
+  const mine = amounts.map((_, i) => i).filter((i) => amounts[i] > 0);
+  const w = m.status === 2 || m.status === 4 ? m.outcome : m.status === 1 ? m.proposedOutcome : NO_OUTCOME;
+  // the number on the right: decided (or proposed) -> what this stake gets; still open -> the best it can get
+  let label: string, value: number, tone = "", sub = "";
+  if (m.status === 3) { label = t("pos.refund"); value = staked; sub = t("pos.voided"); }
+  else if (w !== NO_OUTCOME) { const r = payoutIfBucket(m, amounts, feeBps, w); label = t(m.status === 1 ? "pos.ifConfirmed" : "pos.payingOut"); value = r.payout; tone = r.kind === "refund" ? "" : r.kind; sub = t(m.status === 1 ? "pos.proposed" : "pos.result", { b: bucketLabel(m, w) }); }
+  else { const outs = mine.map((i) => payoutIfBucket(m, amounts, feeBps, i).payout); value = Math.max(...outs); label = t(mine.length > 1 ? "pos.bestCase" : "pos.ifWins"); if (mine.length > 1) sub = mine.map((i, k) => t("pf.ifRange", { amt: fmtAmt(outs[k]), b: bucketLabel(m, i) })).join(" · "); }
+  pill.hidden = false; pill.innerHTML = `<b>${t("bet.position")}</b> <span class="mono">${fmtAmt(staked)} ${TOKEN_SYMBOL}</span>`;
+  card.innerHTML = `<div class="mypos"><h3>${t("bet.position")}</h3>
+    <div class="chips">${mine.map((i) => `<span class="chip" style="--c:${bucketColor(m, i)}">${esc(bucketLabel(m, i))} · <span class="mono">${fmtAmt(amounts[i])}</span></span>`).join("")}</div>
+    <div class="nums"><div><span>${t("pos.staked")}</span><b class="mono">${fmtAmt(staked)} <small>${TOKEN_SYMBOL}</small></b></div><div class="r ${tone}"><span>${label}</span><b class="mono">${fmtAmt(value)} <small>${TOKEN_SYMBOL}</small></b></div></div>
+    ${sub ? `<div class="note">${esc(sub)}</div>` : ""}</div>`;
 }
 async function loadPosition() {
   const s = getSession(), owner = s ? s.publicKey.toBase58() : "";
-  if (owner !== posOwner) { myPos = null; posOwner = owner; drawPosition(); }   // one wallet's stake never stays up while another's is fetched
+  if (owner !== posOwner) { myPos = null; myFeeW = []; justBet = null; posOwner = owner; drawPosition(); }   // one wallet's stake never stays up while another's is fetched
   if (!s || !m) return;
   const p = await fetchPosition(m.pubkey, s.publicKey);
   if ((getSession()?.publicKey.toBase58() ?? "") !== owner) return;             // the wallet changed while we waited
-  if (p) { myPos = (p.amounts as any[]).map((x) => x.toNumber()); drawPosition(); }   // no answer (an RPC hiccup reads the same as no position) leaves what is shown alone
+  if (!p) return;                                                                // no answer (an RPC hiccup reads the same as no position) leaves what is shown alone
+  const amounts = (p.amounts as any[]).map((x) => x.toNumber()), feeW = (p.feeW as any[]).map((x) => BigInt(x.toString()));
+  if (justBet && (Date.now() > justBet.until || amounts.every((x: number, i: number) => x >= (justBet!.amounts[i] ?? 0)))) justBet = null;   // the chain has caught up
+  if (!justBet) { myPos = amounts; myFeeW = feeW; drawPosition(); }
 }
 onSession(() => { if (m) { render(); void loadPosition(); } });
 // The other days of this question, in a row above the market (series.ts). It is drawn from the market list the page

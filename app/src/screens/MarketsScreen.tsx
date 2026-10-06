@@ -60,7 +60,7 @@ export function MarketsScreen() {
       <Text style={[s.meta, { color: p.dim }]}>{when(m)}</Text>
       <Text style={[s.title, { color: p.fg }]}>{question(m)}</Text>
       <OptionRows m={m} highlight={m.status === 2 || m.status === 4 ? m.outcome : m.status === 1 ? m.proposedOutcome : -1} />
-      <View style={s.metaRow}><Text style={[s.meta, { color: p.dim }]}>{t("card.inPot", { amt: fmtAmt(totalPool(m), 0), tok: TOKEN_SYMBOL })}</Text><Text style={[s.meta, { color: p.dim }]}>{t("card.bettors", { n: m.positions })}</Text></View>
+      <View style={s.metaRow}><Text style={[s.meta, { color: p.dim }]}>{t("card.inPot", { amt: fmtAmt(totalPool(m), 0), tok: TOKEN_SYMBOL })}</Text><Text style={[s.meta, { color: p.dim }]}>{t(m.positions === 1 ? "card.bettor1" : "card.bettors", { n: m.positions })}</Text></View>
     </Pressable>
   );
 

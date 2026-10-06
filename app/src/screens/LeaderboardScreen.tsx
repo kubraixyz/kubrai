@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Linking, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
-import { ActivityIndicator, Chip, SegmentedButtons, Text, useTheme } from "react-native-paper";
+import { ActivityIndicator, SegmentedButtons, Text, useTheme } from "react-native-paper";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthorization } from "../utils/useAuthorization";
 import { fmtTsShort, short } from "../chain/format";
@@ -48,7 +48,7 @@ export function LeaderboardScreen() {
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <Text style={styles.mono} onPress={() => explorer(e.wallet)}>{short(e.wallet)}</Text>
               {e.wallet === me && <Text variant="labelSmall" style={{ fontWeight: "700" }}>{t("lb.you")}</Text>}
-              {e.test && <Chip compact mode="outlined" textStyle={{ fontSize: 10, lineHeight: 12 }} style={{ height: 22 }}>{t("lb.test")}</Chip>}
+              {e.test && <View style={[styles.tag, { borderColor: theme.colors.outline }]}><Text style={[styles.tagText, styles.dim]}>{t("lb.test")}</Text></View>}
             </View>
             <Text variant="labelSmall" style={styles.dim}>{t("app.lb.row", { won: e.won, n: e.markets, ts: fmtTsShort(Date.parse(e.lastAt) / 1000) })}</Text>
           </View>
@@ -63,6 +63,7 @@ const styles = StyleSheet.create({
   screen: { padding: 16, paddingBottom: 48 }, dim: { opacity: 0.7 }, mono: { fontFamily: "monospace", fontSize: 13 },
   stats: { flexDirection: "row", gap: 8, marginBottom: 10 }, stat: { flex: 1, borderRadius: 8, padding: 10 }, statNum: { fontSize: 20, fontWeight: "700", fontVariant: ["tabular-nums"], includeFontPadding: false, lineHeight: 26 },
   me: { borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 10 },
+  tag: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }, tagText: { fontSize: 11, lineHeight: 15, includeFontPadding: false },
   row: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, paddingHorizontal: 6, borderBottomWidth: 1, borderRadius: 6 },
   rank: { width: 26, textAlign: "right", fontVariant: ["tabular-nums"] }, points: { fontSize: 16, fontWeight: "700", fontVariant: ["tabular-nums"] },
 });

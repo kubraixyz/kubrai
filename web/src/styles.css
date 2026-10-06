@@ -42,6 +42,13 @@ input[type=number]{font:inherit;font-family:var(--mono);padding:10px 12px;border
 .quote .big{font-family:var(--mono);font-size:20px}
 .note{color:var(--dim);font-size:12.5px}
 .msg{padding:10px 12px;border-radius:6px;font-size:14px}.msg.ok{background:var(--accent-bg)}.msg.err{background:var(--no-bg)}
+/* the wallet's own stake on a market: a pill beside the pot, a card between the pools and the bet box */
+.mnow .minepill{display:inline-flex;gap:6px;align-items:baseline;padding:0 10px;border-radius:999px;border:1px solid var(--accent);background:var(--accent-bg);color:var(--fg)}.mnow .minepill:hover{text-decoration:none}
+.mypos{border:1px solid var(--accent);background:var(--accent-bg);border-radius:10px;padding:14px 16px;display:grid;gap:10px;margin-top:16px;max-width:440px}
+.mypos h3{margin:0;font:600 12px/1.2 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+.mypos .chips{display:flex;flex-wrap:wrap;gap:6px}.mypos .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;border:1px solid var(--c);background:var(--surface);font-size:13px}.mypos .chip::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c)}
+.mypos .nums{display:flex;justify-content:space-between;gap:16px}.mypos .nums span{display:block;font-size:12px;color:var(--dim)}.mypos .nums b{font-size:22px;font-weight:600}.mypos .nums small{font-size:12px;font-weight:400;color:var(--dim)}
+.mypos .nums .r{text-align:right}.mypos .nums .won b{color:var(--yes)}.mypos .nums .lost b{color:var(--no)}
 .walletbox{position:relative;display:flex;align-items:center}
 .bal{font-size:13px;color:var(--dim)}.bal b{color:var(--fg);font-weight:600}.warn{color:var(--no)}
 .amtrow{display:flex;gap:8px}.amtrow input{flex:1}.amtrow button{white-space:nowrap}

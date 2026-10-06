@@ -18,7 +18,7 @@ function card(m: MarketView) {
     <div class="meta"><span>${when}</span></div>
     <div class="title">${question(m, `<span class="mono">${fmtExact(m.metric, m.thresholds[0])}</span>`)}</div>
     <div class="orows">${rows}</div>
-    <div class="meta"><span>${t("card.inPot", { amt: fmtAmt(tot, 0), tok: TOKEN_SYMBOL })}</span><span>${t("card.bettors", { n: m.positions })}</span></div>
+    <div class="meta"><span>${t("card.inPot", { amt: fmtAmt(tot, 0), tok: TOKEN_SYMBOL })}</span><span>${t(m.positions === 1 ? "card.bettor1" : "card.bettors", { n: m.positions })}</span></div>
   </a>`;
 }
 // A market past its betting window says when its result is due, as its timeline estimates it. "Result soon" was printed

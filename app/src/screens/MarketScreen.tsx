@@ -3,7 +3,7 @@ import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fro
 import { ActivityIndicator } from "react-native-paper";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { PublicKey } from "@solana/web3.js";
-import { useBalances, useConfig, useInvalidateAll, useMarket, useMarkets, usePositions } from "../hooks/useKubrai";
+import { useBalances, useConfig, useInvalidateAll, useMarket, useMarkets, useNoteBet, usePositions } from "../hooks/useKubrai";
 import { useApplyInvite, usePendingReferral, type InviteNote } from "../hooks/useReferral";
 import { metricInfo, fmtValue, rangesFixed, sourceLabel } from "../chain/metrics";
 import { fmtRange, fmtTs, fmtTsShort, fmtWait, inWords, zoneShort } from "../chain/time";
@@ -20,7 +20,7 @@ import bs58 from "bs58";
 import { recordError } from "../utils/errorLog";
 import { t } from "../i18n";
 import { DayStrip } from "../components/DayStrip";
-import { Pools, StatusPill, TimelineGrid } from "../components/MarketParts";
+import { Pools, PositionCard, StatusPill, TimelineGrid } from "../components/MarketParts";
 import { MONO, usePalette, type Palette } from "../components/palette";
 
 /** "wait" = sent, neither confirmed nor rejected yet: neutral, and the bet button stays locked. `sig` adds an explorer link. */
@@ -48,7 +48,7 @@ function Market({ id, onBetting }: { id: number; onBetting: (on: boolean) => voi
   const p = usePalette(); const nav = useNavigation<any>(); const { connection } = useConnection();
   const { selectedAccount } = useAuthorization(); const { connect, signAndSendTransaction, signTransaction } = useMobileWallet();
   const { data: m, isLoading, isError, error } = useMarket(id); const list = useMarkets();
-  const { data: cfg } = useConfig(); const bal = useBalances(); const positions = usePositions(); const invalidate = useInvalidateAll();
+  const { data: cfg } = useConfig(); const bal = useBalances(); const positions = usePositions(); const invalidate = useInvalidateAll(); const noteBet = useNoteBet();
   const [bucket, setBucket] = useState(0); const [amt, setAmt] = useState(""); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<BetMsg | null>(null);
   // A sent bet the network has neither confirmed nor rejected after every poll locks the button until the screen is
   // reopened: tapping again would place a second real bet.
@@ -76,6 +76,7 @@ function Market({ id, onBetting }: { id: number; onBetting: (on: boolean) => voi
   const open = m.status === 0 && now >= m.openTs && now < m.closeTs;
   const win = cfg ? cfg.disputeWindowSecs.toNumber() : null;
   const myPos = positions.data?.find((x: any) => x.market.equals(m.pubkey));
+  const myStake = myPos ? myPos.amounts.slice(0, m.nBuckets).reduce((x: number, y: number) => x + y, 0) : 0;
   const tiers = cfg?.feeTiers;
   const label = bucketLabel(m, bucket), color = bucketColor(m, bucket, p.dark);
   const balance = bal.data?.token;
@@ -114,7 +115,7 @@ function Market({ id, onBetting }: { id: number; onBetting: (on: boolean) => voi
       }
       if (r.status === "failed") throw new Error(r.reason);
       if (r.status === "unknown") { setLocked(true); setMsg({ kind: "wait", text: t("bet.unconfirmed", { min: 6, sig: short(sig) }), sig }); return; }
-      setMsg({ kind: "ok", text: t("bet.placed", { amt: fmtAmt(a), tok: TOKEN_SYMBOL, b: bucketLabel(m, side) }), sig }); setAmt(""); invalidate();
+      setMsg({ kind: "ok", text: t("bet.placed", { amt: fmtAmt(a), tok: TOKEN_SYMBOL, b: bucketLabel(m, side) }), sig }); setAmt(""); noteBet(account.publicKey, m, side, a, fee); invalidate();
       // First bet with an invite code waiting: one more signature binds the wallet to it (nothing is charged).
       await applyInvite(account.publicKey.toBase58(), setInviteNote);
     } catch (e: any) {
@@ -142,13 +143,16 @@ function Market({ id, onBetting }: { id: number; onBetting: (on: boolean) => voi
       <View style={s.mnow}>
         <Text style={[s.mnowHead, { color: p.accent }]}>{open ? t("mkt.headOpen", { in: inWords(m.closeTs) }) : nextStepHead(m, win)}</Text>
         <Text style={[s.mnowText, { color: p.dim }]}>{t("card.inPot", { amt: fmtAmt(totalPool(m), 0), tok: TOKEN_SYMBOL })}</Text>
-        <Text style={[s.mnowText, { color: p.dim }]}>{t("card.bettors", { n: m.positions })}</Text>
+        <Text style={[s.mnowText, { color: p.dim }]}>{t(m.positions === 1 ? "card.bettor1" : "card.bettors", { n: m.positions })}</Text>
+        {myStake > 0 ? <View style={[s.minepill, { borderColor: p.accent, backgroundColor: p.accentBg }]}><Text style={[s.mnowText, { color: p.fg, fontWeight: "700" }]}>{t("bet.position")}</Text><Text style={[s.mnowText, MONO, { color: p.fg }]}>{fmtAmt(myStake)} {TOKEN_SYMBOL}</Text></View> : null}
         <Text style={[s.mnowText, { color: p.dim }]}>{t("mkt.zoneShort", { z: zoneShort() })}</Text>
       </View>
       <TimelineGrid m={m} disputeWindowSecs={win} />
       <Text style={[s.lead, { color: p.dim }]}>{copy?.how ?? ""}</Text>
       <View style={{ marginBottom: 16 }}><KV p={p} w={92} k={t("mkt.source")} v={copy?.sourceLabel ?? sourceLabel(copy?.source ?? "thirdparty")} /></View>
       <Pools m={m} highlight={m.status >= 1 && m.proposedOutcome !== NO_OUTCOME ? m.proposedOutcome : -1} />
+      {/* the wallet's own stake on this market, open or not: whoever comes back to a market they bet on sees it, and so does whoever just bet */}
+      {myPos ? <PositionCard m={m} amounts={myPos.amounts} feeW={myPos.feeW} /> : null}
 
       <Text style={[s.h2, { color: p.dim }]}>{t("mkt.bet")}</Text>
       {!open ? <Text style={[s.note, { color: p.dim }]}>{m.status === 0 && now < m.openTs ? t("bet.notOpen") : t("bet.closed")}</Text> : (
@@ -173,8 +177,6 @@ function Market({ id, onBetting }: { id: number; onBetting: (on: boolean) => voi
           <Text style={[s.note, { color: p.dim }]}>{t("bet.parimutuel")} <Text style={{ fontWeight: "700", color: p.fg }}>{t("bet.yourFee", { pct: fee / 100 })}</Text>{discount ? ` (${discount})` : ""} {t("bet.feeNote")}</Text>
         </View>
       )}
-      {/* the wallet's own stake on this market, open or not: whoever comes back to a market they bet on sees it */}
-      {myPos ? <View style={{ marginTop: 12 }}><KV p={p} w={92} k={t("bet.position")} v={(() => { const parts = myPos.amounts.slice(0, m.nBuckets).map((x: number, i: number) => (x ? `${bucketLabel(m, i)}: ${fmtAmt(x)}` : "")).filter(Boolean); return parts.length ? parts.join(" · ") + " " + TOKEN_SYMBOL : t("bet.none"); })()} /></View> : null}
 
       <Text style={[s.h2, { color: p.dim }]}>{t("mkt.rules")}</Text>
       <View style={{ gap: 8 }}>
@@ -295,6 +297,7 @@ const s = StyleSheet.create({
   mtopText: { fontSize: 13, lineHeight: 18 },
   h1: { fontSize: 21, lineHeight: 28, fontWeight: "700", marginBottom: 6 },
   mnow: { flexDirection: "row", flexWrap: "wrap", columnGap: 16, rowGap: 4, marginTop: 4, marginBottom: 16 },
+  minepill: { flexDirection: "row", alignItems: "baseline", gap: 6, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10 },
   mnowHead: { fontSize: 14, lineHeight: 21, fontWeight: "700" },
   mnowText: { fontSize: 14, lineHeight: 21 },
   lead: { fontSize: 15, lineHeight: 22, marginBottom: 20 },
