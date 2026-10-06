@@ -57,8 +57,8 @@ function refreshProof(rerender = true) {
   return job;
 }
 
-async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); render(); void refreshProof(); void loadPosition(); }
-onSession(() => { if (!cfg) return; proof = { ...proof, accounts: [], sgt: false, stake: false }; render(); void refreshProof(); });
+async function load(fresh = false) { [m, cfg] = await Promise.all([fetchMarket(id, { fresh }), fetchConfig({ fresh })]); proofPending = !!getSession()?.publicKey; render(); void refreshProof(); void loadPosition(); }
+onSession(() => { if (!cfg) return; proof = { ...proof, accounts: [], sgt: false, stake: false }; proofPending = !!getSession()?.publicKey; render(); void refreshProof(); });
 function render() {
   noteAmtFocus();
   const copy = metricInfo(m.metric, m.closeTs, m.resolveAfterTs);
