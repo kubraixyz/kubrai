@@ -41,10 +41,19 @@ let proof: HolderProof = { accounts: [], sgt: false, stake: false, sgtDiscountBp
 // market page with a wallet connected sat on "Loading…"). The page never waits for it: it renders at the full fee
 // and re-renders once the lookup answers; after 8 s it gives up (no discount shown, the bet still goes through).
 let proofJob: Promise<void> | null = null;
+// True while the lookup for the connected wallet is still out. The fee line then says so instead of quoting the full
+// fee as if it were final (2026-10-06, black-box round: "3%" for a few seconds, then "1%", with no hint in between).
+let proofPending = false;
 function refreshProof(rerender = true) {
   const owner = getSession()?.publicKey ?? null;
+  proofPending = !!owner;
   const job = proofJob = Promise.race([holderProof(connection, programId, owner, cfg?.feeTiers ?? null), new Promise<null>((r) => setTimeout(() => r(null), 8000))])
-    .then((p) => { if (!p || proofJob !== job) return; const changed = p.sgt !== proof.sgt || p.stake !== proof.stake; proof = p; if (changed && rerender && m) render(); });
+    .then((p) => {
+      if (proofJob !== job) return;
+      proofPending = false;
+      if (p) proof = p;
+      if (rerender && m) render();   // also when nothing changed: the "checking…" line has to go
+    });
   return job;
 }
 
@@ -114,7 +123,7 @@ function renderBet(open: boolean, fee: number) {
     <div class="quote" id="quote"></div>
     ${s ? `<button class="primary" id="go"${hold ? " disabled" : ""} style="background:${bucketColor(m, bucket)};border-color:${bucketColor(m, bucket)}">${t("bet.place", { b: bucketLabel(m, bucket) })}</button>` : `<button class="primary" id="goconnect">${t("wallet.connect")}</button>`}
     <div id="msg">${hold ?? ""}</div>
-    <div class="note">${t("bet.parimutuel")} <b>${t("bet.yourFee", { pct: fee / 100 })}</b>${discountLabel(Date.now() / 1000 < earlyBirdUntil(cfg, m), proof) ? ` (${discountLabel(Date.now() / 1000 < earlyBirdUntil(cfg, m), proof)})` : ""} ${t("bet.feeNote")}</div>
+    <div class="note">${t("bet.parimutuel")} <b>${proofPending ? t("bet.feeChecking") : t("bet.yourFee", { pct: fee / 100 })}</b>${!proofPending && discountLabel(Date.now() / 1000 < earlyBirdUntil(cfg, m), proof) ? ` (${discountLabel(Date.now() / 1000 < earlyBirdUntil(cfg, m), proof)})` : ""} ${t("bet.feeNote")}</div>
   </div>`;
   const amtEl = box.querySelector<HTMLInputElement>("#amt")!, quote = box.querySelector("#quote")!;
   const upd = () => {
