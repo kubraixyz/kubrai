@@ -5,7 +5,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { PublicKey } from "@solana/web3.js";
 import { useBalances, useConfig, useInvalidateAll, useMarket, useMarkets, usePositions } from "../hooks/useKubrai";
 import { useApplyInvite, usePendingReferral, type InviteNote } from "../hooks/useReferral";
-import { metricInfo, fmtValue, sourceLabel } from "../chain/metrics";
+import { metricInfo, fmtValue, rangesFixed, sourceLabel } from "../chain/metrics";
 import { fmtRange, fmtTs, fmtTsShort, fmtWait, inWords, zoneShort } from "../chain/time";
 import { bucketColor, bucketLabel, fmtAmt, question, short } from "../chain/format";
 import { buildPlaceBetTx, waitForSignature, impliedPayout, earlyBirdUntil, programId, totalPool, NO_OUTCOME, type MarketView } from "../chain/kubrai";
@@ -181,7 +181,7 @@ function Market({ id, onBetting }: { id: number; onBetting: (on: boolean) => voi
         {cfg && <KV p={p} k={t("mkt.earlyBird")} v={t("mkt.earlyBirdV", { a: (cfg.feeBps - cfg.earlyBirdDiscountBps) / 100, ts: fmtTs(earlyBirdUntil(cfg, m)), b: cfg.feeBps / 100 })} />}
         {tiers ? <KV p={p} k={t("mkt.discounts")} v={<>{`${[tiers.sgtDiscountBps ? t("mkt.sgtDisc", { pct: tiers.sgtDiscountBps / 100 }) : "", stakeRuleText(tiers)].filter(Boolean).join(" · ")}${tiers.minFeeBps ? ` · ${t("mkt.floor", { pct: tiers.minFeeBps / 100 })}` : ""}. ${t("mkt.proven")}`}{IS_TEST ? <Text style={{ color: p.no }}>{" " + t("mkt.devnetNote")}</Text> : null}</>} /> : null}
         <KV p={p} k={t("mkt.proposed")} v={m.proposedAt ? t("mkt.proposedV", { ts: fmtTs(m.proposedAt), v: fmtValue(m.metric, m.proposedValue, m.thresholds), b: bucketLabel(m, m.proposedOutcome) }) : t("mkt.afterClose")} />
-        {m.nBuckets > 2 ? <KV p={p} k={t("mkt.ranges")} v={t("mkt.rangesV")} /> : null}
+        {m.nBuckets > 2 ? <KV p={p} k={t("mkt.ranges")} v={t(rangesFixed(m.metric) ? "mkt.rangesFixed" : "mkt.rangesV")} /> : null}
         {win != null ? <KV p={p} k={t("mkt.dispute")} v={t("mkt.disputeV", { h: win / 3600 })} /> : null}
         <KV p={p} k={t("mkt.snapshots")} v={<Evidence m={m} p={p} />} />
         <KV p={p} k={t("mkt.hash")} v={<Text style={[s.hash, MONO, { color: p.dim }]}>{m.proposedAt ? m.snapshotHash + " " + t("mkt.hashOn") : t("mkt.hashLater")}</Text>} />

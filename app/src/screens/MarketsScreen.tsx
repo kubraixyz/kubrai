@@ -5,7 +5,8 @@ import MaterialCommunityIcon from "@expo/vector-icons/MaterialCommunityIcons";
 import { useNavigation } from "@react-navigation/native";
 import { useMarkets } from "../hooks/useKubrai";
 import { metricCategory, CATEGORY_ORDER, catalogEntry, metricLabel } from "../chain/metrics";
-import { fmtAmt, fmtTsShort, question, timeLeft } from "../chain/format";
+import { fmtAmt, fmtTsShort, inWords, question, timeLeft } from "../chain/format";
+import { timelineSteps } from "../chain/timeline";
 import { totalPool, type MarketView } from "../chain/kubrai";
 import { APP, IS_TEST, TOKEN_SYMBOL } from "../config";
 import { recordError } from "../utils/errorLog";
@@ -51,7 +52,9 @@ export function MarketsScreen() {
   const items = searching ? found(inStage) : inStage.filter((m) => metricCategory(m.metric) === curCat);
   const elsewhere = searching && items.length === 0 ? STAGES.filter((k) => k !== stage && count(k) > 0) : [];
 
-  const when = (m: MarketView) => (m.status === 0 && now < m.closeTs ? timeLeft(m.closeTs) : m.status === 0 ? t("card.closedSoon", { ts: fmtTsShort(m.closeTs) }) : m.status === 1 ? t("card.proposed", { ts: fmtTsShort(m.proposedAt) }) : t("card.closed", { ts: fmtTsShort(m.closeTs) }));
+  // past its betting window a card says when the result is due (the timeline's estimate); "soon" only once it is due
+  const closedWhen = (m: MarketView) => { const ps = timelineSteps(m, null).find((s) => s.key === "propose"); return ps && ps.ts > now ? t("card.closedResult", { ts: fmtTsShort(m.closeTs), in: `${ps.estimate ? "~ " : ""}${inWords(ps.ts)}` }) : t("card.closedSoon", { ts: fmtTsShort(m.closeTs) }); };
+  const when = (m: MarketView) => (m.status === 0 && now < m.closeTs ? timeLeft(m.closeTs) : m.status === 0 ? closedWhen(m) : m.status === 1 ? t("card.proposed", { ts: fmtTsShort(m.proposedAt) }) : t("card.closed", { ts: fmtTsShort(m.closeTs) }));
   const card = ({ item: m }: { item: MarketView }) => (
     <Pressable onPress={() => nav.navigate("Market", { id: m.id })} style={({ pressed }) => [s.card, { backgroundColor: p.surface, borderColor: pressed ? p.accent : p.line }]}>
       <Text style={[s.meta, { color: p.dim }]}>{when(m)}</Text>

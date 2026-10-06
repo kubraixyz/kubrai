@@ -83,7 +83,9 @@ export function MyBetsScreen() {
             <Text variant="labelSmall" style={styles.dim}>#{s.id} · {fmtTs(Date.parse(s.at) / 1000)}</Text>
           </View>
           <Text variant="titleMedium" style={{ marginTop: 6 }}>{m ? question(m) : s.metric}</Text>
-          <Text variant="bodySmall" style={[styles.dim, { marginTop: 2 }]}>{s.status === 3 ? t("app.mb.voided") : t("app.mb.resultObserved", { b: m ? bucketLabel(m, s.outcome) : t("app.mb.bucket", { n: s.outcome }), v: m ? fmtValue(m.metric, Number(s.observed)) : s.observed })}</Text>
+          <Text variant="bodySmall" style={[styles.dim, { marginTop: 2 }]}>{s.status === 3 ? t("app.mb.voided") : t("app.mb.resultObserved", { b: m ? bucketLabel(m, s.outcome) : t("app.mb.bucket", { n: s.outcome }), v: m ? fmtValue(m.metric, Number(s.observed), m.thresholds) : s.observed })}</Text>
+          {/* resolved, and nobody was on the winning range: a refund needs its reason, as on the website */}
+          {s.kind === "refund" && s.status !== 3 ? <Text variant="bodySmall" style={[styles.dim, { marginTop: 2 }]}>{t("pf.noWinner")}</Text> : null}
           <View style={styles.nums}>
             <Big label={t("app.mb.staked")} value={fmtAmt(staked)} />
             <Big label={t("app.mb.paid")} value={lost ? "0" : fmtAmt(Number(s.payout))} color={won ? GREEN : lost ? RED : undefined} right />

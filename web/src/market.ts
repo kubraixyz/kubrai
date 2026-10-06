@@ -1,7 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { bs58 } from "./wallet";
 import { NO_OUTCOME, bootMarkets, buildPlaceBetTx, confirmBySig, earlyBirdUntil, fetchConfig, fetchMarket, fetchMarkets, fetchPosition, impliedPayout, totalPool, type MarketView } from "./kubrai";
-import { SOURCE_LABEL, bareTitle, fmtExact, fmtValue, metricInfo, question } from "./metrics";
+import { SOURCE_LABEL, bareTitle, fmtExact, fmtValue, metricInfo, question, rangesFixed } from "./metrics";
 import { balances, bucketColor, bucketLabel, esc, fmtAmt, fmtTs, getSession, mountNetBadge, mountWallet, onSession, openWalletMenu, poolsHtml, refreshBalances, statusPill } from "./ui";
 import { API_BASE, CLUSTER, TOKEN_DECIMALS, TOKEN_SYMBOL } from "./config";
 import { discountLabel, feeWithDiscounts, holderProof, stakeRuleText, type HolderProof } from "./holder";
@@ -73,7 +73,7 @@ function render() {
       <b>${t("mkt.earlyBird")}</b><span>${t("mkt.earlyBirdV", { a: (cfg.feeBps - cfg.earlyBirdDiscountBps) / 100, ts: fmtTs(earlyUntil), b: cfg.feeBps / 100 })}</span>
       ${tiers ? `<b>${t("mkt.discounts")}</b><span>${[tiers.sgtDiscountBps ? t("mkt.sgtDisc", { pct: tiers.sgtDiscountBps / 100 }) : "", stakeRuleText(tiers)].filter(Boolean).join(" · ")}${tiers.minFeeBps ? ` · ${t("mkt.floor", { pct: tiers.minFeeBps / 100 })}` : ""}. ${t("mkt.proven")}${CLUSTER === "devnet" ? ` <span class="warn">${t("mkt.devnetNote")}</span>` : ""}</span>` : ""}
       <b>${t("mkt.proposed")}</b><span>${m.proposedAt ? t("mkt.proposedV", { ts: fmtTs(m.proposedAt), v: `<span class="mono">${fmtValue(m.metric, m.proposedValue, m.thresholds)}</span>`, b: `<b>${bucketLabel(m, m.proposedOutcome)}</b>` }) : t("mkt.afterClose")}</span>
-      ${m.nBuckets > 2 ? `<b>${t("mkt.ranges")}</b><span>${t("mkt.rangesV")}</span>` : ""}
+      ${m.nBuckets > 2 ? `<b>${t("mkt.ranges")}</b><span>${t(rangesFixed(m.metric) ? "mkt.rangesFixed" : "mkt.rangesV")}</span>` : ""}
       <b>${t("mkt.dispute")}</b><span>${t("mkt.disputeV", { h: cfg.disputeWindowSecs.toNumber() / 3600 })}</span>
       <b>${t("mkt.snapshots")}</b><span id="evidence" class="note">${t("common.loading")}</span>
       <b>${t("mkt.hash")}</b><span class="hash">${m.proposedAt ? m.snapshotHash + " " + t("mkt.hashOn") : t("mkt.hashLater")}</span>

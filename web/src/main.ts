@@ -2,7 +2,8 @@ import { fetchMarkets, totalPool, type MarketView } from "./kubrai";
 import { CATEGORY_ORDER, catalogEntry, fmtExact, metricCategory, metricInfo, metricLabel, question } from "./metrics";
 import { bucketColor, bucketLabel, esc, fmtAmt, mountNetBadge, mountWallet, timeLeft } from "./ui";
 import { TOKEN_SYMBOL } from "./config";
-import { fmtTsShort, localizeUtc } from "./time";
+import { fmtTsShort, inWords, localizeUtc } from "./time";
+import { timelineSteps } from "./timeline";
 import { t } from "./i18n";
 
 mountNetBadge(); mountWallet();
@@ -11,7 +12,7 @@ const root = document.getElementById("markets")!;
 function card(m: MarketView) {
   const tot = totalPool(m);
   const hi = m.status === 2 || m.status === 4 ? m.outcome : m.status === 1 ? m.proposedOutcome : -1;
-  const when = m.status === 0 && Date.now() / 1000 < m.closeTs ? timeLeft(m.closeTs) : m.status === 0 ? t("card.closedSoon", { ts: fmtTsShort(m.closeTs) }) : m.status === 1 ? t("card.proposed", { ts: fmtTsShort(m.proposedAt) }) : t("card.closed", { ts: fmtTsShort(m.closeTs) });
+  const when = m.status === 0 && Date.now() / 1000 < m.closeTs ? timeLeft(m.closeTs) : m.status === 0 ? closedWhen(m) : m.status === 1 ? t("card.proposed", { ts: fmtTsShort(m.proposedAt) }) : t("card.closed", { ts: fmtTsShort(m.closeTs) });
   const rows = m.pools.map((p, i) => { const pct = tot ? Math.round((p / tot) * 100) : 0; return `<div class="orow${hi === i ? " win" : ""}" style="--c:${bucketColor(m, i)}"><i style="width:${tot ? pct : 0}%"></i><span>${bucketLabel(m, i)}</span><b>${tot ? pct + "%" : "–"}</b></div>`; }).join("");
   return `<a class="card mini" href="/market.html?id=${m.id}">
     <div class="meta"><span>${when}</span></div>
@@ -19,6 +20,13 @@ function card(m: MarketView) {
     <div class="orows">${rows}</div>
     <div class="meta"><span>${t("card.inPot", { amt: fmtAmt(tot, 0), tok: TOKEN_SYMBOL })}</span><span>${t("card.bettors", { n: m.positions })}</span></div>
   </a>`;
+}
+// A market past its betting window says when its result is due, as its timeline estimates it. "Result soon" was printed
+// for two days on markets whose source is read up to two days after the day ends; it now stays only for a proposal that
+// is due already (the next resolver run).
+function closedWhen(m: MarketView) {
+  const p = timelineSteps(m, null).find((s) => s.key === "propose");
+  return p && p.ts > Date.now() / 1000 ? t("card.closedResult", { ts: fmtTsShort(m.closeTs), in: `${p.estimate ? "~ " : ""}${inWords(p.ts)}` }) : t("card.closedSoon", { ts: fmtTsShort(m.closeTs) });
 }
 // Markets are split by where they are in their life: open for bets, closed and waiting for the result, result
 // proposed (dispute window running), settled. The tab lives in the URL (?status=) so a link lands on the same view.

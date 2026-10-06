@@ -12,7 +12,7 @@ type Entry = { rank: number; wallet: string; points: number; markets: number; wo
 const fmtPoints = (v: number) => (v >= 1e6 ? (v / 1e6).toFixed(2) + "M" : v >= 1e4 ? (v / 1e3).toFixed(1) + "k" : v.toLocaleString("en-US", { maximumFractionDigits: 0 }));
 async function fetchBoard(win: string) {
   const r = await fetch(`${APP.apiBase}/leaderboard?window=${win}&limit=100`); if (!r.ok) throw new Error("leaderboard " + r.status);
-  return (await r.json()) as { totals: { players: number; markets: number; points: number }; entries: Entry[] };
+  return (await r.json()) as { totals: { players: number; markets: number; points: number; testWallets?: number }; entries: Entry[] };
 }
 
 /** Points = SKR staked in markets that paid out, every range counted, won or lost (server/points.mjs). */
@@ -31,7 +31,10 @@ export function LeaderboardScreen() {
       {q.data && (
         <View style={styles.stats}>
           {[[t("lb.players"), String(q.data.totals.players)], [t("lb.settled"), String(q.data.totals.markets)], [t("lb.awarded"), fmtPoints(q.data.totals.points)]].map(([k, v]) => (
-            <View key={k} style={[styles.stat, { backgroundColor: theme.colors.elevation.level2 }]}><Text style={styles.statNum}>{v}</Text><Text variant="labelSmall" style={styles.dim}>{k}</Text></View>
+            <View key={k} style={[styles.stat, { backgroundColor: theme.colors.elevation.level2 }]}><Text style={styles.statNum}>{v}</Text><Text variant="labelSmall" style={styles.dim}>{k}</Text>
+              {/* players are people: the test bots are listed below but not counted, as the website says beside the count */}
+              {k === t("lb.players") && Number(q.data!.totals.testWallets) > 0 ? <Text variant="labelSmall" style={styles.dim}>{t("lb.plusBots", { n: Number(q.data!.totals.testWallets) })}</Text> : null}
+            </View>
           ))}
         </View>
       )}

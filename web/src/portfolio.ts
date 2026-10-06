@@ -1,6 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
 import { NO_OUTCOME, fetchConfig, fetchMarkets, fetchMarketsFresh, fetchPositionsByOwner, payoutIfBucket, type MarketView } from "./kubrai";
-import { bareTitle, metricLabel } from "./metrics";
+import { bareTitle, fmtValue, metricLabel } from "./metrics";
 import { dayName } from "./series";
 import { bucketLabel, esc, fmtAmt, fmtTs, isBase58, mountNetBadge, mountWallet, onSession, statusPill } from "./ui";
 import { API_BASE, TOKEN_SYMBOL } from "./config";
@@ -57,7 +57,7 @@ async function render(owner: PublicKey | null) {
     settledEl.innerHTML = `<div class="scroll"><table class="tbl stack"><thead><tr><th>${t("pf.colMarket")}</th><th>${t("pf.colBets")}</th><th>${t("pf.colOutcome")}</th><th class="r">${t("pf.colPaid")}</th><th>Tx</th></tr></thead><tbody>${j.settled.map((s: any) => {
       const m = byKey.get(s.market);
       const bets = s.amounts.map((a: string, i: number) => (Number(a) ? `${m ? bucketLabel(m, i) : "bucket " + i}: <span class="mono">${fmtAmt(Number(a))}</span>` : "")).filter(Boolean).join("<br>");
-      const outcome = s.status === 3 ? t("status.voided") : m ? t("pf.outcomeV", { b: bucketLabel(m, Number(s.outcome)), v: Number(s.observed).toLocaleString("en-US") }) : `bucket ${esc(s.outcome)}`;
+      const outcome = s.status === 3 ? t("status.voided") : m ? t("pf.outcomeV", { b: bucketLabel(m, Number(s.outcome)), v: fmtValue(m.metric, Number(s.observed), m.thresholds) }) : `bucket ${esc(s.outcome)}`;
       const why = s.kind === "refund" && s.status !== 3 ? `<div class="note">${esc(t("pf.noWinner"))}</div>` : "";   // resolved, nobody on the winning range
       const cls = s.kind === "won" ? "ok" : s.kind === "lost" ? "err" : "";
       const sig = isBase58(s.signature) ? s.signature : null;

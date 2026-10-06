@@ -101,6 +101,9 @@ export function metricCategory(id: string): string {
   if (/^(dapps|reviews|reviewers|rev)/.test(base)) return "Store";
   return "Seeker";
 }
+/** Ranges fixed by hand instead of cut from the metric's history (server/market-templates.json "auto": false): ORE
+ *  motherlode hits, whose natural steps are none / one / two or more. The market page says so instead of "quantiles". */
+export const rangesFixed = (metric: string) => /^ore_hits_/.test(metric);
 export const CATEGORY_ORDER = ["Seeker", "DeFi", "Trading", "DEX", "Lending", "Staking", "Wallets", "Launchpads", "Tools", "ORE", "Chain", "DePIN", "Memes", "Store", "Other"];
 /** Decimals the pages print for a metric: `digits` when set, else 4 for prices and lamport-scaled numbers (scale > 1e6), else none. */
 export const displayDigits = (id: string) => { const c = metricInfo(id); return c?.digits ?? (c?.scale && c.scale > 1_000_000 ? 4 : 0); };

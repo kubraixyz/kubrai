@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ScrollView, Share, StyleSheet, View } from "react-native";
-import * as Clipboard from "expo-clipboard";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { Button, Divider, RadioButton, Text, TextInput, useTheme } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Constants from "expo-constants";
@@ -14,6 +13,7 @@ import { isCode, lookupReferralCode, normalizeCode } from "../chain/referral";
 import { fmtAmt, short } from "../chain/format";
 import { APP, IS_TEST, TOKEN_SYMBOL } from "../config";
 import { LANGS, PHONE_LANG, chooseLang, savedLang, t } from "../i18n";
+import { InviteCard } from "../components/InviteCard";
 
 const OK_GREEN = "#0f8f7c";
 export function SettingsScreen() {
@@ -26,7 +26,7 @@ export function SettingsScreen() {
   const phoneLangName = LANGS.find(([k]) => k === PHONE_LANG)?.[1] ?? "English";
   // Invite link (server/referrals.mjs): unlocked by the wallet's first bet; friends who bet through it earn you a share
   // of the fee on their winnings and get part of it back themselves. `refTick` re-reads it after a binding.
-  const [ref, setRef] = useState<any>(null); const [refMsg, setRefMsg] = useState(""); const [refTick, setRefTick] = useState(0);
+  const [ref, setRef] = useState<any>(null); const [refTick, setRefTick] = useState(0);
   useEffect(() => {
     if (!selectedAccount) { setRef(null); return; }
     const wallet = selectedAccount.publicKey.toBase58(); let live = true;
@@ -116,16 +116,8 @@ export function SettingsScreen() {
       </>)}
       <Divider style={{ marginVertical: 16 }} />
       <Text variant="titleMedium">{t("inv.h1")}</Text>
-      {!selectedAccount ? <Text style={styles.dim}>{t("inv.connect")}</Text> : !ref ? <Text style={styles.dim}>{t("common.loading")}</Text> : ref.error ? <Text style={styles.dim}>{ref.error}</Text> : !ref.link ? <Text style={styles.dim}>{t("inv.locked")}</Text> : (<>
-        <Text style={styles.mono} selectable>{ref.link}</Text>
-        <Text style={styles.dim}>{t("app.set.refStats", { n: ref.referred, pct: (ref.tierBps / 100).toFixed(0), earned: Number(ref.earned).toLocaleString("en-US", { maximumFractionDigits: 2 }), tok: TOKEN_SYMBOL, paid: Number(ref.paid).toLocaleString("en-US", { maximumFractionDigits: 2 }) })}{ref.bound ? t("app.set.joinedVia", { code: ref.bound.code }) : ""}</Text>
-        <View style={styles.row}>
-          <Button mode="contained" icon="share-variant" onPress={() => Share.share({ message: t("app.set.shareMsg", { link: ref.link }) }).catch(() => {})}>{t("app.set.share")}</Button>
-          <Button mode="outlined" icon="content-copy" onPress={async () => { try { await Clipboard.setStringAsync(ref.link); setRefMsg(t("common.copied")); } catch { setRefMsg(ref.link); } setTimeout(() => setRefMsg(""), 2000); }}>{t("inv.copy")}</Button>
-        </View>
-        {!!refMsg && <Text style={styles.dim}>{refMsg}</Text>}
-        <Text style={styles.dim}>{t("inv.lead")}</Text>
-      </>)}
+      {/* the website's invite page: link, the four numbers, the next share, earnings, payouts, how it works and the shares by points */}
+      <InviteCard data={ref} wallet={!!selectedAccount} loading={!!selectedAccount && !ref} />
       <Divider style={{ marginVertical: 16 }} />
       <Text variant="titleMedium">{t("fb.button")}</Text>
       <Button mode="contained-tonal" icon="message-alert-outline" onPress={() => nav.navigate("Feedback")} style={{ alignSelf: "flex-start" }}>{t("app.set.feedbackBtn")}</Button>
