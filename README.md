@@ -14,7 +14,7 @@ No other prediction app in the dApp Store runs markets on the store's own apps (
 Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
 
 **Try it (devnet):** web <https://devnet.kubrai.xyz> · Android APK linked from the same page
-(test tokens from the in-app faucet) · API <https://api-devnet.kubrai.xyz/health>
+(test tokens from the in-app faucet) · API <https://api-devnet.kubrai.xyz/health> · docs + 3-minute demo video <https://devnet.kubrai.xyz/docs.html>
 
 ## How the money works
 
@@ -26,7 +26,7 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
   receives.** Your own stake is never touched.
 * **Discounts** lower that fee and are locked into your position at the moment you bet,
   stake-weighted, so a late top-up cannot inherit an early discount:
-  * early-bird: bets placed in the first quarter of a market's window (6 h of a daily market, 24 h of a weekly one) get −1%.
+  * early-bird: bets placed in the first quarter of a market's betting window (about 6 h of a daily market; capped at 24 h) get −1%.
   * Seeker Genesis Token holders get −1%: the bet carries the wallet's token account and its mint, and the program
     checks on-chain that the mint is a member of the Genesis Token group (Token-2022 group extension). Nothing is
     taken on the client's word.
@@ -49,7 +49,7 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
    program's payout math can move them.
 2. **The proposer submits a number, not a winner.** Our server proposes the observed value
    plus the hash of the snapshot bundle it came from; the winning bucket is derived
-   **on-chain** from the market's thresholds. A 24 h dispute window follows. Anyone can
+   **on-chain** from the market's thresholds. A 6 h dispute window follows. Anyone can
    finalize after the window; the admin key (a Seed Vault key, multisig on mainnet) can
    finalize early or void. A second host re-derives every proposed value from its own
    snapshots and holds a **verifier** key (`Roles.verifier`, `void_proposed_market`) that can do
@@ -57,9 +57,13 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
    finalize, touch an open market or change the config. A compromised server can delay a
    market by a day and lie about a number that everyone can check; a compromised verifier can
    force refunds; neither can steal a pool.
-3. **The baseline is fixed on-chain at market creation** from the opening snapshot, and
-   **betting closes before the closing snapshot is taken** (snapshots run right after the hour, markets close on the hour), so nobody bets on a
-   number they have already seen.
+3. **Each daily market counts one full UTC day, and its clock is fixed on-chain at creation.** Betting opens at
+   11:00 UTC the day before (13 hours before the counted day begins) and closes at 12:00 UTC, halfway through it, so
+   nobody bets having seen more than half of the day; the next day's markets open an hour before that, so there is
+   always one to bet on. Numbers a third party publishes per day (DefiLlama) are read a fixed number of hours after
+   the day ends (6, 24 or 48 h per metric, stored on-chain as `resolve_after`): whatever the source shows at that
+   moment settles the market and later revisions do not count; if the source moves the day's number into another
+   range before the result is final, the verifier voids the market and everyone is refunded.
 4. **Hourly snapshots are hashed on-chain** (memo tx) and published with their evidence
    (`/snapshots/:day`). Sources are labelled on every market: *on-chain* (recomputable by
    anyone: `.skr` name records, the SKR staking vault), *store data* (dApp Store catalog),
@@ -69,7 +73,7 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
    Seeker may review each of the 1,300+ listed apps once, so a single device could move the store-wide count by
    hundreds in a day); pushing up the SOL deployed in ORE burns about 10% of
    every extra SOL (ORE returns 89% of a losing square), and whether an ORE round hits the
-   motherlode comes from the round's on-chain randomness, which nobody can steer. Level metrics resolve on the median of every hourly snapshot inside the market window (24 for a daily market, 168 for a weekly one; at least 75 % must exist), so a last-minute deposit or withdrawal cannot move the result. Cumulative metrics resolve on the increase between the opening hour's snapshot and the closing hour's snapshot (markets open and close exactly on the hour; snapshots are taken right after the hour, so consecutive markets share one reading and nothing is counted twice).
+   motherlode comes from the round's on-chain randomness, which nobody can steer. Level metrics resolve on the median of every hourly snapshot inside the counted day (24; at least 75 % must exist), so a last-minute deposit or withdrawal cannot move the result. Cumulative metrics resolve on the increase between the day's first and last hourly snapshot (snapshots are taken right after the hour, so consecutive days share one reading and nothing is counted twice).
 6. **Settlement is permissionless.** A crank pays every winner and closes every position,
    returning the rent deposit to whoever paid it. Nobody has to remember to claim.
 
@@ -121,7 +125,7 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
 ```
 programs/kubrai   Anchor program (Rust) — N-bucket parimutuel, on-chain bucket derivation
 programs/ore-miner-stub   devnet-only stand-in for ORE's Miner account (same layout + PDA seeds) so the ORE-miner discount can be tried where ORE is not deployed
-tests/            9 end-to-end tests against a local validator (fees, discounts, void, no-winner, multi-bucket)
+tests/            11 end-to-end tests against a local validator (fees, discounts, voids, no-winner, multi-bucket)
 server/           hourly snapshot recorder (memo hash), resolver + settlement crank, scheduled market opener (market-templates.json), public API + devnet faucet, bucket designer
 web/              market pages + wallet betting (Wallet Standard), "My bets", APK download
 app/              Seeker app: Expo / React Native + Mobile Wallet Adapter (Seed Vault), in-app feedback
@@ -140,6 +144,9 @@ Instruction | Who | What
 `propose_resolution` | proposer or admin | observed value + snapshot hash; bucket derived on-chain; starts the dispute window
 `finalize_resolution` | anyone after the window, admin any time | locks the outcome
 `void_market` | admin | refund everyone
+`void_proposed_market` | verifier or admin | refund everyone while a result is only proposed (the second host's single power)
+`void_stale_market` | proposer or admin | refund everyone when a market has gone a day past `resolve_after` with no proposal
+`set_fee_tiers` / `set_roles` | admin | holder discounts (Genesis Token group, generic stake/ORE rule) and the verifier key
 `settle_position` | anyone | pay one position, close it, refund its rent to the payer
 `sweep_market` | anyone | after all positions are settled: fees + dust to treasury, close the vault
 
@@ -156,7 +163,7 @@ ANCHOR_PROVIDER_URL=http://127.0.0.1:8899 ANCHOR_WALLET=~/.config/solana/id.json
 # bootstrap a cluster (mock SKR mint, treasury, proposer key, config) and open a market
 ANCHOR_PROVIDER_URL=... ANCHOR_WALLET=... npx ts-node scripts/devnet-setup.ts
 CLOSE_AT=2026-09-19T00:00:00Z npx ts-node scripts/create-market.ts skr_ids_week 77,93,113 "How many new .skr IDs this week?" 0 0 500   # manual one-off
-node server/open-markets.mjs            # scheduled: daily markets every day, weekly ones on Mondays (cron 00:00 UTC; markets open/close exactly on the hour)
+node server/open-markets.mjs            # scheduled: cron 11:00 UTC daily; opens the next UTC day's markets from server/market-templates.json (weekly templates are paused)
 node scripts/update-config.mjs disputeWindowSecs=21600
 CLUSTER=devnet SNAPSHOT_DIR=./verify-snapshots ADMIN_KEYPAIR=... node server/verify-proposals.mjs   # second host, every 10 min
 CLUSTER=devnet FUNDING_KEYPAIR=... node server/sol-topup.mjs                                       # daily
@@ -181,5 +188,5 @@ build can never talk to mainnet money.
 
 ## Status
 
-devnet: live. **For judges/testers:** the devnet faucet (web “Test wallet” or the app’s Settings screen) gives every wallet 0.05 SOL, 1,000 tSKR, a stand-in Seeker Genesis Token and a stand-in ORE Miner account, so anyone can see both holder discounts without owning a Seeker or mining ORE; on mainnet only a real Genesis Token and a real ORE Miner account qualify. Markets open on a fixed schedule — daily ones at 00:00 UTC (Seekers activated, SKR staked 24 h median, store reviews written, SOL deployed by ORE miners, ORE motherlode hits, ORE mining cost 24 h median) and weekly ones on Mondays (the same plus listings and per-app reviews). Early-bird fee applies for the first quarter of each market (6 h daily / 24 h weekly). Seed Vault Wallet betting verified on a Seeker.
+devnet: live. **For judges/testers:** the devnet faucet (web “Test wallet” or the app’s Settings screen) gives every wallet 0.05 SOL, 1,000 tSKR, a stand-in Seeker Genesis Token and a stand-in ORE Miner account, so anyone can see both holder discounts without owning a Seeker or mining ORE; on mainnet only a real Genesis Token and a real ORE Miner account qualify. 19 daily markets open every day at 11:00 UTC for the following UTC day, in eight groups: Seeker (Seekers activated, SKR staked, SKR price), DeFi (Jupiter swap volume, Jupiter revenue), Trading (Jupiter Perps fees), Staking (JitoSOL, JupSOL, Phantom pSOL and Sanctum INF supply, Jito MEV tips), Wallets (Phantom revenue, Backpack reserves), Launchpads (pump.fun app revenue), ORE (SOL deployed, motherlode hits, mining cost, price) and the Solana network (fees). Weekly markets are paused until their metrics have enough history for quantile ranges. The early-bird discount applies for the first quarter of each betting window (about 6 h). Seed Vault Wallet betting verified on a Seeker.
 mainnet: after the hackathon — upgrade authority and treasury move to a Squads multisig first; no seeding.
