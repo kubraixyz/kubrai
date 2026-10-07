@@ -77,6 +77,25 @@ Built for the Solana Mobile **Clock In** hackathon (Sept–Oct 2026).
 6. **Settlement is permissionless.** A crank pays every winner and closes every position,
    returning the rent deposit to whoever paid it. Nobody has to remember to claim.
 
+**One market, end to end.** Devnet market #18, "Seekers activated", counted day 12 September 2026; each link opens the
+devnet explorer. [Created](https://explorer.solana.com/tx/2AraQHiVVJ1q4s5Q99VS9pj3ktZXx89j3T7BP9evZBCFAHMnoAMvKHMrwg7LjQ5nUi3QLVFiiN4buLTZokiw74gF?cluster=devnet)
+and [seeded with 100 tSKR](https://explorer.solana.com/tx/xYvmi9VYFHhEx48PShaNK5oSHNdq6w3tKncQUNUgqgwkeifNNqKC592ZHXEcFEkZyZHDs2LW4obHSecZS2WVwQo?cluster=devnet)
+at 00:00 UTC on 12 September (early devnet markets were seeded; mainnet markets are not). Bets, among them
+[200 tSKR](https://explorer.solana.com/tx/4tDUSFVaiQzt8iBRwF3bdsgNJzPPomJZ46VPvHWvMgSwhMf42sWp5j8v1C8UJ8GvRAXutYGAtsDCohT3cLrFWxES?cluster=devnet)
+on "< 13" and [5 tSKR](https://explorer.solana.com/tx/3L58KJMugGxqWadgu7dZXknW6zsCE5EvXTcwvY2oGCD1uDcUT9eWqKZPWxc9khzSmSmx8Fqr1TjbdZYYM2ebkfGL?cluster=devnet)
+on "13–15" from one wallet. Hourly snapshots through the day, each hash in a
+[memo](https://explorer.solana.com/tx/2EJe5bW9q84fTaH2bPBtxU1YtnVgxLmU6i9xRxcrW12nAqD5J126yaJmk2xHoiqvqryYzdHKq9qcN3C2e4JY5HsA?cluster=devnet).
+The [proposal](https://explorer.solana.com/tx/4hoypTth6rsnFaKzSiqgCRzSckWTpJR3dsRYzmYW8PfpF2gxfiM8W1mekoSBPqyGo7MJpbzZmYuk67GK5jzHc4P9?cluster=devnet)
+at 00:20 UTC on 13 September: observed 11 (120,840 − 120,829 Genesis Tokens between the day's first and last
+snapshot), evidence hash `8a20282b…4fbdc9`; the program derives the range "< 13". During the window that wallet filed a
+dispute claiming 15; it was answered from the published snapshots and closed (logged at `/disputes`). After six hours
+[finalize](https://explorer.solana.com/tx/KorRcMT45Pgo33xrGomCTSrQ2QFSu8VGNxKiRrT4ZzT8wvmiZRBd8ZxUoj5X8XDfJNx2Pzxk8KugV155rK1QGbS?cluster=devnet),
+then the crank's [payout](https://explorer.solana.com/tx/2z1nydtGM19RbF4wq1Tmj4r8S3QY4w91fJJrvEZ6ULvSWVz2XaG9vZyuG13XLAG3pVjeV5DkaxpFgwmh2PZFno3u?cluster=devnet):
+305.294 tSKR to the wallet that staked 205 (fee 0.179), the
+[other winner's share](https://explorer.solana.com/tx/5knkLVft4dwVSJn7ykmeBnUL7UZe8Qg4vuuZLJ4xPYz3aSvFMFWPRc8dx8zdQe3kuDCm179c7Lua15ksYuJePr23?cluster=devnet),
+and the [sweep](https://explorer.solana.com/tx/4Z5GV7yQHT8G72idXn25Pu7W89k8poJ2oia2fWDvfy3DrYo3zRanJq3L6XacMwcijmX9TpNiSvRkVAQninsfu17o?cluster=devnet)
+that closes the market. The same bet is the "Won" card on the Seeker's My bets screen in the demo video.
+
 ## Leaderboard, invites, time
 
 - **Leaderboard** (`/leaderboard.html`, app tab “Ranks”; `GET /leaderboard?window=7d|30d|all`): one point per SKR
@@ -212,9 +231,10 @@ It confirmed no defect in the code. What it listed as "worth a look", and what e
 - **Unchecked arithmetic, a missing owner check and `init_if_needed` in `programs/ore-miner-stub`.** A devnet-only
   stand-in for ORE's Miner account, so the miner discount can be exercised where ORE is not deployed. Never on mainnet.
 - **Dependency advisories** (`tar`, `postcss`, `toml`, `@xmldom/xmldom`, `image-size`, `uuid`, `decode-uri-component`;
-  `bigint-buffer` and `bincode` have no fixed release). They come in through Expo, Anchor's client, Mobile Wallet Adapter
-  and React Navigation. We left the lockfiles alone in the last days before the deadline, with a build verified on a
-  Seeker as it is; bumping them is the first item for the mainnet release.
+  `bigint-buffer` and `bincode` have no fixed release). `tar` (Expo CLI, cacache), `postcss` (Metro config), `image-size`
+  (Metro) and `@xmldom/xmldom` (plist) belong to the build toolchain and never enter the APK; `toml` ships with the Anchor
+  client package; `bigint-buffer` comes with web3.js' buffer-layout-utils. We left the lockfiles alone in the last days
+  before the deadline, with a build verified on a Seeker as it is; bumping them is the first item for the mainnet release.
 
 ## Status
 
