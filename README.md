@@ -186,6 +186,36 @@ accounts and encodes instructions by hand) because Anchor's Borsh decoder does n
 Hermes. Every build is pinned to one cluster via `app.json` → `extra.cluster`; a devnet
 build can never talk to mainnet money.
 
+## Security review
+
+Radiants' advisory security module read this repository at cdfc7fb on 7 October 2026: 200 files, unsafe source
+patterns, dependency advisories (npm and Cargo), compiler-level checks on the Rust code, deployment configuration.
+It confirmed no defect in the code. What it listed as "worth a look", and what each one is:
+
+- **`init_if_needed` on `fee_tiers`, `roles`, `position`.** Intended. The first two are admin-only (`has_one = admin`)
+  and are rewritten on every call; `position` is a PDA on `[market, user]`, so an existing account can only be reached
+  by the same wallet adding to its own stake, and `place_bet` sets `owner` and `market` only when the account is fresh.
+- **`initialize` takes the admin from the signer.** The bootstrap. `config` is a fixed-seed singleton created once, right
+  after deployment, by the deployer (devnet: done on 10 September; mainnet: the same transaction, after which the
+  authority moves to the Squads multisig).
+- **"Missing owner check" on `tiers_ai`.** The check is the next line: `require!(tiers_ai.owner == &crate::ID)`.
+- **Token accounts "not constrained to be distinct" from the vault.** Each is constrained to another authority or
+  address: `user_token` and `funder_token` to the signer, `owner_token` to `position.owner`, `treasury` to
+  `config.treasury` (`has_one`). The vault's authority is the market PDA, so none of them can be the vault.
+- **A rate limit keyed on `X-Forwarded-For`.** The API accepts connections only from Cloudflare (Caddy refuses the rest),
+  so the forwarded chain always has two hops and the key is `CF-Connecting-IP`, which Cloudflare writes itself and a
+  visitor cannot set; `server/client-ip.mjs` explains the cases.
+- **HTML written with `innerHTML`.** The website renders from template strings. Every value that arrives from a URL, a
+  wallet or the API passes through `esc()`; the other interpolated strings are our own dictionary.
+- **A deep link handler acting on the incoming URL.** `refFromUrl` accepts only `kubrai.xyz` and `kubrai://` links and
+  only an invite code matching `^[A-Z0-9]{6,10}$`; the code is stored, and nothing is signed until the user places a bet.
+- **Unchecked arithmetic, a missing owner check and `init_if_needed` in `programs/ore-miner-stub`.** A devnet-only
+  stand-in for ORE's Miner account, so the miner discount can be exercised where ORE is not deployed. Never on mainnet.
+- **Dependency advisories** (`tar`, `postcss`, `toml`, `@xmldom/xmldom`, `image-size`, `uuid`, `decode-uri-component`;
+  `bigint-buffer` and `bincode` have no fixed release). They come in through Expo, Anchor's client, Mobile Wallet Adapter
+  and React Navigation. We left the lockfiles alone in the last days before the deadline, with a build verified on a
+  Seeker as it is; bumping them is the first item for the mainnet release.
+
 ## Status
 
 devnet: live. **For judges/testers:** the devnet faucet (web “Test wallet” or the app’s Settings screen) gives every wallet 0.05 SOL, 1,000 tSKR, a stand-in Seeker Genesis Token and a stand-in ORE Miner account, so anyone can see both holder discounts without owning a Seeker or mining ORE; on mainnet only a real Genesis Token and a real ORE Miner account qualify. 19 daily markets open every day at 11:00 UTC for the following UTC day, in eight groups: Seeker (Seekers activated, SKR staked, SKR price), DeFi (Jupiter swap volume, Jupiter revenue), Trading (Jupiter Perps fees), Staking (JitoSOL, JupSOL, Phantom pSOL and Sanctum INF supply, Jito MEV tips), Wallets (Phantom revenue, Backpack reserves), Launchpads (pump.fun app revenue), ORE (SOL deployed, motherlode hits, mining cost, price) and the Solana network (fees). Weekly markets are paused until their metrics have enough history for quantile ranges. The early-bird discount applies for the first quarter of each betting window (about 6 h). Seed Vault Wallet betting verified on a Seeker.
