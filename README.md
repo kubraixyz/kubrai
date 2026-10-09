@@ -205,6 +205,29 @@ accounts and encodes instructions by hand) because Anchor's Borsh decoder does n
 Hermes. Every build is pinned to one cluster via `app.json` → `extra.cluster`; a devnet
 build can never talk to mainnet money.
 
+## Verified on a device
+
+- The submission APK is `kubrai-0.1.43-devnet.apk` (sha256
+  `e58530c3f4334f9c02229653ab95dde41e60333cd4290d480214d9cf49f951ba`, 20,408,944 bytes), built by
+  `app/scripts/build-apk.sh` (Expo prebuild + Gradle release build, signed with the project keystore) and installed on a
+  Seeker (Android 16) on 6 October 2026. The demo video is that phone's screen, recorded over adb.
+- Bets signed in Seed Vault Wallet on that Seeker while the demo was recorded, all on devnet:
+  [2G9ensyc…](https://explorer.solana.com/tx/2G9ensycFSHXr4c1dRuTU5XXWm6rBmf6wp5SaocMDXTMqCokobA7eHxadVduiLnKpG1zA6LLp7BHLGkfc97kiGW5?cluster=devnet)
+  and [2xF1ZFHm…](https://explorer.solana.com/tx/2xF1ZFHmKUGap1nzqFwNardDj14UTMbaFttFVAaxppJrJyaockokYaN2SU8ZaD5kGzgscm6e2ssgp2mNJH6gtxwA?cluster=devnet)
+  (market #278, "Seekers activated" for 7 October, 50 tSKR on each of two ranges, 6 October 15:43 and 15:48 UTC),
+  [5UjDm1ox…](https://explorer.solana.com/tx/5UjDm1oxJY8jX3FQNQGstCstuSDHHRJnwc7y4GNCPxQRWoqKpDGmqNDrrW8eoUBRYwb7VDnUwTi6CtANCsEqiNxL?cluster=devnet)
+  (market #297, 7 October 12:14 UTC) and
+  [42atgRr2…](https://explorer.solana.com/tx/42atgRr2LHGSjxqXrJc58DUWVM36m5UGQve2FcktaVFDaMSx2p2EsyNfZDEaA6GJyWbdv6QMHuahQh6QS82irzkj?cluster=devnet)
+  (market #306, ORE price, 12:25 UTC: the bet the demo shows). Market #278 then went the whole way: the crank's
+  [settlement](https://explorer.solana.com/tx/H5PnUPmqjHaXTSoZdmstaXn1q9VTfj98CsFsdtJPrjdHtkKcYvVTqtztGCteZScQbg17DTHXZw3DUPkKzQHMmTo?cluster=devnet)
+  on 8 October 07:20 UTC paid 99.5 tSKR back to the wallet: its 50 on the winning range plus the 50 it had on the
+  other range less a 1 % fee (3 %, minus the early-bird and the Genesis Token discount, both proven on-chain).
+- The program tests (`tests/kubrai.ts`, 11 end-to-end on a local validator) cover the admin paths as well as the
+  money paths: `set_fee_tiers` from a non-admin fails with `Unauthorized`, a discount above the cap with `FeeTooHigh`,
+  `create_market` from a non-admin with `Unauthorized`.
+- An independent black-box review of the app, working from screenshots of the Seeker (7 October), found four issues;
+  all four are fixed in 561645a.
+
 ## Security review
 
 Radiants' advisory security module read this repository at cdfc7fb on 7 October 2026: 200 files, unsafe source
