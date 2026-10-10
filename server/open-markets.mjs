@@ -101,3 +101,6 @@ log(`opened ${opened.length}: ${opened.map((o) => `#${o.id} ${o.metric}`).join("
 for (const s of skipped) log("skipped", s);
 const notOpened = skipped.filter((x) => /create failed|market_count/.test(x)).length;   // after the retry
 if (!DRY) { try { const { notify } = await import("./notify.mjs"); await notify(`${notOpened ? "⚠️ " : ""}Markets opened for ${day}: ${opened.length}${notOpened ? `, ${notOpened} failed twice` : ""}`, [...opened.map((o) => `#${o.id} ${o.metric}`), ...skipped.map((s) => "skip " + s)].join("\n").slice(0, 1500), "open-markets", 0); } catch {} }
+// Exit explicitly (same reason as resolve.mjs): the Anchor provider's websocket may be mid-reconnect after the last
+// confirmation and would keep the process, and open-markets.lock, alive until someone notices.
+process.exit(0);

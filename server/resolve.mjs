@@ -173,3 +173,7 @@ if (ONLY.includes("stale")) await voidStale(await program.account.market.all(mar
 if (ONLY.includes("finalize")) await finalize(await program.account.market.all(marketFilter), now, cfg);
 if (ONLY.includes("settle")) await settle(await program.account.market.all(marketFilter), cfg);
 log("done");
+// Exit explicitly: the Anchor provider's websocket may be mid-reconnect after the last confirmation (ws error: read
+// ECONNRESET) and keeps the process, and resolve.lock, alive. The 2026-10-10 00:20Z run hung 4.6 h after "done";
+// the 01:20–04:20 ticks were skipped by flock -n in silence.
+process.exit(0);

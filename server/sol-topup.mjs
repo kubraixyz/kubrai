@@ -57,4 +57,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   if (fundingBal - need < cfg.fundingFloor) await notify("ℹ️ 補油錢包快見底", `${CLUSTER} 補油錢包剩 ${fmtSol(fundingBal - need)} SOL(門檻 ${fmtSol(cfg.fundingFloor)})。有空轉一點進 ${funding.publicKey.toBase58()}。`, "topup-low", 24 * 60);
   log("done");
+  process.exit(0);   // explicit exit (same reason as resolve.mjs): the connection's websocket can outlive the last transfer
 }

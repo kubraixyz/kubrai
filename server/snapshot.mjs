@@ -59,3 +59,7 @@ if (process.env.MEMO_DISABLED !== "1") {
     console.log("memo tx", sig);
   } catch (e) { console.error("memo FAILED:", redact(e)); process.exit(3); }
 }
+// Exit explicitly: sendAndConfirmTransaction leaves web3.js's websocket open and, when the RPC drops it (ws error:
+// read ECONNRESET), the reconnect loop keeps the event loop alive forever. The 2026-10-09T22 run hung 7 h after
+// "memo tx" holding snapshot.lock, so flock -n skipped every hourly snapshot through 05:01 without a word in the log.
+process.exit(0);

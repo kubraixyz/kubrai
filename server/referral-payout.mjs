@@ -110,3 +110,5 @@ for (const d of due) {
 }
 log(`done: paid ${sent} (${ui(rawSent)} SKR), skipped ${skipped} (dust / no account yet), failed ${failed}`);
 if (!DRY && (sent || failed)) await notify(failed ? "⚠️ 推廣回饋有失敗" : "💸 推廣回饋已發", `${CLUSTER}: 發 ${sent} 筆共 ${ui(rawSent)} SKR${failed ? `,失敗 ${failed} 筆(看 referral-payout.log)` : ""}`, "referral-payout", failed ? 5 : 1);
+// Exit explicitly (same reason as resolve.mjs): the connection's websocket can outlive the last confirmation.
+process.exit(0);
